@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: f25b975b678d1ad4b9e7890e07e918c5
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - choppingSFX: {fileID: 8300000, guid: 8aa460a971459e746a5b2648fc24b2d9, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 

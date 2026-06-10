@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 1c2656eea1c5ef4488de6404653aef37
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - pattyPre: {fileID: 100000, guid: 56e8b796bb9ef064b8be47c26a544252, type: 2}
+  - baconPre: {fileID: 100000, guid: 0469e81da1a37a74bbba39d87d4a85ce, type: 2}
+  - bunBotPre: {fileID: 100000, guid: d61c708879507524b9f185e2a61d750a, type: 2}
+  - bunTopPre: {fileID: 100000, guid: 2afdade7f95f0da4390157b8eb88ec7a, type: 2}
+  - cheesePre: {fileID: 100000, guid: 24e09a778d86202418538baad74778a2, type: 2}
+  - lettucePre: {fileID: 100000, guid: 9de01368162fe0343a804c4fedea1041, type: 2}
+  - TomatoPre: {fileID: 100000, guid: 0b9b26ac00304e147ab3da7f3a695333, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 

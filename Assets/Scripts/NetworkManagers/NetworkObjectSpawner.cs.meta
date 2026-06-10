@@ -1,0 +1,30 @@
+fileFormatVersion: 2
+guid: b511cef72e68f9a45b25af39d9fc1bab
+timeCreated: 1440900511
+licenseType: Free
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - Patty: {fileID: 100000, guid: 56e8b796bb9ef064b8be47c26a544252, type: 2}
+  - Cheese: {fileID: 100000, guid: 24e09a778d86202418538baad74778a2, type: 2}
+  - LettuceFull: {fileID: 100000, guid: 15d077bf97ec0c442aa9a3d3cc3610e8, type: 2}
+  - LettuceHalf: {fileID: 100000, guid: eb401ddb7818e4a4c89580b41306ece4, type: 2}
+  - Lettuce: {fileID: 100000, guid: 9de01368162fe0343a804c4fedea1041, type: 2}
+  - Bacon: {fileID: 100000, guid: 0469e81da1a37a74bbba39d87d4a85ce, type: 2}
+  - Tomato: {fileID: 100000, guid: 0b9b26ac00304e147ab3da7f3a695333, type: 2}
+  - BunTop: {fileID: 100000, guid: 2afdade7f95f0da4390157b8eb88ec7a, type: 2}
+  - BunBottom: {fileID: 100000, guid: d61c708879507524b9f185e2a61d750a, type: 2}
+  - Knife: {fileID: 117448, guid: d3578f779636d3f40a70eb5a79e1975e, type: 2}
+  - Spatula: {fileID: 130828, guid: 955cb29afd24c8f4486efe5a43c0747c, type: 2}
+  - Plate: {fileID: 100000, guid: 8560d953610346c4f9a4b447a47033fa, type: 2}
+  - FireExtinguisher: {fileID: 100000, guid: cf1a04626ac786e4e8834f68243ab93b, type: 2}
+  - Drawer: {fileID: 100010, guid: 444c5fefd081349469ba13dc5255e8ae, type: 2}
+  - Box: {fileID: 100008, guid: 761184a5399999641abc4f4423a33ea8, type: 2}
+  - BoxOpened: {fileID: 100016, guid: 06b9ea6ef34ac824d87d5bc889299a99, type: 2}
+  - SpeechBubble: {fileID: 105182, guid: d1b546be58bd256469d0cbcfffc56106, type: 2}
+  - ServerBox: {fileID: 105182, guid: d1b546be58bd256469d0cbcfffc56106, type: 2}
+  executionOrder: -50
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: bc0f959f21d75e747968ac75580a50a6
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - elementPrefab: {fileID: 100000, guid: 2a498994bd32ca7428d6819051b7d649, type: 2}
+  - buttonPrefab: {fileID: 100000, guid: 14c38ab005bf011438e157a9fd28c18b, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 

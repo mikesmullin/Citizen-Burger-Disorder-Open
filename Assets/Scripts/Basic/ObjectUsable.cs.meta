@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 1f8cb1dc004469f44b908937246cd1fc
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - pencilPrefab: {fileID: 100000, guid: 55baf15509c962f459c537c2d988d13a, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 

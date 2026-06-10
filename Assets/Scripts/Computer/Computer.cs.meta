@@ -1,0 +1,11 @@
+fileFormatVersion: 2
+guid: 4276b47d7f68c114ea09c3c590970c2a
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - mPat: {fileID: 2100000, guid: cd61947f3ee980747ae968d14455b0a3, type: 2}
+  - mCedric: {fileID: 2100000, guid: 2ed44f94421b60d478c8e0db941681e9, type: 2}
+  - mGrace: {fileID: 2100000, guid: 0cf59c10ec1faf84c94373b9b3086a96, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
