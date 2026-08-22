@@ -1,6 +1,11 @@
 # Scratch, Unity dumps, original source archive, screenshots, plans
 tmp/
 
+# Local reference dumps (keep public/assets/**/*.png)
+/*.png
+*.canvas
+.obsidian/
+
 # Python
 __pycache__/
 *.py[cod]
