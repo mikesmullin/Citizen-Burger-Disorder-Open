@@ -1,0 +1,162 @@
+{
+ "music": [
+  {
+   "id": "BuildingVistasTogether",
+   "label": "Building Vistas Together",
+   "src": "audio/music/BuildingVistasTogether.mp3",
+   "source": "Assets/Music/Building_Vistas_Together.mp3"
+  }
+ ],
+ "sfx": [
+  {
+   "id": "Chopping",
+   "label": "Chopping",
+   "src": "audio/sfx/Chopping.mp3",
+   "source": "Assets/Sounds/Food/chopping.mp3"
+  },
+  {
+   "id": "Chopping02",
+   "label": "Chopping 02",
+   "src": "audio/sfx/Chopping02.mp3",
+   "source": "Assets/Sounds/Food/chopping02.mp3"
+  },
+  {
+   "id": "Patty",
+   "label": "Patty",
+   "src": "audio/sfx/Patty.mp3",
+   "source": "Assets/Sounds/Food/patty.mp3"
+  },
+  {
+   "id": "VegetableCutting",
+   "label": "Vegetable Cutting",
+   "src": "audio/sfx/VegetableCutting.mp3",
+   "source": "Assets/Sounds/Food/vegetable-cutting.mp3"
+  },
+  {
+   "id": "DryDropping01",
+   "label": "Dry Dropping 01",
+   "src": "audio/sfx/DryDropping01.mp3",
+   "source": "Assets/Sounds/Food/Collisions/dry-dropping01.mp3"
+  },
+  {
+   "id": "FoodDroppingPlate01",
+   "label": "Food Dropping Plate 01",
+   "src": "audio/sfx/FoodDroppingPlate01.mp3",
+   "source": "Assets/Sounds/Food/Collisions/food-dropping-plate01.mp3"
+  },
+  {
+   "id": "FoodDroppingPlate02",
+   "label": "Food Dropping Plate 02",
+   "src": "audio/sfx/FoodDroppingPlate02.mp3",
+   "source": "Assets/Sounds/Food/Collisions/food-dropping-plate02.mp3"
+  },
+  {
+   "id": "GrossMeatCarrying",
+   "label": "Gross Meat Carrying",
+   "src": "audio/sfx/GrossMeatCarrying.mp3",
+   "source": "Assets/Sounds/Food/Collisions/gross-meat-carrying.mp3"
+  },
+  {
+   "id": "MeatDropping",
+   "label": "Meat Dropping",
+   "src": "audio/sfx/MeatDropping.mp3",
+   "source": "Assets/Sounds/Food/Collisions/meat-dropping.mp3"
+  },
+  {
+   "id": "MeatSlap",
+   "label": "Meat Slap",
+   "src": "audio/sfx/MeatSlap.mp3",
+   "source": "Assets/Sounds/Food/Collisions/meat-slap.mp3"
+  },
+  {
+   "id": "PlateCollision01",
+   "label": "Plate Collision 01",
+   "src": "audio/sfx/PlateCollision01.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision-01.mp3"
+  },
+  {
+   "id": "PlateCollision02",
+   "label": "Plate Collision 02",
+   "src": "audio/sfx/PlateCollision02.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision-02.mp3"
+  },
+  {
+   "id": "PlateCollision03",
+   "label": "Plate Collision 03",
+   "src": "audio/sfx/PlateCollision03.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision-03.mp3"
+  },
+  {
+   "id": "PlateCollision04",
+   "label": "Plate Collision 04",
+   "src": "audio/sfx/PlateCollision04.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision-04.mp3"
+  },
+  {
+   "id": "PlateCollision05",
+   "label": "Plate Collision 05",
+   "src": "audio/sfx/PlateCollision05.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision-05.mp3"
+  },
+  {
+   "id": "PlateCollision06",
+   "label": "Plate Collision 06",
+   "src": "audio/sfx/PlateCollision06.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision-06.mp3"
+  },
+  {
+   "id": "PlateCollision07",
+   "label": "Plate Collision 07",
+   "src": "audio/sfx/PlateCollision07.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision-07.mp3"
+  },
+  {
+   "id": "PlateCollision08",
+   "label": "Plate Collision 08",
+   "src": "audio/sfx/PlateCollision08.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision-08.mp3"
+  },
+  {
+   "id": "PlateCollision",
+   "label": "Plate Collision",
+   "src": "audio/sfx/PlateCollision.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate-collision.mp3"
+  },
+  {
+   "id": "Plate01",
+   "label": "Plate 01",
+   "src": "audio/sfx/Plate01.mp3",
+   "source": "Assets/Sounds/Food/Collisions/PLATE01.mp3"
+  },
+  {
+   "id": "Plate02",
+   "label": "Plate 02",
+   "src": "audio/sfx/Plate02.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate02.mp3"
+  },
+  {
+   "id": "Plate03",
+   "label": "Plate 03",
+   "src": "audio/sfx/Plate03.mp3",
+   "source": "Assets/Sounds/Food/Collisions/plate03.mp3"
+  },
+  {
+   "id": "SoftMeat",
+   "label": "Soft Meat",
+   "src": "audio/sfx/SoftMeat.mp3",
+   "source": "Assets/Sounds/Food/Collisions/soft-meat.mp3"
+  },
+  {
+   "id": "WetDropping01",
+   "label": "Wet Dropping 01",
+   "src": "audio/sfx/WetDropping01.mp3",
+   "source": "Assets/Sounds/Food/Collisions/wet-dropping01.mp3"
+  },
+  {
+   "id": "WetDropping02",
+   "label": "Wet Dropping 02",
+   "src": "audio/sfx/WetDropping02.mp3",
+   "source": "Assets/Sounds/Food/Collisions/wet-dropping02.mp3"
+  }
+ ]
+}

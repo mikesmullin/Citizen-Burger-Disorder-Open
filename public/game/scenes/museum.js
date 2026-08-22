@@ -10,6 +10,7 @@ import { createFoodWorld, inferFoodType } from '../systems/food.js'
 import { createHands } from '../systems/hands.js'
 import { createRatDen } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
+import { createSoundboard } from '../systems/soundboard.js'
 
 const FEATURED = [
   { slug: 'heroes/Player', caption: 'Player' },
@@ -58,6 +59,7 @@ let foodWorld = null
 let hands = null
 let rats = null
 let demoPlayers = null
+let soundboard = null
 const raycaster = new THREE.Raycaster()
 const ndc = new THREE.Vector2(0, 0)
 
@@ -297,6 +299,7 @@ async function boot() {
   const hallW = Math.max((nCols - 1) * SPACING_X + 10, 24)
   let z = 0
   const positions = []
+  let audioZ = -SPACING_Z
 
   for (const row of rows) {
     const n = row.items.length
@@ -304,6 +307,10 @@ async function boot() {
     const x0 = -rowW / 2
     positions.push({ row, z, x0 })
     z -= SPACING_Z
+    if (row.name === 'People') {
+      audioZ = z
+      z -= SPACING_Z
+    }
   }
 
   const minz = z - 6
@@ -311,6 +318,30 @@ async function boot() {
   const minx = -hallW / 2
   const maxx = hallW / 2
   buildRoom(minx, maxx, minz, maxz, 9.5)
+
+  try {
+    setStatus('Loading soundboard…')
+    soundboard = await createSoundboard({
+      scene, player,
+      x: 0,
+      z: audioZ,
+      facingY: 0,
+    })
+    const banner = makeBanner('Audio')
+    banner.position.set(0, 4.4, audioZ + 1.6)
+    scene.add(banner)
+    exhibits.push({
+      slug: 'audio/Soundboard',
+      label: 'Soundboard',
+      caption: 'Soundboard',
+      group: 'audio',
+      x: 0,
+      z: audioZ,
+      size: { x: soundboard.width, y: soundboard.height, z: soundboard.depth },
+    })
+  } catch (err) {
+    console.warn('[museum] soundboard skipped', err)
+  }
 
   let loaded = 0
   const total = rows.reduce((n, r) => n + r.items.length, 0)
@@ -405,8 +436,14 @@ async function boot() {
 
   window.__museum = {
     scene, camera: player.camera, renderer, player, exhibits, crowd,
-    foodWorld, hands, rats, demoPlayers,
+    foodWorld, hands, rats, demoPlayers, soundboard,
     teleport(slug) {
+      if (soundboard && /^(Soundboard|Audio|audio\/Soundboard)$/i.test(slug)) {
+        const v = soundboard.viewSpot()
+        player.spawn(v.stand.x, 0, v.stand.z, 0)
+        player.lookAt(v.look.x, v.look.y, v.look.z)
+        return 'Soundboard'
+      }
       const e = exhibits.find(x => x.slug === slug || x.label === slug || x.caption === slug)
       if (!e) return null
       const back = Math.max(2.8, (e.size?.y || 2) * 0.85 + 1.8)
@@ -425,6 +462,8 @@ let playing = false
 let lookName = ''
 
 function currentLook() {
+  const audioLook = soundboard?.lookLabel()
+  if (audioLook) return audioLook
   raycaster.setFromCamera(ndc, player.camera)
   const hits = raycaster.intersectObjects(scene.children, true)
   for (const h of hits) {
@@ -446,6 +485,10 @@ function currentLook() {
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta()
   player.update(dt)
+  if (soundboard) {
+    soundboard.update(dt)
+    if (player.fire1Down || player.fire2Down) soundboard.tryPress()
+  }
   if (hands) hands.update(dt)
   if (foodWorld) foodWorld.update(dt, clock.elapsedTime)
   if (rats) rats.update(dt, clock.elapsedTime)
@@ -485,12 +528,14 @@ function enter() {
   $('cross').style.display = 'block'
   $('look').style.display = 'block'
   player.requestLock(renderer.domElement)
+  soundboard?.resume()
 }
 
 function pause() {
   playing = false
   player.enabled = false
   player.unlock()
+  soundboard?.pause()
   $('loader').style.display = 'flex'
   $('loader').querySelector('h1').textContent = 'Paused'
   $('loader').querySelector('.sub').textContent = 'click to continue'
