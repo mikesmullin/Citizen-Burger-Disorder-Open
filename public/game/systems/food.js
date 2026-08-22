@@ -16,6 +16,22 @@ export function inferFoodType(slug = '', label = '') {
   return 'other'
 }
 
+export function isFood(type) {
+  return type && type !== 'other' && type !== 'plate' && type !== 'tip' && type !== 'box'
+}
+
+// Pedestal copies you can grab. Plate / tip / box are items, not edible food.
+export function inferPickup(slug = '', label = '') {
+  const food = inferFoodType(slug, label)
+  if (food !== 'other') return food
+  const s = (slug + ' ' + label).toLowerCase()
+  if (s.includes('plate')) return 'plate'
+  if (s.includes('tip')) return 'tip'
+  if (s.includes('boxopen')) return null
+  if (s.includes('box')) return 'box'
+  return null
+}
+
 export function ratWillSteal(type) {
   return type === 'cheese' || type === 'patty' || type === 'bacon' || type === 'tomato'
 }
@@ -31,6 +47,9 @@ export const FOOD_SIZE_BY_SLUG = {
   'items/BunTop': 0.369,
   'items/BunBottom': 0.369,
   'items/Box': 0.856,
+  'items/Plate': 0.714,
+  'items/PlateDirty': 0.714,
+  'items/Tip': 0.511,
 }
 
 export const FOOD_SIZE = {
@@ -42,6 +61,8 @@ export const FOOD_SIZE = {
   topBun: FOOD_SIZE_BY_SLUG['items/BunTop'],
   bun: FOOD_SIZE_BY_SLUG['items/BunBottom'],
   box: FOOD_SIZE_BY_SLUG['items/Box'],
+  plate: FOOD_SIZE_BY_SLUG['items/Plate'],
+  tip: FOOD_SIZE_BY_SLUG['items/Tip'],
 }
 
 export function foodLongest(type, slug) {

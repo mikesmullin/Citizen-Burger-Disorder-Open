@@ -92,6 +92,35 @@ export function createScaler({
   let tool = 'hand'
   let hover = null
   let drag = null
+  let dragStart = null
+
+  function snapshot(rec) {
+    return {
+      mul: rec.editMul || 1,
+      longest: rec.display ? longestOf(rec) : null,
+    }
+  }
+
+  function logFinish(rec, start) {
+    if (!rec || !start) return
+    const afterMul = rec.editMul || 1
+    if (Math.abs(afterMul - start.mul) < 1e-6) return
+    const afterLong = rec.display ? longestOf(rec) : null
+    const payload = {
+      slug: rec.slug,
+      label: rec.caption || rec.label || rec.slug,
+      mul: { before: r3(start.mul), after: r3(afterMul) },
+    }
+    if (start.longest != null && afterLong != null) {
+      payload.longest = { before: r3(start.longest), after: r3(afterLong) }
+    }
+    let line = `[scale] ${payload.slug}  ${payload.label}  ×${payload.mul.before} → ×${payload.mul.after}`
+    if (payload.longest) {
+      line += `  longest ${payload.longest.before} → ${payload.longest.after} m`
+    }
+    console.log(line)
+    console.log(payload)
+  }
 
   function setMuzzle(hex) {
     gun.userData.muzzle.color.setHex(hex)
@@ -110,7 +139,10 @@ export function createScaler({
       }
       if (o === gun || o === helper) continue
       const rec = h.object.userData.exhibit
-      if (rec && rec.display) return rec
+      if (rec && rec.display) {
+        if (rec.virtual) rec.display = h.object
+        return rec
+      }
     }
     // Thin food (cheese is ~1 cm tall) is easy to miss with a centre ray.
     // Fall back to the exhibit whose pedestal is closest along the look vector.
@@ -153,10 +185,12 @@ export function createScaler({
     const factor = clamped / cur
     if (Math.abs(factor - 1) < 1e-6) return
     rec.editMul = clamped
-    const sx = Math.sign(rec.display.scale.x) || 1
-    rec.display.scale.multiplyScalar(factor)
-    rec.display.scale.x = Math.abs(rec.display.scale.x) * sx
-    reseat(rec)
+    if (!rec.virtual && rec.display) {
+      const sx = Math.sign(rec.display.scale.x) || 1
+      rec.display.scale.multiplyScalar(factor)
+      rec.display.scale.x = Math.abs(rec.display.scale.x) * sx
+      reseat(rec)
+    }
     if (onScale) onScale(rec)
   }
 
@@ -182,10 +216,7 @@ export function createScaler({
       : name === 0 || name === '0' || name === 'hand' ? 'hand'
         : TOOLS.includes(name) ? name : 'hand'
     if (next === tool) return tool
-    if (drag) {
-      drag = null
-      player.lookFrozen = false
-    }
+    if (drag) endDrag()
     tool = next
     gun.visible = tool === 'scale'
     if (tool !== 'scale') {
@@ -207,18 +238,33 @@ export function createScaler({
     }
   }
   addEventListener('keydown', onDigit)
+  function beginDrag(rec) {
+    if (!rec || drag === rec) return
+    if (drag) endDrag()
+    drag = rec
+    dragStart = snapshot(rec)
+    player.lookFrozen = true
+  }
+
+  function endDrag() {
+    if (!drag) return
+    const rec = drag
+    const start = dragStart
+    drag = null
+    dragStart = null
+    player.lookFrozen = false
+    logFinish(rec, start)
+  }
+
   addEventListener('mousedown', e => {
     if (e.button !== 0 || tool !== 'scale') return
     const rec = pick()
     if (!rec) return
-    drag = rec
-    player.lookFrozen = true
+    beginDrag(rec)
   })
   addEventListener('mouseup', e => {
     if (e.button !== 0) return
-    if (!drag) return
-    drag = null
-    player.lookFrozen = false
+    endDrag()
   })
 
   function update() {
@@ -233,15 +279,9 @@ export function createScaler({
     const lmb = player.getMouse(0)
     if (lmb && !drag) {
       const rec = pick()
-      if (rec) {
-        drag = rec
-        player.lookFrozen = true
-      }
+      if (rec) beginDrag(rec)
     }
-    if (!lmb && drag) {
-      drag = null
-      player.lookFrozen = false
-    }
+    if (!lmb && drag) endDrag()
 
     if (drag) {
       const d = player.pullDragDelta()
@@ -295,9 +335,19 @@ export function createScaler({
   function nudge(dx) {
     const rec = drag || hover || pick()
     if (!rec) return dump()
+    const start = snapshot(rec)
     applyMul(rec, (rec.editMul || 1) * Math.exp(dx * PX_TO_LN))
     hover = rec
     highlight(rec)
+    logFinish(rec, start)
+    return row(rec)
+  }
+
+  function setMul(rec, mul, { silent = false } = {}) {
+    if (!rec) return null
+    const start = snapshot(rec)
+    applyMul(rec, mul)
+    if (!silent) logFinish(rec, start)
     return row(rec)
   }
 
@@ -306,7 +356,7 @@ export function createScaler({
     get equipped() { return tool === 'scale' },
     get hover() { return hover },
     get drag() { return drag },
-    equip, update, dump, lookLabel, nudge, pick,
+    equip, update, dump, lookLabel, nudge, pick, setMul,
     gun, helper,
   }
 }

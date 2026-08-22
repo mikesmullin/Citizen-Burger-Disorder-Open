@@ -10,12 +10,21 @@ const CARD_T = 0.012
 const STACK = 7
 const PRESS_RANGE = 5.5
 
-const BOOTH_W = 12.6
-const BOOTH_D = 8.2
 const BOOTH_H = 3.15
 const WALL_T = 0.09
 const POST = 0.14
-const COLS = 12
+const COLS = 8
+const BIN_W = 0.72
+const BIN_D = 0.62
+const BIN_H = 0.28
+// Player CharacterController radius is 0.5 — leave a full-width aisle
+// between crate AABBs so a body can pass without clipping.
+const AISLE = 1.35
+const GAP_X = BIN_W + AISLE
+const GAP_Z = BIN_D + AISLE
+const MARGIN_X = 1.45
+const MARGIN_Z_FRONT = 1.85
+const MARGIN_Z_BACK = 1.45
 
 function pretty(id) {
   return id.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2')
@@ -42,15 +51,6 @@ export const SWATCHES = [
   entry('Furniture', 'TableMain', './assets/textures/enviro/TableMain.png'),
   entry('Furniture', 'Tabletop', './assets/textures/Tabletop.png'),
   entry('Furniture', 'Wood', './assets/textures/Wood.png'),
-  entry('Palette', 'Cream', './assets/textures/enviro/Cream.png'),
-  entry('Palette', 'Brown', './assets/textures/Brown.png'),
-  entry('Palette', 'Grey', './assets/textures/Grey.png'),
-  entry('Palette', 'GreyDark', './assets/textures/GreyDark.png'),
-  entry('Palette', 'LightGrey', './assets/textures/LightGrey.png'),
-  entry('Palette', 'Orange', './assets/textures/Orange.png'),
-  entry('Palette', 'Green', './assets/textures/Green.png'),
-  entry('Palette', 'DarkRed', './assets/textures/DarkRed.png'),
-  entry('Palette', 'Feac', './assets/textures/Feac.png'),
   entry('Food', 'Bacon', './assets/textures/Bacon.png'),
   entry('Food', 'Bread', './assets/textures/Bread.png'),
   entry('Food', 'BunBottom', './assets/textures/BunBottom.png'),
@@ -99,6 +99,10 @@ export const SWATCHES = [
   ...POSTERS.map(p => entry('Posters', p.id, p.file)),
 ]
 
+const ROWS = Math.ceil(SWATCHES.length / COLS)
+export const BOOTH_W = (COLS - 1) * GAP_X + BIN_W + MARGIN_X * 2
+export const BOOTH_D = (ROWS - 1) * GAP_Z + BIN_D + MARGIN_Z_FRONT + MARGIN_Z_BACK
+
 function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas')
   c.width = w
@@ -108,20 +112,6 @@ function canvasTexture(w, h, draw) {
   t.colorSpace = THREE.SRGBColorSpace
   t.anisotropy = 4
   return t
-}
-
-function fasciaTex() {
-  return canvasTexture(1024, 192, (g, w, h) => {
-    g.fillStyle = '#1c1814'
-    g.fillRect(0, 0, w, h)
-    g.fillStyle = '#f0e6d4'
-    g.font = '700 72px ui-sans-serif, system-ui, sans-serif'
-    g.textAlign = 'center'
-    g.fillText('TEXTURES', w / 2, 88)
-    g.fillStyle = '#c4a574'
-    g.font = '28px ui-sans-serif, system-ui, sans-serif'
-    g.fillText('pick a swatch  ·  look  ·  drop it on the floor', w / 2, 148)
-  })
 }
 
 function labelTex(text) {
@@ -177,8 +167,6 @@ export function createSwatches({
   x = 0, y = 0, z = 0, facingY = 0,
 } = {}) {
   const wood = new THREE.MeshStandardMaterial({ color: 0x5a4634, roughness: 0.82, metalness: 0.04 })
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.88 })
-  const metalMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.45, metalness: 0.25 })
 
   const object = new THREE.Group()
   object.name = 'TextureBooth'
@@ -207,63 +195,22 @@ export function createSwatches({
   tryIt.receiveShadow = true
   object.add(tryIt)
 
-  const backZ = -BOOTH_D / 2 + WALL_T / 2
-  const back = new THREE.Mesh(new THREE.BoxGeometry(BOOTH_W, BOOTH_H, WALL_T), wallMat)
-  back.position.set(0, BOOTH_H / 2, backZ)
-  back.receiveShadow = true
-  object.add(back)
-  for (const sign of [-1, 1]) {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, BOOTH_H, BOOTH_D), wallMat)
-    wall.position.set(sign * (BOOTH_W / 2 - WALL_T / 2), BOOTH_H / 2, 0)
-    wall.receiveShadow = wall.castShadow = true
-    object.add(wall)
-  }
-  const frontZ = BOOTH_D / 2 - POST / 2
-  for (const sign of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(POST, BOOTH_H, POST), metalMat)
-    post.position.set(sign * (BOOTH_W / 2 - POST / 2), BOOTH_H / 2, frontZ)
-    post.castShadow = true
-    post.raycast = () => {}
-    object.add(post)
-  }
-  const fasciaH = 0.5
-  const fascia = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W, fasciaH, 0.12),
-    new THREE.MeshStandardMaterial({ color: 0x1c1814, roughness: 0.6 }),
-  )
-  fascia.position.set(0, BOOTH_H - fasciaH / 2, BOOTH_D / 2 - 0.04)
-  fascia.castShadow = true
-  fascia.raycast = () => {}
-  object.add(fascia)
-  const fasciaFace = new THREE.Mesh(
-    new THREE.PlaneGeometry(BOOTH_W - 0.08, fasciaH - 0.08),
-    new THREE.MeshBasicMaterial({ map: fasciaTex() }),
-  )
-  fasciaFace.position.set(0, BOOTH_H - fasciaH / 2, BOOTH_D / 2 + 0.025)
-  fasciaFace.raycast = () => {}
-  object.add(fasciaFace)
-
-  const hw = BOOTH_W / 2, hd = BOOTH_D / 2
-  player.addCollider({ x: x - hw, z: z - hd }, { x: x - hw + WALL_T + 0.08, z: z + hd })
-  player.addCollider({ x: x + hw - WALL_T - 0.08, z: z - hd }, { x: x + hw, z: z + hd })
-  player.addCollider({ x: x - hw, z: z - hd }, { x: x + hw, z: z - hd + WALL_T + 0.08 })
-
   const cols = COLS
-  const gapX = 1.04
-  const gapZ = 0.86
+  const gapX = GAP_X
+  const gapZ = GAP_Z
   const x0 = -((cols - 1) * gapX) / 2
   // First catalog entries (tiles) at the open front so ground samples are
   // the first stacks you walk up to.
-  const z0 = BOOTH_D / 2 - 1.15
+  const z0 = BOOTH_D / 2 - MARGIN_Z_FRONT - BIN_D / 2
 
   function makeBin(spec, bx, bz) {
     const bin = new THREE.Group()
     bin.position.set(bx, 0, bz)
     const crate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.72, 0.28, 0.62),
+      new THREE.BoxGeometry(BIN_W, BIN_H, BIN_D),
       wood,
     )
-    crate.position.y = 0.14
+    crate.position.y = BIN_H / 2
     crate.castShadow = crate.receiveShadow = true
     bin.add(crate)
     const well = new THREE.Mesh(
@@ -283,7 +230,8 @@ export function createSwatches({
     }
     for (let i = 0; i < STACK; i++) {
       const card = makeCard(map, spec.caption)
-      card.rotation.x = -0.18
+      // Face the open aisle: tilt toward the player walking in from +Z.
+      card.rotation.set(0.18, 0, 0)
       card.position.set((i - STACK / 2) * 0.008, 0.34 + i * 0.011, 0.02 - i * 0.006)
       card.userData.swatchBin = spec
       card.traverse(o => { o.userData.swatchBin = spec })
@@ -297,6 +245,12 @@ export function createSwatches({
     tag.userData.swatchBin = spec
     bin.add(tag)
     object.add(bin)
+
+    const pad = 0.06
+    player.addCollider(
+      { x: x + bx - BIN_W / 2 - pad, z: z + bz - BIN_D / 2 - pad },
+      { x: x + bx + BIN_W / 2 + pad, z: z + bz + BIN_D / 2 + pad },
+    )
     return bin
   }
 

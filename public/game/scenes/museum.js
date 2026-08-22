@@ -6,14 +6,14 @@ import * as THREE from 'three'
 import { createUnityLoader, fitOnFloor, fitLongest, restorePattyDisc, hideTriggers, boundsOf } from '../common/unityScene.js'
 import { createFirstPersonPlayer } from '../systems/player.js'
 import { createCrowd } from '../systems/npc.js'
-import { createFoodWorld, inferFoodType, FOOD_SIZE, FOOD_SIZE_BY_SLUG, applyCookLook, COOK_RGB } from '../systems/food.js'
+import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG, applyCookLook, COOK_RGB } from '../systems/food.js'
 import { createHands } from '../systems/hands.js'
 import { createRatDen } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
 import { createSoundboard } from '../systems/soundboard.js'
 import { createDelivery, makeOpenNet, BOX_SIZE } from '../systems/delivery.js'
 import { createScaler } from '../systems/scaler.js'
-import { createSwatches } from '../systems/swatches.js'
+import { createSwatches, BOOTH_D as TEXTURE_BOOTH_D, BOOTH_W as TEXTURE_BOOTH_W } from '../systems/swatches.js'
 import { createPosters } from '../systems/posters.js'
 import { createPosKiosk } from '../systems/posKiosk.js'
 import { installHarness } from '../common/harness.js'
@@ -199,6 +199,12 @@ const EXHIBIT_LONGEST = {
   'ui/StaffMenu': 0.937,
 }
 
+// Scale-gun pass. Arm podium mul → FPS viewmodel; DemoArm mul → 3p arms.
+const ARM_SCALE = 0.287
+const FPS_ARM_SCALE = 0.475
+const DEMO_ARM_MUL = 0.656
+const DEMO_ARM_SCALE = 0.361
+
 const $ = id => document.getElementById(id)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
@@ -235,9 +241,15 @@ const facePlayer = []
 const scaler = createScaler({
   scene, player, exhibits, pedestalH: PEDESTAL_H,
   onScale(rec) {
-    if (rec.slug !== 'heroes/Arm') return
-    if (hands && hands.setScale) hands.setScale(rec.editMul)
-    if (demoPlayers && demoPlayers.setScale) demoPlayers.setScale(rec.editMul)
+    if (rec.slug === 'heroes/Arm') {
+      const live = FPS_ARM_SCALE * rec.editMul / ARM_SCALE
+      if (hands && hands.setScale) hands.setScale(live)
+      return
+    }
+    if (rec.slug === 'heroes/DemoArm') {
+      const live = DEMO_ARM_SCALE * rec.editMul / DEMO_ARM_MUL
+      if (demoPlayers && demoPlayers.setScale) demoPlayers.setScale(live)
+    }
   },
 })
 const _fireCam = new THREE.Vector3()
@@ -517,7 +529,7 @@ function placeOnPedestal(asset, x, z, meta) {
   // Rotate before centering — FACE_AISLE around a non-centered pivot
   // walked the Cupboard off the back of its podium.
   if (FACE_AISLE.has(meta.slug)) asset.rotation.y += Math.PI
-  if (meta.slug === 'items/Patty') restorePattyDisc(asset)
+  if (meta.slug === 'items/Patty' || meta.variantOf === 'items/Patty') restorePattyDisc(asset)
   const target = EXHIBIT_LONGEST[meta.slug] ?? EXHIBIT_LONGEST[meta.variantOf]
   const { size, scale, native } = target != null
     ? fitLongest(asset, target)
@@ -557,8 +569,11 @@ function placeOnPedestal(asset, x, z, meta) {
     editMul: 1,
     native: native ? { x: native.x, y: native.y, z: native.z } : null,
   }
-  const foodType = inferFoodType(meta.slug, meta.label)
-  if (foodType !== 'other') rec.foodType = foodType
+  const pickup = inferPickup(meta.slug, meta.label)
+  if (pickup) {
+    rec.pickup = pickup
+    if (isFood(pickup)) rec.foodType = pickup
+  }
   exhibits.push(rec)
   wrap.traverse(o => { o.userData.exhibit = rec })
   return rec
@@ -618,7 +633,7 @@ async function boot() {
   const rows = layoutRows(items, featuredSlugs)
 
   const nCols = Math.max(...rows.map(r => r.items.length), 1)
-  const hallW = Math.max((nCols - 1) * SPACING_X + 10, 24)
+  const hallW = Math.max((nCols - 1) * SPACING_X + 10, TEXTURE_BOOTH_W + 8, 24)
   let z = 0
   const positions = []
   let audioZ = -SPACING_Z
@@ -635,9 +650,9 @@ async function boot() {
     z -= SPACING_Z
     if (row.name === 'People') {
       audioZ = z
-      z -= SPACING_Z
+      z -= SPACING_Z + TEXTURE_BOOTH_D / 2
       texturesZ = z
-      z -= 14
+      z -= TEXTURE_BOOTH_D / 2 + 4
       postersZ = z
       z -= SPACING_Z + 1.4
       posZ = z
@@ -726,8 +741,9 @@ async function boot() {
             console.warn('[museum] LettucePart nest skipped', err)
           }
         }
+        if (loadSlug === 'items/Patty') restorePattyDisc(root)
         if (item.cookState) applyCookState(root, item)
-        if (inferFoodType(item.slug, item.label) !== 'other') {
+        if (inferPickup(item.slug, item.label)) {
           foodProtos[item.slug] = root.clone(true)
           if (loadSlug === 'items/Patty') restorePattyDisc(foodProtos[item.slug])
         }
@@ -753,7 +769,7 @@ async function boot() {
   try {
     setStatus('Loading texture samples…')
     const banner = makeBanner('Textures')
-    banner.position.set(0, 4.4, texturesZ + 2.8)
+    banner.position.set(0, 4.4, texturesZ + TEXTURE_BOOTH_D / 2 + 1.6)
     scene.add(banner)
     swatches = createSwatches({
       scene, player, foodWorld,
@@ -903,6 +919,7 @@ async function boot() {
       spawnSwatch: spec => swatches && swatches.take(spec),
       spawnPoster: spec => posters && posters.take(spec),
     })
+    hands.setScale(FPS_ARM_SCALE)
   } catch (err) {
     console.warn('[museum] arms skipped', err)
   }
@@ -914,10 +931,37 @@ async function boot() {
       demoPlayers = createDemoPlayers({
         scene, player, playerProto: pl.root, armProto: armRoot,
       })
+      demoPlayers.setScale(DEMO_ARM_SCALE)
+      const demoArmsRec = {
+        slug: 'heroes/DemoArm',
+        caption: 'Player arms',
+        label: 'Player arms',
+        group: 'heroes',
+        virtual: true,
+        editMul: DEMO_ARM_MUL,
+        x: demoPlayers.players[0].body.position.x,
+        z: demoPlayers.players[0].body.position.z,
+        display: demoPlayers.players[0].left.object,
+        size: { x: 1, y: 1, z: 1 },
+      }
+      exhibits.push(demoArmsRec)
+      for (const d of demoPlayers.players) {
+        for (const arm of [d.left, d.right]) {
+          arm.object.userData.exhibit = demoArmsRec
+          arm.object.userData.demoPlayer = d
+          arm.object.traverse(o => {
+            o.userData.exhibit = demoArmsRec
+            o.userData.demoPlayer = d
+          })
+        }
+      }
     }
   } catch (err) {
     console.warn('[museum] demo players skipped', err)
   }
+
+  const armRec = exhibits.find(e => e.slug === 'heroes/Arm')
+  if (armRec) scaler.setMul(armRec, ARM_SCALE, { silent: true })
 
   try {
     const rat = await loader.load('mobs/Rat')
@@ -1101,7 +1145,7 @@ function currentLook() {
       return food.type + (food.held ? ' (held)' : food.onFloor ? ' (floor)' : '')
     }
     const rec = h.object.userData.exhibit
-    if (rec) return rec.foodType ? (rec.caption || rec.label) + ' · take a copy' : (rec.caption || rec.label)
+    if (rec) return rec.pickup ? (rec.caption || rec.label) + ' · take a copy' : (rec.caption || rec.label)
     const bin = h.object.userData.swatchBin
     if (bin) return bin.caption + ' · take a swatch'
   }

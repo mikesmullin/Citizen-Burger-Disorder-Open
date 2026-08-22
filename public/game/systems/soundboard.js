@@ -97,23 +97,6 @@ function sectionMap(title, sub) {
   })
 }
 
-function fasciaMap() {
-  return canvasTexture(2048, 384, (g, w, h) => {
-    g.fillStyle = '#1c1814'
-    g.fillRect(0, 0, w, h)
-    g.fillStyle = '#6b5a45'
-    g.fillRect(0, 0, w, 14)
-    g.fillRect(0, h - 14, w, 14)
-    g.fillStyle = '#f0e6d4'
-    g.font = '700 140px ui-sans-serif, system-ui, sans-serif'
-    g.textAlign = 'center'
-    g.fillText('AUDIO', w / 2, 175)
-    g.fillStyle = '#c4a574'
-    g.font = '36px ui-sans-serif, system-ui, sans-serif'
-    g.fillText('ORIGINAL GAME SOUNDS  ·  INTERACTIVE EXHIBIT', w / 2, 270)
-  })
-}
-
 function makePlane(w, h, map) {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(w, h),
@@ -132,22 +115,12 @@ function retrigger(audio) {
 }
 
 function buildBooth(object) {
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: 0xb7aa98, roughness: 0.84, metalness: 0.04,
-  })
-  const innerMat = new THREE.MeshStandardMaterial({
-    color: 0x2a241e, roughness: 0.78, metalness: 0.03,
-  })
-  const metalMat = new THREE.MeshStandardMaterial({
-    color: 0x9a9690, roughness: 0.35, metalness: 0.72,
-  })
   const carpetMat = new THREE.MeshStandardMaterial({
     color: 0x4a2418, roughness: 0.92, metalness: 0.0,
   })
   const goldMat = new THREE.MeshStandardMaterial({
     color: 0xc4a574, roughness: 0.45, metalness: 0.28,
   })
-  const fasciaTex = fasciaMap()
 
   const floor = new THREE.Mesh(
     new THREE.BoxGeometry(BOOTH_W - 0.04, 0.04, BOOTH_D - 0.04),
@@ -172,93 +145,8 @@ function buildBooth(object) {
     object.add(m)
   }
 
-  const backZ = -BOOTH_D / 2 + WALL_T / 2
-  const back = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W, BOOTH_H, WALL_T),
-    innerMat,
-  )
-  back.position.set(0, BOOTH_H / 2, backZ)
-  back.receiveShadow = true
-  back.userData.soundboard = true
-  object.add(back)
-
-  const sideH = BOOTH_H
-  const sideD = BOOTH_D
-  for (const sign of [-1, 1]) {
-    const wall = new THREE.Mesh(
-      new THREE.BoxGeometry(WALL_T, sideH, sideD),
-      wallMat,
-    )
-    wall.position.set(sign * (BOOTH_W / 2 - WALL_T / 2), sideH / 2, 0)
-    wall.receiveShadow = true
-    wall.castShadow = true
-    wall.userData.soundboard = true
-    object.add(wall)
-  }
-
-  const frontZ = BOOTH_D / 2 - POST / 2
-  for (const sign of [-1, 1]) {
-    const post = new THREE.Mesh(
-      new THREE.BoxGeometry(POST, BOOTH_H, POST),
-      metalMat,
-    )
-    post.position.set(sign * (BOOTH_W / 2 - POST / 2), BOOTH_H / 2, frontZ)
-    post.castShadow = true
-    post.raycast = () => {}
-    object.add(post)
-  }
-
-  const fasciaH = 0.52
-  const fascia = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W, fasciaH, 0.12),
-    new THREE.MeshStandardMaterial({ color: 0x1c1814, roughness: 0.6 }),
-  )
-  fascia.position.set(0, BOOTH_H - fasciaH / 2, BOOTH_D / 2 - 0.04)
-  fascia.castShadow = true
-  fascia.raycast = () => {}
-  object.add(fascia)
-  const fasciaFace = new THREE.Mesh(
-    new THREE.PlaneGeometry(BOOTH_W - 0.08, fasciaH - 0.08),
-    new THREE.MeshBasicMaterial({ map: fasciaTex }),
-  )
-  fasciaFace.position.set(0, BOOTH_H - fasciaH / 2, BOOTH_D / 2 + 0.025)
-  fasciaFace.raycast = () => {}
-  object.add(fasciaFace)
-  const fasciaInner = fasciaFace.clone()
-  fasciaInner.rotation.y = Math.PI
-  fasciaInner.position.z = BOOTH_D / 2 - 0.11
-  fasciaInner.raycast = () => {}
-  object.add(fasciaInner)
-
-  // Simple ceiling truss on top of the walls.
-  const bar = (w, h, d, x, y, z) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), metalMat)
-    m.position.set(x, y, z)
-    m.raycast = () => {}
-    object.add(m)
-  }
-  const ty = BOOTH_H + 0.04
-  bar(BOOTH_W, 0.06, 0.06, 0, ty, -BOOTH_D / 2 + 0.08)
-  bar(BOOTH_W, 0.06, 0.06, 0, ty, BOOTH_D / 2 - 0.08)
-  bar(0.06, 0.06, BOOTH_D, -BOOTH_W / 2 + 0.08, ty, 0)
-  bar(0.06, 0.06, BOOTH_D, BOOTH_W / 2 - 0.08, ty, 0)
-
-  const ceil = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W - 0.12, 0.05, BOOTH_D - 0.08),
-    new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.88 }),
-  )
-  ceil.position.set(0, BOOTH_H - 0.03, 0)
-  ceil.raycast = () => {}
-  object.add(ceil)
-
-  const spot = new THREE.SpotLight(0xffe6c4, 22, 14, Math.PI / 4.2, 0.55, 1.4)
-  spot.position.set(0, BOOTH_H - 0.08, 0.55)
-  spot.target.position.set(0, 1.5, -BOOTH_D / 2 + 0.4)
-  object.add(spot)
-  object.add(spot.target)
-
-  const fill = new THREE.PointLight(0xffe0b8, 6, 9, 2)
-  fill.position.set(0, BOOTH_H - 0.3, 0.2)
+  const fill = new THREE.PointLight(0xffe0b8, 8, 11, 2)
+  fill.position.set(0, 3.2, 0.2)
   object.add(fill)
 }
 
@@ -472,13 +360,6 @@ export async function createSoundboard({
   })
 
   scene.add(object)
-
-  const hw = BOOTH_W / 2
-  const hd = BOOTH_D / 2
-  const ct = 0.14
-  player.addCollider({ x: x - hw, z: z - hd - ct / 2 }, { x: x + hw, z: z - hd + ct / 2 })
-  player.addCollider({ x: x - hw - ct / 2, z: z - hd }, { x: x - hw + ct / 2, z: z + hd })
-  player.addCollider({ x: x + hw - ct / 2, z: z - hd }, { x: x + hw + ct / 2, z: z + hd })
 
   function stopMusic() {
     for (const b of buttons) {

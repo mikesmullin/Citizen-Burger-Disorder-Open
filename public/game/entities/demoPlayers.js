@@ -152,11 +152,10 @@ function sitPlayer(root) {
 function makeWorldArm(armProto, side) {
   const object = armProto.clone(true)
   object.name = side + '-arm-3p'
-  object.scale.multiplyScalar(0.42)
   object.visible = false
   object.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
   const sign = side === 'left' ? -1 : 1
-  return { side, sign, object, raise: 0 }
+  return { side, sign, object, baseScale: object.scale.clone(), raise: 0 }
 }
 
 export function createDemoPlayers({ scene, player, playerProto, armProto }) {
@@ -216,6 +215,8 @@ export function createDemoPlayers({ scene, player, playerProto, armProto }) {
   const _side = new THREE.Vector3()
   const _look = new THREE.Vector3()
   const _dummy = new THREE.Object3D()
+  const _eul = new THREE.Euler(0, 0, 0, 'YXZ')
+  const _q = new THREE.Quaternion()
 
   function poseArm(demo, arm, raised, dt) {
     const s = arm.sign
@@ -225,7 +226,7 @@ export function createDemoPlayers({ scene, player, playerProto, armProto }) {
     _face.set(Math.cos(yaw), 0, -Math.sin(yaw))
     _side.set(_face.z, 0, -_face.x) // right
     _raised.copy(origin)
-      .addScaledVector(_face, 0.32)
+      .addScaledVector(_face, 0.28)
       .addScaledVector(_side, s * 0.52)
       .setY(origin.y + 0.32)
     _hidden.copy(origin)
@@ -237,9 +238,15 @@ export function createDemoPlayers({ scene, player, playerProto, armProto }) {
       arm.object.visible = true
     }
     arm.object.position.lerp(target, Math.min(1, ARM_LERP * dt))
-    _look.copy(_side).multiplyScalar(s).addScaledVector(_face, 0.45)
+    // Hand sits on local −Z; point that axis forward and a little down.
+    _look.copy(_face).multiplyScalar(-1)
+    _look.y = 0.55
     _dummy.position.copy(arm.object.position)
-    _dummy.lookAt(arm.object.position.x + _look.x, arm.object.position.y - 0.15, arm.object.position.z + _look.z)
+    _dummy.lookAt(
+      arm.object.position.x + _look.x,
+      arm.object.position.y + _look.y,
+      arm.object.position.z + _look.z,
+    )
     arm.object.quaternion.slerp(_dummy.quaternion, Math.min(1, ARM_LERP * dt))
     if (!raised && arm.object.position.distanceTo(_hidden) < 0.15) {
       arm.object.visible = false
@@ -275,10 +282,10 @@ export function createDemoPlayers({ scene, player, playerProto, armProto }) {
   }
 
   function setScale(mul) {
-    const s = 0.42 * Math.max(0.05, mul)
+    const s = Math.max(0.05, mul)
     for (const d of list) {
-      d.left.object.scale.setScalar(s)
-      d.right.object.scale.setScalar(s)
+      d.left.object.scale.copy(d.left.baseScale).multiplyScalar(s)
+      d.right.object.scale.copy(d.right.baseScale).multiplyScalar(s)
     }
   }
 
