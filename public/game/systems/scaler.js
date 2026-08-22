@@ -69,7 +69,7 @@ function makeGun() {
 }
 
 export function createScaler({
-  scene, player, exhibits, pedestalH = 0.88,
+  scene, player, exhibits, pedestalH = 0.88, onScale,
 } = {}) {
   const ndc = new THREE.Vector2(0, 0)
   const raycaster = new THREE.Raycaster()
@@ -157,6 +157,7 @@ export function createScaler({
     rec.display.scale.multiplyScalar(factor)
     rec.display.scale.x = Math.abs(rec.display.scale.x) * sx
     reseat(rec)
+    if (onScale) onScale(rec)
   }
 
   function highlight(rec) {

@@ -7,7 +7,7 @@
 
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
-import { layoutFood } from './food.js'
+import { layoutFood, FOOD_SIZE } from './food.js'
 
 export const Contents = {
   meat: 'PattMcRat',
@@ -17,7 +17,9 @@ export const Contents = {
 
 const CONTENTS_CYCLE = [Contents.meat, Contents.bread, Contents.produce]
 
-export const BOX_SIZE = 0.50
+export const BOX_SIZE = FOOD_SIZE.box
+// Pedestal boxes grew to 0.856 m; scale the truck so a 2×2 pack still fits.
+const TRUCK_SCALE = 4 / 3
 const SPILL = {
   [Contents.meat]: [
     { slug: 'items/Patty', type: 'patty', n: [4, 7] },
@@ -189,11 +191,12 @@ export async function createDelivery({
   // up after the body quat). They inflated the AABB and launched boxes.
   detachNamed(root, /^(TruckRamp|TruckContentsTrigger|Cylinder)/i)
 
-  const TIRE_R = 0.46
-  const TIRE_W = 0.28
+  const TIRE_R = 0.46 * TRUCK_SCALE
+  const TIRE_W = 0.28 * TRUCK_SCALE
   const CLEARANCE = TIRE_R * 1.28
 
   // Native cab sits at +X. +90° yaw puts the open trailer toward +Z (the aisle).
+  root.scale.multiplyScalar(TRUCK_SCALE)
   root.rotation.y = Math.PI / 2
   root.updateMatrixWorld(true)
   let box = boundsOf(root)
@@ -267,7 +270,7 @@ export async function createDelivery({
 
   // Cab is solid. Trailer hull is a hollow AABB with a +Z door at the ramp —
   // thin 18 cm side AABBs tunneled (player moves 27 cm/frame at 16 m/s).
-  const cabDepth = Math.min(size.z * 0.42, 2.4)
+  const cabDepth = Math.min(size.z * 0.42, 2.4 * TRUCK_SCALE)
   const cargoZ0 = cabZ + cabDepth
   const cargoZ1 = openZ
   const trailX = sampleTrailerX(root, cargoZ0 + 0.2, cargoZ1 - 0.15, bedY + 0.2, bedY + 1.15)
@@ -279,7 +282,7 @@ export async function createDelivery({
   )
   // People use a modest wall shell so the bed stays walkable. Boxes use
   // the sampled inner faces (wheel wells, ribs) so they cannot poke out.
-  const WALL = 0.14
+  const WALL = 0.14 * TRUCK_SCALE
   const outerX0 = trailX.minx
   const outerX1 = trailX.maxx
   const innerX0 = outerX0 + WALL
@@ -331,7 +334,7 @@ export async function createDelivery({
     // layoutFood recenters via position; add the slot instead of overwriting
     // (the native Box pivot is a corner — set() was shoving the right column
     // through the trailer wall).
-    const { height } = layoutFood(object, { maxSize: BOX_SIZE, sit: true, type: 'box' })
+    const { height } = layoutFood(object, { sit: true, type: 'box', slug: 'items/Box' })
     object.position.x += px
     object.position.z += pz
     object.position.y += bedY
@@ -369,15 +372,14 @@ export async function createDelivery({
       if (!proto) continue
       const n = randInt(row.n[0], row.n[1])
       for (let i = 0; i < n; i++) {
-        const ox = (Math.random() - 0.5) * 0.35
-        const oz = (Math.random() - 0.5) * 0.35
+        const ox = (Math.random() - 0.5) * 0.55
+        const oz = (Math.random() - 0.5) * 0.55
         const food = foodWorld.spawn({
-          proto, type: row.type,
+          proto, type: row.type, slug: row.slug,
           x: origin.x + ox,
           z: origin.z + oz,
-          y: gy + 0.25 + i * 0.08,
+          y: gy + 0.28 + i * 0.12,
           onFloor: false,
-          maxSize: 0.15,
         })
         food.vel.set(
           (Math.random() - 0.5) * 3.4,

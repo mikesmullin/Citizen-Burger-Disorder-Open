@@ -5,15 +5,19 @@
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 
+export const BADGE_ICONS = [
+  'Worker', 'Citizen', 'Boss', 'Mayor', 'President', 'Family',
+]
+
 export const PLAYER_SKINS = [
-  { skin: 'Staff1', name: 'I_AM_WILDCAT' },
-  { skin: 'Staff2', name: 'LINE_COOK' },
-  { skin: 'Staff3', name: 'PREP' },
-  { skin: 'Staff4', name: 'SOUS' },
-  { skin: 'Staff5', name: 'EXPO' },
-  { skin: 'Staff6', name: 'HOST' },
-  { skin: 'Staff7', name: 'BOH' },
-  { skin: 'Kritz',  name: 'KRITZ' },
+  { skin: 'Staff1', name: 'I_AM_WILDCAT', badge: 'Worker' },
+  { skin: 'Staff2', name: 'LINE_COOK',    badge: 'Citizen' },
+  { skin: 'Staff3', name: 'PREP',         badge: 'Boss' },
+  { skin: 'Staff4', name: 'SOUS',         badge: 'Mayor' },
+  { skin: 'Staff5', name: 'EXPO',         badge: 'President' },
+  { skin: 'Staff6', name: 'HOST',         badge: 'Family' },
+  { skin: 'Staff7', name: 'BOH',          badge: 'Worker' },
+  { skin: 'Kritz',  name: 'KRITZ',        badge: 'Citizen' },
 ]
 
 const HEIGHT = 2.0
@@ -48,35 +52,87 @@ function applySkin(root, texture) {
   })
 }
 
-function makeBadge(username) {
+function loadBadgeIcon(id) {
+  const t = new THREE.TextureLoader().load(`./assets/textures/badges/${id}.png`)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.flipY = true
+  return t
+}
+
+function makeNameText(username) {
   const c = document.createElement('canvas')
-  c.width = 640
-  c.height = 280
+  c.width = 512
+  c.height = 256
   const g = c.getContext('2d')
-  g.fillStyle = '#f3f3f3'
-  g.fillRect(0, 0, 640, 280)
-  g.fillStyle = '#c4122e'
-  g.fillRect(0, 0, 640, 36)
-  g.fillStyle = '#c4122e'
-  g.font = 'italic 52px Georgia, "Palatino Linotype", cursive'
+  g.clearRect(0, 0, 512, 256)
+  g.textAlign = 'center'
   g.textBaseline = 'middle'
-  g.fillText('Hello my name is', 28, 100)
-  g.fillStyle = '#111'
-  let size = 78
+  g.lineJoin = 'round'
+  g.miterLimit = 2
+  const stroke = (text, x, y) => {
+    g.lineWidth = 10
+    g.strokeStyle = 'rgba(255,255,255,0.88)'
+    g.strokeText(text, x, y)
+    g.fillText(text, x, y)
+  }
+  g.fillStyle = '#c4122e'
+  g.font = 'italic 46px Georgia, "Palatino Linotype", cursive'
+  stroke('HELLO MY NAME IS', 256, 54)
+  g.fillStyle = '#111111'
+  let size = 68
   g.font = `700 ${size}px ui-sans-serif, system-ui, sans-serif`
-  while (g.measureText(username).width > 580 && size > 22) {
+  while (g.measureText(username).width > 460 && size > 22) {
     size -= 2
     g.font = `700 ${size}px ui-sans-serif, system-ui, sans-serif`
   }
-  g.fillText(username, 28, 200)
+  stroke(username, 256, 168)
   const map = new THREE.CanvasTexture(c)
   map.colorSpace = THREE.SRGBColorSpace
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.62, 0.27),
-    new THREE.MeshBasicMaterial({ map, toneMapped: false }),
+    new THREE.PlaneGeometry(0.96, 0.72),
+    new THREE.MeshBasicMaterial({
+      map, transparent: true, depthWrite: false, toneMapped: false,
+    }),
   )
-  mesh.name = 'NameBadge'
+  mesh.name = 'NameText'
   return mesh
+}
+
+// Prefab NameTag sits at hip height on local -Z (a purse), nested under
+// Player's (2,3,2) scale. Seat it on the chest in world space, facing
+// local +X, with the burger icon as the card and diegetic HELLO / name
+// text on the face — no canvas plate, no head float.
+function seatNameTag(body, username, badgeId) {
+  const tag = body.getObjectByName('NameTag')
+  if (!tag) return null
+  body.updateMatrixWorld(true)
+  const box = boundsOf(body)
+  const h = box.max.y - box.min.y || 2
+  const yaw = body.rotation.y
+  const world = new THREE.Vector3(
+    body.position.x + Math.cos(yaw) * 0.34,
+    box.min.y + h * 0.55,
+    body.position.z - Math.sin(yaw) * 0.34,
+  )
+  tag.parent.updateMatrixWorld(true)
+  tag.parent.worldToLocal(world)
+  tag.position.copy(world)
+  tag.rotation.set(0, -Math.PI / 2, 0)
+  tag.scale.set(0.82, 0.34, 0.055)
+  tag.traverse(o => {
+    if (o.name === 'Hello' || o.name === 'Username') o.visible = false
+    if (o.isMesh && o.name === 'NameTag') {
+      o.material = o.material.clone()
+      o.material.map = loadBadgeIcon(badgeId)
+      o.material.color.set(0xffffff)
+      o.material.needsUpdate = true
+    }
+  })
+  const text = makeNameText(username)
+  text.position.set(0, -0.04, -0.52)
+  text.rotation.y = Math.PI
+  tag.add(text)
+  return tag
 }
 
 function sitPlayer(root) {
@@ -130,11 +186,7 @@ export function createDemoPlayers({ scene, player, playerProto, armProto }) {
       if (o.name === 'Hello' || o.name === 'Username') o.visible = false
     })
 
-    const badge = makeBadge(spec.name)
-    badge.scale.setScalar(inv)
-    badge.position.set(0.42 * inv, 1.08 * inv, 0)
-    badge.rotation.y = Math.PI / 2
-    body.add(badge)
+    const badge = seatNameTag(body, spec.name, spec.badge || BADGE_ICONS[i % BADGE_ICONS.length])
 
     const left = makeWorldArm(armProto, 'left')
     const right = makeWorldArm(armProto, 'right')
@@ -222,5 +274,13 @@ export function createDemoPlayers({ scene, player, playerProto, armProto }) {
     }
   }
 
-  return { players: list, update }
+  function setScale(mul) {
+    const s = 0.42 * Math.max(0.05, mul)
+    for (const d of list) {
+      d.left.object.scale.setScalar(s)
+      d.right.object.scale.setScalar(s)
+    }
+  }
+
+  return { players: list, update, setScale }
 }

@@ -20,18 +20,80 @@ export function ratWillSteal(type) {
   return type === 'cheese' || type === 'patty' || type === 'bacon' || type === 'tomato'
 }
 
-export const FOOD_SIZE = {
-  patty: 0.371,
-  cheese: 0.326,
-  lettuce: 0.446,
-  bacon: 0.449,
-  tomato: 0.324,
-  topBun: 0.369,
-  bun: 0.369,
-  box: 0.50,
+// Longest-edge in meters — same numbers as the museum pedestals (scale-gun pass).
+export const FOOD_SIZE_BY_SLUG = {
+  'items/Patty': 0.371,
+  'items/Cheese': 0.326,
+  'items/Lettuce': 0.446,
+  'items/LettuceHead': 0.417,
+  'items/Bacon': 0.449,
+  'items/Tomato': 0.324,
+  'items/BunTop': 0.369,
+  'items/BunBottom': 0.369,
+  'items/Box': 0.856,
 }
 
-export function layoutFood(root, { maxSize, sit = false, type } = {}) {
+export const FOOD_SIZE = {
+  patty: FOOD_SIZE_BY_SLUG['items/Patty'],
+  cheese: FOOD_SIZE_BY_SLUG['items/Cheese'],
+  lettuce: FOOD_SIZE_BY_SLUG['items/Lettuce'],
+  bacon: FOOD_SIZE_BY_SLUG['items/Bacon'],
+  tomato: FOOD_SIZE_BY_SLUG['items/Tomato'],
+  topBun: FOOD_SIZE_BY_SLUG['items/BunTop'],
+  bun: FOOD_SIZE_BY_SLUG['items/BunBottom'],
+  box: FOOD_SIZE_BY_SLUG['items/Box'],
+}
+
+export function foodLongest(type, slug) {
+  if (slug && FOOD_SIZE_BY_SLUG[slug] != null) return FOOD_SIZE_BY_SLUG[slug]
+  return FOOD_SIZE[type]
+}
+
+// Food.cs: Color.Lerp(original, (cookedRed, cookedGreen, cookedBlue), cooked)
+// then toward (0.005, 0, 0) as overcooked. Bacon uses TextureBlend cooked PNGs.
+export const COOK_RGB = {
+  default: { r: 0.2, g: 0, b: 0 },
+  bun: { r: 0.5, g: 0.3, b: 0 },
+  topBun: { r: 0.5, g: 0.3, b: 0 },
+}
+
+const _cookMaps = {}
+function cookMap(url) {
+  if (_cookMaps[url]) return _cookMaps[url]
+  const t = new THREE.TextureLoader().load(url)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.flipY = true
+  t.anisotropy = 4
+  _cookMaps[url] = t
+  return t
+}
+
+export function applyCookLook(root, {
+  cooked = 0,
+  overcooked = 0,
+  cookedRGB = COOK_RGB.default,
+  mapUrl = null,
+} = {}) {
+  const map = mapUrl ? cookMap(mapUrl) : null
+  const tgt = new THREE.Color(cookedRGB.r, cookedRGB.g, cookedRGB.b)
+  const burn = new THREE.Color(0.005, 0, 0)
+  root.traverse(o => {
+    if (!o.isMesh || !o.material || o.userData.trigger) return
+    o.material = o.material.clone()
+    if (map) {
+      o.material.map = map
+      o.material.color.setRGB(1, 1, 1)
+    } else if (cooked > 0) {
+      o.material.color.lerp(tgt, cooked)
+    }
+    if (overcooked > 0) {
+      o.material.color.lerp(burn, Math.min(1, overcooked * 0.82))
+    }
+    o.material.needsUpdate = true
+  })
+}
+
+export function layoutFood(root, { maxSize, sit = false, type, slug } = {}) {
   hideTriggers(root)
   if (type === 'patty') {
     root.traverse(o => {
@@ -43,7 +105,7 @@ export function layoutFood(root, { maxSize, sit = false, type } = {}) {
   if (box.isEmpty()) return { height: 0.1 }
   const size = box.getSize(new THREE.Vector3())
   const longest = Math.max(size.x, size.y, size.z, 1e-4)
-  const cap = maxSize ?? FOOD_SIZE[type] ?? 0.16
+  const cap = maxSize ?? foodLongest(type, slug) ?? 0.16
   const s = longest > cap ? cap / longest : (longest < cap * 0.4 ? cap / longest : 1)
   root.scale.multiplyScalar(s)
   root.updateMatrixWorld(true)
@@ -62,9 +124,9 @@ export function createFoodWorld({ scene, player }) {
   const spawners = []
   const SPAWN_EVERY = 5 * 60
 
-  function spawn({ proto, type, x, z, y = null, onFloor = false, fromSpawner = null, maxSize }) {
+  function spawn({ proto, type, slug, x, z, y = null, onFloor = false, fromSpawner = null, maxSize }) {
     const object = proto.clone(true)
-    const { height } = layoutFood(object, { maxSize, sit: true, type })
+    const { height, size } = layoutFood(object, { maxSize, sit: true, type, slug })
     object.position.x = x
     object.position.z = z
     object.position.y = y != null && !onFloor ? y : height * 0.5
@@ -72,7 +134,7 @@ export function createFoodWorld({ scene, player }) {
     const item = {
       object, type,
       position: object.position,
-      radius: 0.28,
+      radius: Math.max(0.22, (size?.x || height) * 0.45),
       height,
       foodBeenOnFloor: !!onFloor,
       held: false,

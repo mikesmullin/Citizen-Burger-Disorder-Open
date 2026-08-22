@@ -11,8 +11,14 @@ const GRAB_RANGE = 4.75
 const HOLD_LERP = 30
 const ARM_POS_LERP = 25
 const ARM_ROT_LERP = 20
+// Held item sits in front of the white cube, toward view center (PickupObject
+// default: hand.position + hand.forward * 2). Tuned to the FPS screenshot.
+const HOLD_FWD = 0.42
+const HOLD_IN = 0.10
+const HOLD_UP = 0.06
+const HAND_FLOOR = 0.12
 
-export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, onDrop } = {}) {
+export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, onDrop, spawnSwatch, spawnPoster } = {}) {
   hideTriggers(armProto)
 
   function makeArm(side) {
@@ -45,6 +51,14 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
   const _goal = new THREE.Vector3()
   const _q = new THREE.Quaternion()
   const _eul = new THREE.Euler()
+  const _world = new THREE.Vector3()
+  let armScale = 1
+
+  function setScale(mul) {
+    armScale = Math.max(0.05, mul)
+    left.object.scale.setScalar(armScale)
+    right.object.scale.setScalar(armScale)
+  }
 
   function camPitch() {
     return player.pitch
@@ -70,6 +84,20 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     _eul.set(THREE.MathUtils.degToRad(22), 0, 0)
     _q.setFromEuler(_eul)
     arm.object.quaternion.slerp(_q, Math.min(1, ARM_ROT_LERP * dt))
+    // Keep the white cube above the floor when looking down (viewmodel is
+    // camera-parented, so pitch would otherwise drive it through the ground).
+    if (active && arm.hand) {
+      arm.object.updateMatrixWorld(true)
+      arm.hand.getWorldPosition(_world)
+      const gy = player.groundY ? player.groundY(_world.x, _world.z) : 0
+      const minY = gy + HAND_FLOOR * armScale
+      if (_world.y < minY) {
+        arm.object.getWorldPosition(_pos)
+        _pos.y += minY - _world.y
+        player.camera.worldToLocal(_pos)
+        arm.object.position.copy(_pos)
+      }
+    }
     if (!active && arm.object.position.distanceTo(hidden) < 0.15) {
       arm.object.visible = false
     }
@@ -88,6 +116,15 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     if (!item) return
     if (arm.hand) arm.hand.getWorldPosition(_pos)
     else arm.object.getWorldPosition(_pos)
+    player.camera.getWorldDirection(_fwd)
+    _pos.addScaledVector(_fwd, HOLD_FWD * armScale)
+    _right.set(1, 0, 0).transformDirection(player.camera.matrixWorld)
+    const inward = arm.side === 'left' ? 1 : -1
+    _pos.addScaledVector(_right, inward * HOLD_IN * armScale)
+    _pos.y += HOLD_UP * armScale
+    const gy = player.groundY ? player.groundY(_pos.x, _pos.z) : 0
+    const half = (item.height || 0.1) * 0.5
+    if (_pos.y < gy + half + 0.02) _pos.y = gy + half + 0.02
     item.object.position.lerp(_pos, Math.min(1, HOLD_LERP * dt))
     item.object.quaternion.slerp(arm.object.getWorldQuaternion(_q), Math.min(1, HOLD_LERP * dt))
     item.vel.set(0, 0, 0)
@@ -113,7 +150,7 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     player.camera.getWorldPosition(_pos)
     player.camera.getWorldDirection(_fwd)
     const item = foodWorld.spawn({
-      proto, type: rec.foodType || 'other',
+      proto, type: rec.foodType || 'other', slug: rec.slug,
       x: _pos.x + _fwd.x, z: _pos.z + _fwd.z,
       y: _pos.y, onFloor: false,
     })
@@ -165,6 +202,12 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       if (food && !food.held && !food.opened && !food.stolen) {
         return { kind: 'food', item: food, dist: h.distance }
       }
+      const poster = h.object.userData.poster
+      if (poster && h.object.userData.posterKiosk) {
+        return { kind: 'poster', spec: poster, dist: h.distance }
+      }
+      const bin = h.object.userData.swatchBin
+      if (bin) return { kind: 'swatchBin', spec: bin, dist: h.distance }
       const rec = h.object.userData.exhibit
       if (rec && rec.foodType && foodProtos[rec.slug]) {
         return { kind: 'exhibit', rec, dist: h.distance }
@@ -222,11 +265,15 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
         const t = pickTarget()
         if (t?.kind === 'food' || t?.kind === 'rat') grabItem(left, t.item)
         else if (t?.kind === 'exhibit') spawnCopy(left, t.rec)
+        else if (t?.kind === 'swatchBin' && spawnSwatch) grabItem(left, spawnSwatch(t.spec))
+        else if (t?.kind === 'poster' && spawnPoster) grabItem(left, spawnPoster(t.spec))
       }
       if (player.fire2Down && rActive && !right.holding) {
         const t = pickTarget()
         if (t?.kind === 'food' || t?.kind === 'rat') grabItem(right, t.item)
         else if (t?.kind === 'exhibit') spawnCopy(right, t.rec)
+        else if (t?.kind === 'swatchBin' && spawnSwatch) grabItem(right, spawnSwatch(t.spec))
+        else if (t?.kind === 'poster' && spawnPoster) grabItem(right, spawnPoster(t.spec))
       }
     }
     if (player.locked) {
@@ -249,5 +296,8 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     return a || b || ''
   }
 
-  return { left, right, update, pickTarget, holdingLabel }
+  return {
+    left, right, update, pickTarget, holdingLabel, setScale,
+    get armScale() { return armScale },
+  }
 }

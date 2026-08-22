@@ -6,13 +6,16 @@ import * as THREE from 'three'
 import { createUnityLoader, fitOnFloor, fitLongest, restorePattyDisc, hideTriggers, boundsOf } from '../common/unityScene.js'
 import { createFirstPersonPlayer } from '../systems/player.js'
 import { createCrowd } from '../systems/npc.js'
-import { createFoodWorld, inferFoodType } from '../systems/food.js'
+import { createFoodWorld, inferFoodType, FOOD_SIZE, FOOD_SIZE_BY_SLUG, applyCookLook, COOK_RGB } from '../systems/food.js'
 import { createHands } from '../systems/hands.js'
 import { createRatDen } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
 import { createSoundboard } from '../systems/soundboard.js'
 import { createDelivery, makeOpenNet, BOX_SIZE } from '../systems/delivery.js'
 import { createScaler } from '../systems/scaler.js'
+import { createSwatches } from '../systems/swatches.js'
+import { createPosters } from '../systems/posters.js'
+import { createPosKiosk } from '../systems/posKiosk.js'
 import { installHarness } from '../common/harness.js'
 
 const FEATURED = [
@@ -23,11 +26,12 @@ const FEATURED = [
 // Pedestals we skip: live in the hall already (Arm, NPC), unused Kritz
 // leftovers, or a light we will add natively later.
 const SKIP_EXHIBITS = new Set([
-  'heroes/Arm',
   'mobs/Npc',
   'items/Notepad',
   'items/Paper',
   'items/PointLight',
+  'items/LettucePart',   // nested inside LettuceHead
+  'items/MonitorPickup', // same slab as Monitor, pickup-sized
   'ui/BunBottom',
   'ui/BunTop',
   'ui/Cheese',
@@ -36,12 +40,105 @@ const SKIP_EXHIBITS = new Set([
   'ui/CustomerMenu',
 ])
 
+// Player-facing plaque names when the Unity slug is a misnomer.
+const EXHIBIT_CAPTION = {
+  'items/Whiteboard': 'Wainscoting',
+}
+
 const GROUP_ORDER = ['heroes', 'mobs', 'items', 'ui']
+
+// Extra podiums seated next to the raw / clean item (Food.cs cook + dirty plate).
+const COOK_FOLLOW = {
+  'items/Plate': [
+    { slug: 'items/PlateDirty', caption: 'Plate · dirty', state: 'dirty' },
+  ],
+  'items/Bacon': [
+    { slug: 'items/BaconCooked', caption: 'Bacon · cooked', state: 'baconCooked' },
+    { slug: 'items/BaconCooked2', caption: 'Bacon · cooked 2', state: 'baconCooked2' },
+    { slug: 'items/BaconBurned', caption: 'Bacon · burned', state: 'burned' },
+  ],
+  'items/Patty': [
+    { slug: 'items/PattyCooked', caption: 'Patty · cooked', state: 'cooked' },
+    { slug: 'items/PattyBurned', caption: 'Patty · burned', state: 'burned' },
+  ],
+  'items/Cheese': [
+    { slug: 'items/CheeseCooked', caption: 'Cheese · cooked', state: 'cooked' },
+    { slug: 'items/CheeseBurned', caption: 'Cheese · burned', state: 'burned' },
+  ],
+  'items/Tomato': [
+    { slug: 'items/TomatoCooked', caption: 'Tomato · cooked', state: 'cooked' },
+    { slug: 'items/TomatoBurned', caption: 'Tomato · burned', state: 'burned' },
+  ],
+  'items/Lettuce': [
+    { slug: 'items/LettuceCooked', caption: 'Lettuce · cooked', state: 'cooked' },
+    { slug: 'items/LettuceBurned', caption: 'Lettuce · burned', state: 'burned' },
+  ],
+  'items/LettuceHead': [
+    { slug: 'items/LettuceHeadCooked', caption: 'Lettuce Head · cooked', state: 'cooked' },
+    { slug: 'items/LettuceHeadBurned', caption: 'Lettuce Head · burned', state: 'burned' },
+  ],
+  'items/BunTop': [
+    { slug: 'items/BunTopCooked', caption: 'Bun Top · cooked', state: 'cooked' },
+    { slug: 'items/BunTopBurned', caption: 'Bun Top · burned', state: 'burned' },
+  ],
+  'items/BunBottom': [
+    { slug: 'items/BunBottomCooked', caption: 'Bun Bottom · cooked', state: 'cooked' },
+    { slug: 'items/BunBottomBurned', caption: 'Bun Bottom · burned', state: 'burned' },
+  ],
+}
+
+function withCookVariants(items) {
+  const out = []
+  for (const item of items) {
+    out.push(item)
+    const extra = COOK_FOLLOW[item.slug]
+    if (!extra) continue
+    for (const v of extra) {
+      out.push({
+        ...item,
+        slug: v.slug,
+        label: v.caption,
+        caption: v.caption,
+        variantOf: item.slug,
+        cookState: v.state,
+      })
+    }
+  }
+  return out
+}
+
+function applyCookState(root, item) {
+  const type = inferFoodType(item.variantOf || item.slug)
+  const rgb = COOK_RGB[type] || COOK_RGB.default
+  if (item.cookState === 'dirty') {
+    applyCookLook(root, { mapUrl: './assets/textures/PlateDirty.png' })
+    return
+  }
+  if (item.cookState === 'baconCooked') {
+    applyCookLook(root, { cooked: 1, cookedRGB: rgb, mapUrl: './assets/textures/BaconCooked.png' })
+    return
+  }
+  if (item.cookState === 'baconCooked2') {
+    applyCookLook(root, { cooked: 1, cookedRGB: rgb, mapUrl: './assets/textures/BaconCooked2.png' })
+    return
+  }
+  if (item.cookState === 'cooked') {
+    applyCookLook(root, { cooked: 1, overcooked: 0, cookedRGB: rgb })
+    return
+  }
+  if (item.cookState === 'burned') {
+    const mapUrl = item.variantOf === 'items/Bacon'
+      ? './assets/textures/BaconCooked.png'
+      : null
+    applyCookLook(root, { cooked: 1, overcooked: 1, cookedRGB: rgb, mapUrl })
+  }
+}
 
 // Prefabs authored facing -Z (away from spawn). Turn them to face the aisle.
 const FACE_AISLE = new Set([
   'items/Cupboard',
   'items/NumberStand',
+  'items/Whiteboard',
 ])
 
 // Flat cards / world-space UI. Yaw so +Z tracks the camera (SpeechBubble.cs
@@ -57,7 +154,7 @@ const PEDESTAL_H = 0.88
 const PEDESTAL_W = 1.25
 
 // Longest-edge targets in meters. Pedestal sizes from the in-museum scale-gun
-// pass. Player / Rat / Whiteboard / Monitor stay on the 0.4–2.35 m clamp.
+// pass. Player / Rat / Wainscoting / Monitor stay on the 0.4–2.35 m clamp.
 const EXHIBIT_LONGEST = {
   'items/Spatula': 1.021,
   'items/Cupboard': 1.381,
@@ -67,19 +164,36 @@ const EXHIBIT_LONGEST = {
   'items/Pencil': 0.524,
   'items/Fire': 0.828,
   'items/Plate': 0.714,
-  'items/Cheese': 0.326,
+  'items/Cheese': FOOD_SIZE.cheese,
   'items/Tip': 0.511,
-  'items/Box': 0.856,
+  'items/Box': BOX_SIZE,
   'items/BoxOpen': 3.157,
   'items/FireExtinguisher': 0.771,
-  'items/Bacon': 0.449,
-  'items/BunTop': 0.369,
-  'items/BunBottom': 0.369,
-  'items/Lettuce': 0.446,
-  'items/LettuceHead': 0.417,
-  'items/LettucePart': 0.451,
-  'items/Patty': 0.371,
-  'items/Tomato': 0.324,
+  'items/Bacon': FOOD_SIZE.bacon,
+  'items/BunTop': FOOD_SIZE.topBun,
+  'items/BunBottom': FOOD_SIZE.bun,
+  'items/Lettuce': FOOD_SIZE.lettuce,
+  'items/LettuceHead': FOOD_SIZE_BY_SLUG['items/LettuceHead'],
+  'items/Patty': FOOD_SIZE.patty,
+  'items/Tomato': FOOD_SIZE.tomato,
+  'items/PlateDirty': 0.714,
+  'items/BaconCooked': FOOD_SIZE.bacon,
+  'items/BaconCooked2': FOOD_SIZE.bacon,
+  'items/BaconBurned': FOOD_SIZE.bacon,
+  'items/PattyCooked': FOOD_SIZE.patty,
+  'items/PattyBurned': FOOD_SIZE.patty,
+  'items/CheeseCooked': FOOD_SIZE.cheese,
+  'items/CheeseBurned': FOOD_SIZE.cheese,
+  'items/TomatoCooked': FOOD_SIZE.tomato,
+  'items/TomatoBurned': FOOD_SIZE.tomato,
+  'items/LettuceCooked': FOOD_SIZE.lettuce,
+  'items/LettuceBurned': FOOD_SIZE.lettuce,
+  'items/LettuceHeadCooked': FOOD_SIZE_BY_SLUG['items/LettuceHead'],
+  'items/LettuceHeadBurned': FOOD_SIZE_BY_SLUG['items/LettuceHead'],
+  'items/BunTopCooked': FOOD_SIZE.topBun,
+  'items/BunTopBurned': FOOD_SIZE.topBun,
+  'items/BunBottomCooked': FOOD_SIZE.bun,
+  'items/BunBottomBurned': FOOD_SIZE.bun,
   'ui/SpeechBubble': 1.238,
   'ui/NpcSpeechBubble': 1.048,
   'ui/StaffMenu': 0.937,
@@ -113,9 +227,19 @@ let rats = null
 let demoPlayers = null
 let soundboard = null
 let delivery = null
+let swatches = null
+let posters = null
+let posKiosk = null
 const fireSprites = []
 const facePlayer = []
-const scaler = createScaler({ scene, player, exhibits, pedestalH: PEDESTAL_H })
+const scaler = createScaler({
+  scene, player, exhibits, pedestalH: PEDESTAL_H,
+  onScale(rec) {
+    if (rec.slug !== 'heroes/Arm') return
+    if (hands && hands.setScale) hands.setScale(rec.editMul)
+    if (demoPlayers && demoPlayers.setScale) demoPlayers.setScale(rec.editMul)
+  },
+})
 const _fireCam = new THREE.Vector3()
 const _firePos = new THREE.Vector3()
 const raycaster = new THREE.Raycaster()
@@ -321,6 +445,31 @@ function flipStaffMenuUVs(root) {
   })
 }
 
+// !Whiteboard is diner wainscoting: wood chair-rail on the top edge, paintable
+// panel below (medium gray in the original kitchen). Prefab "base" was authored
+// at local -Y; flip it up so the rail reads as the waist-height trim.
+function setupWainscot(root) {
+  root.traverse(o => {
+    if (o.name === 'base' && o.position.y < 0) o.position.y *= -1
+    if (!o.isMesh) return
+    if (o.name && o.name.indexOf('Whiteboard') !== -1) {
+      o.material = o.material.clone()
+      o.material.color.set(0x6e6e70)
+    }
+  })
+}
+
+// Lettuce-Head-Full is a hollow leaf shell; Lettuce-Head-Part is a solid
+// hemisphere (KnifeTrigger chops Full → two Parts at 180°). Seat the half
+// inside the shell so the head reads as one vegetable — pedestal and box spill.
+async function nestLettuceHead(headRoot, loader) {
+  const part = await loader.load('items/LettucePart')
+  hideTriggers(part.root)
+  part.root.rotation.y = Math.PI
+  headRoot.add(part.root)
+  return headRoot
+}
+
 function addStaffMenuWhiteBack(root) {
   let mesh = null
   root.traverse(o => { if (!mesh && o.isMesh) mesh = o })
@@ -369,7 +518,7 @@ function placeOnPedestal(asset, x, z, meta) {
   // walked the Cupboard off the back of its podium.
   if (FACE_AISLE.has(meta.slug)) asset.rotation.y += Math.PI
   if (meta.slug === 'items/Patty') restorePattyDisc(asset)
-  const target = EXHIBIT_LONGEST[meta.slug]
+  const target = EXHIBIT_LONGEST[meta.slug] ?? EXHIBIT_LONGEST[meta.variantOf]
   const { size, scale, native } = target != null
     ? fitLongest(asset, target)
     : fitOnFloor(asset, { maxSize: 2.35, minSize: 0.4 })
@@ -382,7 +531,10 @@ function placeOnPedestal(asset, x, z, meta) {
   }
   asset.position.y += PEDESTAL_H + 0.06
 
-  const caption = FEATURED.find(f => f.slug === meta.slug)?.caption || meta.label
+  const caption = FEATURED.find(f => f.slug === meta.slug)?.caption
+    || EXHIBIT_CAPTION[meta.slug]
+    || meta.caption
+    || meta.label
   const nativeStr = native
     ? `native ${native.x.toFixed(2)} × ${native.y.toFixed(2)} × ${native.z.toFixed(2)}`
     : meta.group
@@ -455,7 +607,7 @@ async function boot() {
   setStatus('Reading manifest…')
   const manifest = await fetch('./assets/manifest.json').then(r => r.json())
   const featuredSlugs = FEATURED.map(f => f.slug)
-  const items = manifest.filter(isExhibit).filter(i => i.slug !== 'items/Truck')
+  const items = withCookVariants(manifest.filter(isExhibit).filter(i => i.slug !== 'items/Truck'))
   // make sure featured slugs are present even if the filter missed them
   for (const s of featuredSlugs) {
     if (!items.some(i => i.slug === s)) {
@@ -470,7 +622,10 @@ async function boot() {
   let z = 0
   const positions = []
   let audioZ = -SPACING_Z
-  let deliveryZ = -SPACING_Z * 2
+  let texturesZ = -SPACING_Z * 2
+  let postersZ = -SPACING_Z * 3
+  let posZ = -SPACING_Z * 4
+  let deliveryZ = -SPACING_Z * 5
 
   for (const row of rows) {
     const n = row.items.length
@@ -480,6 +635,12 @@ async function boot() {
     z -= SPACING_Z
     if (row.name === 'People') {
       audioZ = z
+      z -= SPACING_Z
+      texturesZ = z
+      z -= 14
+      postersZ = z
+      z -= SPACING_Z + 1.4
+      posZ = z
       z -= SPACING_Z
       deliveryZ = z - 16
       z -= 32
@@ -528,19 +689,17 @@ async function boot() {
       const item = row.items[i]
       setStatus(`Loading ${++loaded} / ${total}  —  ${item.label}`)
       try {
-        const { root } = await loader.load(item.slug)
+        const loadSlug = item.variantOf || item.slug
+        const { root } = await loader.load(loadSlug)
         const box = boundsOf(root)
         if (box.isEmpty()) continue
-        if (inferFoodType(item.slug, item.label) !== 'other') {
-          foodProtos[item.slug] = root.clone(true)
-          if (item.slug === 'items/Patty') restorePattyDisc(foodProtos[item.slug])
-        }
         let display = root
-        if (item.slug === 'ui/StaffMenu') {
+        if (loadSlug === 'ui/StaffMenu') {
           flipStaffMenuUVs(root)
           addStaffMenuWhiteBack(root)
         }
-        if (item.slug === 'ui/NpcSpeechBubble') {
+        if (loadSlug === 'items/Whiteboard') setupWainscot(root)
+        if (loadSlug === 'ui/NpcSpeechBubble') {
           // Arrow.png is a small down-triangle in a 100×100 empty square,
           // parented on the bubble at the same size — the tail sat inside
           // the circle. Shrink it and park it under the oval.
@@ -553,29 +712,28 @@ async function boot() {
             }
           })
         }
-        if (item.slug === 'items/BoxOpen') {
+        if (loadSlug === 'items/BoxOpen') {
           let boxTex = null
           root.traverse(o => {
             if (o.isMesh && o.material && o.material.map) boxTex = o.material.map
           })
           display = makeOpenNet(boxTex, BOX_SIZE)
         }
-        // Lettuce-Head-Full is a hollow leaf shell; Lettuce-Head-Part is a
-        // solid hemisphere (KnifeTrigger chops Full → two Parts at 180°).
-        // Seat the half inside the shell so the head reads as one vegetable.
-        if (item.slug === 'items/LettuceHead') {
+        if (loadSlug === 'items/LettuceHead') {
           try {
-            const part = await loader.load('items/LettucePart')
-            hideTriggers(part.root)
-            part.root.rotation.y = Math.PI
-            root.add(part.root)
+            await nestLettuceHead(root, loader)
           } catch (err) {
             console.warn('[museum] LettucePart nest skipped', err)
           }
         }
+        if (item.cookState) applyCookState(root, item)
+        if (inferFoodType(item.slug, item.label) !== 'other') {
+          foodProtos[item.slug] = root.clone(true)
+          if (loadSlug === 'items/Patty') restorePattyDisc(foodProtos[item.slug])
+        }
         const rec = placeOnPedestal(display, x0 + i * SPACING_X, rz, item)
-        if (item.slug === 'items/Fire') setupFireSprite(display)
-        if (FACE_PLAYER.has(item.slug)) facePlayer.push(display)
+        if (loadSlug === 'items/Fire') setupFireSprite(display)
+        if (FACE_PLAYER.has(loadSlug)) facePlayer.push(display)
       } catch (err) {
         console.warn('[museum] skip', item.slug, err)
       }
@@ -591,6 +749,75 @@ async function boot() {
   }
 
   foodWorld = createFoodWorld({ scene, player })
+
+  try {
+    setStatus('Loading texture samples…')
+    const banner = makeBanner('Textures')
+    banner.position.set(0, 4.4, texturesZ + 2.8)
+    scene.add(banner)
+    swatches = createSwatches({
+      scene, player, foodWorld,
+      x: 0, z: texturesZ, facingY: 0,
+    })
+    exhibits.push({
+      slug: 'textures/Swatches',
+      label: 'Textures',
+      caption: 'Textures',
+      group: 'textures',
+      x: 0,
+      z: texturesZ,
+      size: { x: swatches.width, y: swatches.height, z: swatches.depth },
+    })
+  } catch (err) {
+    console.warn('[museum] texture swatches skipped', err)
+  }
+
+  try {
+    setStatus('Loading poster kiosk…')
+    const banner = makeBanner('Posters')
+    banner.position.set(0, 4.4, postersZ + 2.4)
+    scene.add(banner)
+    posters = createPosters({
+      scene, player, foodWorld,
+      x: 0, z: postersZ,
+    })
+    exhibits.push({
+      slug: 'ui/Posters',
+      label: 'Posters',
+      caption: 'Posters',
+      group: 'ui',
+      x: 0,
+      z: postersZ,
+      size: { x: posters.width, y: posters.height, z: posters.depth },
+    })
+  } catch (err) {
+    console.warn('[museum] posters skipped', err)
+  }
+
+  try {
+    setStatus('Loading order computer…')
+    const banner = makeBanner('POS')
+    banner.position.set(0, 4.4, posZ + 1.8)
+    scene.add(banner)
+    posKiosk = createPosKiosk({
+      scene, player,
+      x: 0, z: posZ,
+      onOpen: () => { player.unlock() },
+      onClose: () => {},
+    })
+    exhibits.push({
+      slug: 'ui/POS',
+      label: 'POS',
+      caption: 'POS',
+      group: 'ui',
+      x: 0,
+      z: posZ,
+      size: { x: posKiosk.width, y: posKiosk.height, z: posKiosk.depth },
+    })
+  } catch (err) {
+    console.warn('[museum] POS kiosk skipped', err)
+  }
+
   let cheeseProto = foodProtos['items/Cheese']
   if (!cheeseProto) {
     try {
@@ -619,6 +846,10 @@ async function boot() {
     if (foodProtos[slug]) continue
     try {
       const extra = await loader.load(slug)
+      if (slug === 'items/LettuceHead') {
+        try { await nestLettuceHead(extra.root, loader) }
+        catch (err) { console.warn('[museum] LettucePart nest skipped', err) }
+      }
       foodProtos[slug] = extra.root
     } catch (err) {
       console.warn('[museum] food proto missing', slug, err)
@@ -669,6 +900,8 @@ async function boot() {
     hands = createHands({
       scene, player, armProto: armRoot, foodWorld, exhibits, foodProtos,
       getRats: () => rats,
+      spawnSwatch: spec => swatches && swatches.take(spec),
+      spawnPoster: spec => posters && posters.take(spec),
     })
   } catch (err) {
     console.warn('[museum] arms skipped', err)
@@ -706,7 +939,8 @@ async function boot() {
 
   window.__museum = {
     scene, camera: player.camera, renderer, player, exhibits, crowd,
-    foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler,
+    foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler, swatches,
+    posters, posKiosk,
     teleport, enter, pause,
     dbg: harness.dbg,
     pose: harness.pose,
@@ -732,6 +966,24 @@ function teleport(slug) {
     player.spawn(v.stand.x, 0, v.stand.z, 0)
     player.lookAt(v.look.x, v.look.y, v.look.z)
     return 'Truck'
+  }
+  if (swatches && /^(Textures|Swatches|KitchenFloor|textures\/Swatches)$/i.test(slug)) {
+    const v = swatches.viewSpot()
+    player.spawn(v.stand.x, 0, v.stand.z, 0)
+    player.lookAt(v.look.x, v.look.y, v.look.z)
+    return 'Textures'
+  }
+  if (posters && /^(Posters|ui\/Posters)$/i.test(slug)) {
+    const v = posters.viewSpot()
+    player.spawn(v.stand.x, 0, v.stand.z, 0)
+    player.lookAt(v.look.x, v.look.y, v.look.z)
+    return 'Posters'
+  }
+  if (posKiosk && /^(POS|Pos|Order computer|ui\/POS)$/i.test(slug)) {
+    const v = posKiosk.viewSpot()
+    player.spawn(v.stand.x, 0, v.stand.z, 0)
+    player.lookAt(v.look.x, v.look.y, v.look.z)
+    return 'POS'
   }
   const e = exhibits.find(x => x.slug === slug || x.label === slug || x.caption === slug)
   if (!e) return null
@@ -763,6 +1015,7 @@ function dumpExtras() {
     exhibits: exhibits.map(e => e.slug),
     tool: scaler.tool,
     scales: scaler.dump(),
+    armScale: hands?.armScale ?? 1,
   }
 }
 
@@ -778,9 +1031,18 @@ function tick(dt) {
   player.update(dt)
   if (soundboard) {
     soundboard.update(dt)
-    if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) soundboard.tryPress()
+    if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
+      const handsUp = player.leftHand || player.rightHand
+      if (!handsUp && posters) posters.tryTurn()
+      soundboard.tryPress()
+      if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
+    }
+  } else if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
+    const handsUp = player.leftHand || player.rightHand
+    if (!handsUp && posters) posters.tryTurn()
+    if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
   }
-  if (hands) hands.update(dt, { grab: scaler.tool === 'hand', right: scaler.tool === 'hand' })
+  if (hands && !posKiosk?.isOpen) hands.update(dt, { grab: scaler.tool === 'hand', right: scaler.tool === 'hand' })
   if (foodWorld) foodWorld.update(dt, harness.time.T)
   if (rats) rats.update(dt, harness.time.T)
   if (crowd) crowd.update(dt, harness.time.T)
@@ -814,6 +1076,10 @@ function currentLook() {
   if (scaleLook) return scaleLook
   const audioLook = soundboard?.lookLabel()
   if (audioLook) return audioLook
+  const posterLook = posters?.lookLabel()
+  if (posterLook) return posterLook
+  const posLook = posKiosk?.lookLabel()
+  if (posLook) return posLook
   raycaster.setFromCamera(ndc, player.camera)
   const hits = raycaster.intersectObjects(scene.children, true)
   for (const h of hits) {
@@ -836,6 +1102,8 @@ function currentLook() {
     }
     const rec = h.object.userData.exhibit
     if (rec) return rec.foodType ? (rec.caption || rec.label) + ' · take a copy' : (rec.caption || rec.label)
+    const bin = h.object.userData.swatchBin
+    if (bin) return bin.caption + ' · take a swatch'
   }
   return ''
 }
