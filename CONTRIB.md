@@ -5,7 +5,8 @@ site — not a transpile, not a Unity WebGL export. Kritz’s C# is the
 specification; the browser game is ES6 modules under `public/`.
 
 If you are an agent: start here, then `README.md`, then `public/game/` and
-`public/museum.html`. Do not look for a C# → JavaScript compiler. Do not
+`public/museum.html`. The debug harness (`dbg` / `pose`) is documented in
+[TEST.md](TEST.md). Do not look for a C# → JavaScript compiler. Do not
 put Unity gizmos back on pedestals. Port **behavior** from the original
 scripts; keep **art** in `public/assets/`.
 
@@ -44,17 +45,40 @@ Click to capture the mouse.
 | mouse | look |
 | Q / E | raise left / right arm |
 | LMB / RMB | grab or drop with that hand (arm must be up) |
-| Esc | pause |
+| Space | jump |
+| Esc | release mouse (click to recapture; game does not pause) |
 
 Food exhibits clone into the hand; the pedestal stays. Dropped cheese /
 patty / bacon / tomato can be stolen by rats. NPCs wander and look at you
-when you get close.
+when you get close. The delivery truck is a walk-in bay (not a pedestal):
+climb the ramp, grab a closed box, set it down to unpack.
 
 In the browser console, `window.__museum` exposes
-`{ scene, camera, player, exhibits, crowd, foodWorld, hands, rats, demoPlayers, teleport, enter, pause }`.
+`{ scene, camera, player, exhibits, crowd, foodWorld, hands, rats, demoPlayers, teleport, enter, pause, dbg, pose }`.
 
     __museum.teleport('Cheese')
     __museum.teleport('Npc')
+    __museum.teleport('Truck')
+
+Time-travel and the model poser are also on `window.dbg` and `window.pose`.
+Agent round-trips are too slow to screenshot a moving frame — freeze first.
+
+    dbg.freeze()                 // sim stops; render keeps going
+    dbg.step(60)                 // +1 s at 1/60
+    dbg.state()                  // JSON: player, food, rats, NPCs, T
+    dbg.key('KeyQ', true)        // hold Q, then dbg.step(1)
+    dbg.mouse(0, true)           // LMB down (0) / RMB (2)
+    dbg.unfreeze()
+    dbg.help()
+
+    await pose.enter('items/Cheese')           // white studio, model alone
+    pose.view('front')                         // also: back left right top bottom iso
+    pose.view('left', 'isometric')             // ortho from that axis
+    pose.view('iso')                           // 3/4 isometric
+    pose.rotate(45)
+    pose.exit()
+
+Views × projections: `front|left|top|…` × `perspective|isometric`. `pose.list()` is every exhibit slug. F9 freezes, F10 steps one frame, `?debug` on the URL shows the on-screen panel.
 
 ---
 
@@ -103,6 +127,9 @@ public/
     scenes/museum.js       the hall
     systems/               player, hands, food, npc, rats
     common/unityScene.js   JSON → Object3D
+    common/timeTravel.js   freeze / step clock
+    common/poser.js        white-studio model views
+    common/harness.js      window.dbg + window.pose
     entities/              spawned stand-ins (demoPlayers)
     behaviors/  components/  gamedata/  net/  shaders/   reserved
   assets/
@@ -144,10 +171,7 @@ full words for a JS repo.
 | `mobs/` | Characters with AI, not the player | `Npc`, `Rat` |
 | `items/` | Pickup, placeable, appliance | `Cheese`, `Spatula`, `Cupboard`, `Truck` |
 | `tiles/` | Repeatable ground / wall | `MuseumFloor.png`, `KitchenFloor.png` |
-| `ui/` | HUD, tickets, bubbles, menus | `StaffMenu`, `ui/Cheese` (the ticket sprite) |
-
-Two files named `Cheese` is fine: `items/Cheese` is the cheddar cube,
-`ui/Cheese` is the order-ticket icon — same trick as `en.Coin` vs `ui.Money`.
+| `ui/` | HUD, tickets, bubbles, menus | `StaffMenu`, `SpeechBubble` |
 
 Rules:
 
@@ -253,12 +277,13 @@ Do not introduce a bundler or a Unity WebGL build to get there.
 - **Do not restore gizmos.** Pathfinding nodes, trigger boxes, empty
   `GText` hosts, Standard Assets character controllers — those were
   dropped on purpose. Their logic belongs in JS.
-- **Names are a contract.** `items/Cheese` vs `ui/Cheese`, `mobs/Npc` not
+- **Names are a contract.** `items/Cheese` is the cheddar cube, `mobs/Npc` not
   `npc/NPC`, `heroes/Arm` not `player/arm`. `tools/paths.py` is canonical.
 - **Hands:** Q/E raises a hand; click while that hand is up grabs. Food
   exhibits clone; `rec.foodType` (from `inferFoodType`) marks grab copies.
 - **Debug handle:** `window.__museum`. `teleport('Spatula')` by label or
-  slug.
+  slug. `dbg.freeze()` / `dbg.step(n)` before a screenshot; `pose.enter(slug)`
+  to inspect a model on white (`pose.view('front'|'left'|'top', 'isometric')`).
 - **Pages:** `public/` is the site root. Keep asset URLs relative
   (`./assets/…`, `./game/…`). `public/.nojekyll` must stay.
 - **Scope:** grab/throw feel, cooking, orders, fire, and netcode are the

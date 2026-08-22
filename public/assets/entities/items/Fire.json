@@ -62,7 +62,9 @@
     0.2507
    ],
    "opacity": 1.0,
-   "tex": "textures/Fire.png"
+   "tex": "textures/Fire.png",
+   "cutout": true,
+   "doubleSide": true
   }
  ]
 }

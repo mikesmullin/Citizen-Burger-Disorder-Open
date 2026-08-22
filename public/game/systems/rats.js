@@ -14,6 +14,7 @@ const HOME_DIST = 1.6
 const SEE_DIST = 80
 const SPEED_MIN = 7
 const SPEED_MAX = 11
+const _mouth = new THREE.Vector3()
 
 export function createRatDen({ scene, player, ratProto, foodWorld }) {
   hideTriggers(ratProto)
@@ -71,10 +72,23 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     sizeRat(object)
     object.position.set(hole.x, object.position.y, hole.z)
     scene.add(object)
+    // Mouth is a local node so stolen food tracks the snout (Rat.cs
+    // `transform.position + transform.forward`). Don't reparent the food
+    // mesh — the rat's baked scale would shrink it.
+    const s = object.scale.x || 1
+    const mouth = new THREE.Object3D()
+    mouth.name = 'Mouth'
+    mouth.position.set(0, 0.12 / s, -0.42 / s)
+    object.add(mouth)
+    const gy = player.groundY ? player.groundY(hole.x, hole.z) : 0
+    object.position.y = gy
     const rat = {
-      object, hole,
+      kind: 'rat',
+      type: 'rat',
+      object, hole, mouth,
       position: object.position,
       radius: 0.28,
+      height: 0.35,
       speed: THREE.MathUtils.lerp(SPEED_MIN, SPEED_MAX, Math.random()),
       stolen: null,
       targetFood: null,
@@ -82,6 +96,10 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
       defeated: false,
       goingHome: !target,
       born: 0,
+      held: false,
+      onFloor: true,
+      dropped: false,
+      vel: new THREE.Vector3(),
     }
     object.userData.rat = rat
     object.traverse(o => { o.userData.rat = rat })
@@ -89,6 +107,16 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     rats.push(rat)
     currentRats++
     return rat
+  }
+
+  function placeStolen(rat) {
+    const food = rat.stolen
+    if (!food || !food.object) return
+    rat.mouth.updateMatrixWorld(true)
+    rat.mouth.getWorldPosition(_mouth)
+    food.object.position.copy(_mouth)
+    food.object.position.y += (food.height || 0.1) * 0.2
+    food.object.quaternion.copy(rat.object.quaternion)
   }
 
   function seeFood(rat) {
@@ -163,9 +191,32 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
 
     for (const rat of [...rats]) {
       rat.born += dt
+      if (rat.held) {
+        placeStolen(rat)
+        continue
+      }
+
+      if (!rat.onFloor) {
+        rat.vel.y -= 9.81 * dt
+        rat.object.position.addScaledVector(rat.vel, dt)
+        const gy = player.groundY ? player.groundY(rat.position.x, rat.position.z) : 0
+        if (rat.position.y <= gy) {
+          rat.position.y = gy
+          rat.vel.set(0, 0, 0)
+          rat.onFloor = true
+        } else {
+          const hit = player.slideXZ
+            ? player.slideXZ(rat.position.x, rat.position.z, rat.position.x, rat.position.z, rat.radius, rat)
+            : player.resolveXZ(rat.position.x, rat.position.z, rat.radius, rat)
+          rat.position.x = hit.x
+          rat.position.z = hit.z
+        }
+        placeStolen(rat)
+        continue
+      }
+
       if (rat.stolen) {
-        rat.stolen.object.position.set(
-          rat.position.x, rat.stolen.height * 0.5 + 0.08, rat.position.z)
+        placeStolen(rat)
         const d = goTo(rat, rat.hole.x, rat.hole.z, dt)
         if (d < HOME_DIST && rat.born > 0.4) despawn(rat)
         continue
@@ -195,5 +246,15 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     }
   }
 
-  return { rats, holes, update, get count() { return currentRats } }
+  function spawnAt(x, z) {
+    const hole = holes[0] || { x, z }
+    const rat = spawnRat(hole, { x, z })
+    if (rat) {
+      const gy = player.groundY ? player.groundY(x, z) : 0
+      rat.position.set(x, gy, z)
+    }
+    return rat
+  }
+
+  return { rats, holes, update, spawnAt, get count() { return currentRats } } // pickup + mouth follow
 }

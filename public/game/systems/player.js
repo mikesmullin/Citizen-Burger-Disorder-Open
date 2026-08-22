@@ -16,6 +16,7 @@ const KEYS = {
   back:  new Set(['KeyS', 'ArrowDown']),
   run:   new Set(['ShiftLeft', 'ShiftRight']),
   walk:  new Set(['ControlLeft', 'ControlRight']),
+  jump:  new Set(['Space']),
 }
 
 export function createFirstPersonPlayer({
@@ -26,6 +27,8 @@ export function createFirstPersonPlayer({
   runMultiplier = 1.333,
   walkMultiplier = 0.25,
   gravity = 9.81,
+  // Demo-player hop is 0.62 m over 0.7 s → v = √(2gh).
+  jumpSpeed = 3.49,
   fov = 70,
   runFov = 80,
   // Unity: GetAxis("Mouse X") * 15 with Input sensitivity 0.1 ≈ 1.5 deg/px.
@@ -59,11 +62,19 @@ export function createFirstPersonPlayer({
   let pitch = 0
   let vy = 0
   let grounded = false
+  let jumpHeld = false
   let locked = false
   let enabled = true
+  // When true, pointer-lock mousemove is not applied to yaw/pitch. The scale
+  // gun (and anything else that wants a drag gesture) reads pullDragDelta().
+  let lookFrozen = false
+  let dragDX = 0
+  let dragDY = 0
 
   const colliders = [] // {min:{x,z}, max:{x,z}}  xz AABBs
+  const hulls = []     // solid AABB with an interior and a door slot
   const movers = []    // { position, radius } — NPCs, updated each frame
+  const platforms = [] // { minx, maxx, minz, maxz, y } or ramp { …, y0, y1, z0, z1 }
   let floorY = 0
   let bounds = null // {minx, maxx, minz, maxz}
 
@@ -74,6 +85,11 @@ export function createFirstPersonPlayer({
   }
   function onMouse(e) {
     if (!enabled || !locked) return
+    if (lookFrozen) {
+      dragDX += e.movementX
+      dragDY += e.movementY
+      return
+    }
     yaw   -= e.movementX * lookSensitivity
     pitch -= e.movementY * lookSensitivity
     pitch = Math.max(pitchMin, Math.min(pitchMax, pitch))
@@ -128,8 +144,13 @@ export function createFirstPersonPlayer({
         pz += dz * f
       }
     }
+    for (const h of hulls) {
+      const hit = resolveHull(h, px, pz, r)
+      px = hit.x
+      pz = hit.z
+    }
     for (const m of movers) {
-      if (m === skip) continue
+      if (m === skip || m.held) continue
       const mx = m.position.x, mz = m.position.z
       const minR = r + m.radius
       let dx = px - mx, dz = pz - mz
@@ -180,15 +201,30 @@ export function createFirstPersonPlayer({
 
     const nx = yawObject.position.x + wish.x * speed * dt
     const nz = yawObject.position.z + wish.z * speed * dt
-    const hit = collideXZ(nx, nz, radius)
+    const hit = slideXZ(yawObject.position.x, yawObject.position.z, nx, nz, radius)
     yawObject.position.x = hit.x
     yawObject.position.z = hit.z
+
+    const wantJump = [...KEYS.jump].some(c => keys.has(c))
+    if (grounded && wantJump && !jumpHeld) {
+      vy = jumpSpeed
+      grounded = false
+    }
+    jumpHeld = wantJump
 
     vy -= gravity * dt
     yawObject.position.y += vy * dt
     const feet = yawObject.position.y - height / 2
-    if (feet <= floorY) {
-      yawObject.position.y = floorY + height / 2
+    const gy = groundY(hit.x, hit.z)
+    // Don't glue to the floor while the hop is going up (demo peak 0.62 m).
+    if (vy > 0) {
+      grounded = false
+    } else if (feet <= gy) {
+      yawObject.position.y = gy + height / 2
+      vy = 0
+      grounded = true
+    } else if (grounded && gy >= feet - 0.22) {
+      yawObject.position.y = gy + height / 2
       vy = 0
       grounded = true
     } else {
@@ -213,13 +249,95 @@ export function createFirstPersonPlayer({
     yaw = lookYaw
     pitch = 0
     vy = 0
+    grounded = true
+    jumpHeld = false
     yawObject.rotation.y = THREE.MathUtils.degToRad(yaw)
     pitchObject.rotation.x = 0
     yawObject.updateMatrixWorld(true)
   }
 
+  function groundY(x, z) {
+    let y = floorY
+    for (const p of platforms) {
+      if (x < p.minx || x > p.maxx || z < p.minz || z > p.maxz) continue
+      let h
+      if (p.z0 != null && p.y1 != null) {
+        const span = p.z1 - p.z0
+        const t = Math.max(0, Math.min(1, (z - p.z0) / (span || 1e-6)))
+        h = p.y0 + (p.y1 - p.y0) * t
+      } else {
+        h = p.y
+      }
+      if (h > y) y = h
+    }
+    return y
+  }
+
+  function addPlatform(p) {
+    platforms.push(p)
+    return p
+  }
+
+  // Hollow AABB with a +Z door. Thin side walls used to tunnel: 16 m/s at
+  // 60 fps is 27 cm/frame, thicker than a 18 cm AABB, and min-penetration
+  // then shoved the center the wrong way (into the bed). Inside vs outside
+  // is decided by the cargo volume, never by shortest-axis.
+  function resolveHull(h, px, pz, r) {
+    const inDoor = Math.abs(px - h.doorX) <= h.doorHalf && pz >= h.doorZ - r * 0.35
+    if (inDoor) return { x: px, z: pz }
+
+    const ox0 = h.outer.minx, ox1 = h.outer.maxx, oz0 = h.outer.minz, oz1 = h.outer.maxz
+    const ix0 = h.inner.minx, ix1 = h.inner.maxx, iz0 = h.inner.minz, iz1 = h.inner.maxz
+    const inCargo = px >= ix0 && px <= ix1 && pz >= iz0 && pz <= iz1
+    if (inCargo) {
+      return {
+        x: Math.max(ix0 + r, Math.min(ix1 - r, px)),
+        z: Math.max(iz0 + r, Math.min(iz1, pz)),
+      }
+    }
+
+    const qx = Math.max(ox0, Math.min(ox1, px))
+    const qz = Math.max(oz0, Math.min(oz1, pz))
+    const dx = px - qx, dz = pz - qz
+    const d2 = dx * dx + dz * dz
+    const centerInside = px > ox0 && px < ox1 && pz > oz0 && pz < oz1
+    if (!centerInside && d2 >= r * r) return { x: px, z: pz }
+
+    if (centerInside) {
+      const left = px - ox0, right = ox1 - px, back = pz - oz0, front = oz1 - pz
+      const m = Math.min(left, right, back, front)
+      if (m === left) return { x: ox0 - r, z: pz }
+      if (m === right) return { x: ox1 + r, z: pz }
+      if (m === back) return { x: px, z: oz0 - r }
+      return { x: px, z: oz1 + r }
+    }
+    const d = Math.sqrt(d2) || 1e-6
+    const f = (r - d) / d
+    return { x: px + dx * f, z: pz + dz * f }
+  }
+
+  function slideXZ(x0, z0, x1, z1, r = radius, skip = null) {
+    const dx = x1 - x0, dz = z1 - z0
+    const dist = Math.hypot(dx, dz)
+    const maxStep = r * 0.4
+    const steps = Math.max(1, Math.min(16, Math.ceil(dist / Math.max(maxStep, 1e-6))))
+    let px = x0, pz = z0
+    const sx = dx / steps, sz = dz / steps
+    for (let i = 0; i < steps; i++) {
+      const hit = collideXZ(px + sx, pz + sz, r, skip)
+      px = hit.x
+      pz = hit.z
+    }
+    return { x: px, z: pz }
+  }
+
   function addCollider(min, max) {
     colliders.push({ min, max })
+  }
+
+  function addHull(h) {
+    hulls.push(h)
+    return h
   }
 
   function addMover(mover) {
@@ -252,10 +370,45 @@ export function createFirstPersonPlayer({
     addCollider, setRoomBounds,
     get locked() { return locked },
     get grounded() { return grounded },
+    get jumping() { return !grounded && vy > 0 },
     get yaw() { return yaw },
     get pitch() { return pitch },
-    set yaw(v) { yaw = v },
-    set pitch(v) { pitch = v },
+    set yaw(v) {
+      yaw = v
+      yawObject.rotation.y = THREE.MathUtils.degToRad(yaw)
+    },
+    set pitch(v) {
+      pitch = Math.max(pitchMin, Math.min(pitchMax, v))
+      pitchObject.rotation.x = THREE.MathUtils.degToRad(pitch)
+    },
+    setMouse(button, down) { mouse[button] = !!down },
+    getMouse(button) { return !!mouse[button] },
+    set lookFrozen(v) {
+      if (!!v === lookFrozen) return
+      lookFrozen = !!v
+      dragDX = 0
+      dragDY = 0
+    },
+    get lookFrozen() { return lookFrozen },
+    pullDragDelta() {
+      const d = { x: dragDX, y: dragDY }
+      dragDX = 0
+      dragDY = 0
+      return d
+    },
+    injectMouse(dx = 0, dy = 0) {
+      if (lookFrozen) {
+        dragDX += dx
+        dragDY += dy
+        return { lookFrozen, dx: dragDX, dy: dragDY }
+      }
+      yaw -= dx * lookSensitivity
+      pitch -= dy * lookSensitivity
+      pitch = Math.max(pitchMin, Math.min(pitchMax, pitch))
+      yawObject.rotation.y = THREE.MathUtils.degToRad(yaw)
+      pitchObject.rotation.x = THREE.MathUtils.degToRad(pitch)
+      return { lookFrozen, yaw, pitch }
+    },
     set enabled(v) { enabled = v },
     get enabled() { return enabled },
     get position() { return yawObject.position },
@@ -272,9 +425,15 @@ export function createFirstPersonPlayer({
     get floorY() { return floorY },
     get height() { return height },
     colliders,
+    hulls,
     movers,
     addMover,
+    addPlatform,
+    addHull,
+    groundY,
     resolveXZ: collideXZ,
+    slideXZ,
     get bounds() { return bounds },
+    platforms,
   }
 }

@@ -52,20 +52,27 @@ function loadSkin(name) {
 function makeNoticeBubble() {
   const c = document.createElement('canvas')
   c.width = 256
-  c.height = 160
+  c.height = 192
   const g = c.getContext('2d')
   g.fillStyle = '#f4fff8'
   g.strokeStyle = '#2a2a2a'
-  g.lineWidth = 8
+  g.lineWidth = 7
+  g.lineJoin = 'round'
+  g.lineCap = 'round'
+  // Tail first, then the oval covers the join so it hangs off like a chat bubble.
   g.beginPath()
-  g.ellipse(128, 70, 110, 55, 0, 0, Math.PI * 2)
+  g.moveTo(108, 114)
+  g.lineTo(150, 120)
+  g.lineTo(118, 176)
+  g.closePath()
   g.fill()
+  g.beginPath()
+  g.moveTo(108, 114)
+  g.lineTo(118, 176)
+  g.lineTo(150, 120)
   g.stroke()
   g.beginPath()
-  g.moveTo(100, 118)
-  g.lineTo(118, 108)
-  g.lineTo(132, 128)
-  g.closePath()
+  g.ellipse(128, 70, 108, 54, 0, 0, Math.PI * 2)
   g.fill()
   g.stroke()
   g.fillStyle = '#1a1a1a'
@@ -80,7 +87,7 @@ function makeNoticeBubble() {
   const m = new THREE.Sprite(new THREE.SpriteMaterial({
     map, transparent: true, depthWrite: false, sizeAttenuation: true,
   }))
-  m.scale.set(0.62, 0.38, 1)
+  m.scale.set(0.68, 0.51, 1)
   m.visible = false
   return m
 }
@@ -116,9 +123,13 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
   const groups = []
 
   function inBox(x, z) {
+    const pad = RADIUS + 0.15
     for (const c of player.colliders) {
-      const pad = RADIUS + 0.15
       if (x > c.min.x - pad && x < c.max.x + pad && z > c.min.z - pad && z < c.max.z + pad) return true
+    }
+    for (const h of player.hulls || []) {
+      const o = h.outer
+      if (x > o.minx - pad && x < o.maxx + pad && z > o.minz - pad && z < o.maxz + pad) return true
     }
     return false
   }
@@ -151,6 +162,7 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
     const object = proto.clone(true)
     applySkin(object, skins[skin])
     sitOnFloor(object)
+    const footY = object.position.y
     object.position.x = x
     object.position.z = z
     object.name = 'NPC:' + skin
@@ -173,6 +185,7 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
       phase: Math.random() * Math.PI * 2,
       turnMul: 0.85 + Math.random() * 0.3,
       bubble,
+      footY,
     }
     object.userData.npc = npc
     object.traverse(o => { o.userData.npc = npc })
@@ -222,12 +235,16 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
   function avoidLocal(npc) {
     _avoid.set(0, 0, 0)
     let n = 0
-    for (const c of player.colliders) {
-      const cx = (c.min.x + c.max.x) * 0.5
-      const cz = (c.min.z + c.max.z) * 0.5
+    const consider = (cx, cz) => {
       const dx = npc.position.x - cx, dz = npc.position.z - cz
       const dist = Math.hypot(dx, dz)
       if (dist < 3.2) { _avoid.x += cx; _avoid.z += cz; n++ }
+    }
+    for (const c of player.colliders) {
+      consider((c.min.x + c.max.x) * 0.5, (c.min.z + c.max.z) * 0.5)
+    }
+    for (const h of player.hulls || []) {
+      consider((h.outer.minx + h.outer.maxx) * 0.5, (h.outer.minz + h.outer.maxz) * 0.5)
     }
     if (!n) return _avoid.set(0, 0, 0)
     _avoid.x /= n
@@ -297,8 +314,10 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
       if (pd < NOTICE_IN) npc.notice = true
       else if (pd > NOTICE_OUT) npc.notice = false
       npc.bubble.visible = npc.notice && pd < NOTICE_IN + 0.5
+      const gy = player.groundY ? player.groundY(npc.position.x, npc.position.z) : 0
+      npc.position.y = gy + npc.footY
       if (npc.bubble.visible) {
-        npc.bubble.position.set(npc.position.x, HEIGHT + 0.38, npc.position.z)
+        npc.bubble.position.set(npc.position.x, gy + HEIGHT + 0.38, npc.position.z)
       }
 
       if (npc.want === Wants.wander) {
@@ -350,7 +369,9 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
           move.normalize()
           const nx = npc.position.x + move.x * npc.speed * dt
           const nz = npc.position.z + move.z * npc.speed * dt
-          const hit = player.resolveXZ(nx, nz, RADIUS, npc)
+          const hit = player.slideXZ
+            ? player.slideXZ(npc.position.x, npc.position.z, nx, nz, RADIUS, npc)
+            : player.resolveXZ(nx, nz, RADIUS, npc)
           // player circle (player is not a mover)
           let hx = hit.x, hz = hit.z
           const pr = RADIUS + 0.5

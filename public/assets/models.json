@@ -49,16 +49,6 @@
   "hasUvs": true,
   "source": "Assets/Models/Food/tomato.fbx"
  },
- "720cd582718181345ab0b6ee3d055be5:4300000": {
-  "fileId": 4300000,
-  "name": "Cube",
-  "bin": "models/Notepad.bin",
-  "verts": 84,
-  "tris": 28,
-  "hasNormals": true,
-  "hasUvs": true,
-  "source": "Assets/Models/notepad/notepad2-1.fbx"
- },
  "7f6347bd1e5703c4fa90332e3065d523:4300000": {
   "fileId": 4300000,
   "name": "Cylinder",

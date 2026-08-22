@@ -20,14 +20,31 @@ export function ratWillSteal(type) {
   return type === 'cheese' || type === 'patty' || type === 'bacon' || type === 'tomato'
 }
 
-export function layoutFood(root, { maxSize = 0.55, sit = false } = {}) {
+export const FOOD_SIZE = {
+  patty: 0.371,
+  cheese: 0.326,
+  lettuce: 0.446,
+  bacon: 0.449,
+  tomato: 0.324,
+  topBun: 0.369,
+  bun: 0.369,
+  box: 0.50,
+}
+
+export function layoutFood(root, { maxSize, sit = false, type } = {}) {
   hideTriggers(root)
+  if (type === 'patty') {
+    root.traverse(o => {
+      if (o.isMesh && Math.abs(o.scale.z) < Math.abs(o.scale.x) * 0.4) o.scale.z = o.scale.x
+    })
+  }
   root.updateMatrixWorld(true)
   const box = boundsOf(root)
   if (box.isEmpty()) return { height: 0.1 }
   const size = box.getSize(new THREE.Vector3())
   const longest = Math.max(size.x, size.y, size.z, 1e-4)
-  const s = longest > maxSize ? maxSize / longest : 1
+  const cap = maxSize ?? FOOD_SIZE[type] ?? 0.16
+  const s = longest > cap ? cap / longest : (longest < cap * 0.4 ? cap / longest : 1)
   root.scale.multiplyScalar(s)
   root.updateMatrixWorld(true)
   const fitted = boundsOf(root)
@@ -47,7 +64,7 @@ export function createFoodWorld({ scene, player }) {
 
   function spawn({ proto, type, x, z, y = null, onFloor = false, fromSpawner = null, maxSize }) {
     const object = proto.clone(true)
-    const { height } = layoutFood(object, { maxSize: maxSize ?? (onFloor ? 0.7 : 0.5), sit: true })
+    const { height } = layoutFood(object, { maxSize, sit: true, type })
     object.position.x = x
     object.position.z = z
     object.position.y = y != null && !onFloor ? y : height * 0.5
@@ -80,22 +97,7 @@ export function createFoodWorld({ scene, player }) {
   }
 
   function addSpawner(x, z, proto) {
-    const g = new THREE.Group()
-    g.position.set(x, 0.01, z)
-    const grate = new THREE.Mesh(
-      new THREE.CircleGeometry(0.35, 16),
-      new THREE.MeshStandardMaterial({ color: 0x3a2a18, roughness: 0.95 })
-    )
-    grate.rotation.x = -Math.PI / 2
-    const hole = new THREE.Mesh(
-      new THREE.CircleGeometry(0.16, 12),
-      new THREE.MeshBasicMaterial({ color: 0x0a0806 })
-    )
-    hole.rotation.x = -Math.PI / 2
-    hole.position.y = 0.012
-    g.add(grate, hole)
-    scene.add(g)
-    const sp = { x, z, proto, item: null, next: 0, mesh: g }
+    const sp = { x, z, proto, item: null, next: 0, mesh: null }
     spawners.push(sp)
     return sp
   }
@@ -115,27 +117,36 @@ export function createFoodWorld({ scene, player }) {
       }
     }
 
+    const landed = []
     for (const item of items) {
       if (item.held || item.stolen) continue
       item.vel.y -= 9.81 * dt
       item.object.position.addScaledVector(item.vel, dt)
       const half = item.height * 0.5
-      if (item.object.position.y - half <= 0) {
-        item.object.position.y = half
+      const gy = player.groundY ? player.groundY(item.object.position.x, item.object.position.z) : 0
+      if (item.object.position.y - half <= gy) {
+        item.object.position.y = gy + half
         if (item.vel.y < 0) item.vel.y *= -0.15
         if (Math.abs(item.vel.y) < 0.4) item.vel.y = 0
         item.vel.x *= Math.max(0, 1 - 6 * dt)
         item.vel.z *= Math.max(0, 1 - 6 * dt)
         if (item.vel.lengthSq() < 0.04) item.vel.set(0, 0, 0)
+        const wasAir = !item.onFloor
         item.onFloor = true
         item.foodBeenOnFloor = true
+        if (wasAir && item.dropped && item.onLand) landed.push(item)
       } else {
         item.onFloor = false
       }
-      const hit = player.resolveXZ(item.object.position.x, item.object.position.z, item.radius, null)
-      item.object.position.x = hit.x
-      item.object.position.z = hit.z
+      // Parked cargo on the trailer bed must not get shoved out by wall AABBs
+      // (that dropped a box under the chassis).
+      if (!(item.kind === 'box' && item.onFloor && !item.dropped)) {
+        const hit = player.resolveXZ(item.object.position.x, item.object.position.z, item.radius, null)
+        item.object.position.x = hit.x
+        item.object.position.z = hit.z
+      }
     }
+    for (const item of landed) item.onLand(item)
   }
 
   return { items, spawners, spawn, destroy, addSpawner, foodOnFloor, update, SPAWN_EVERY }

@@ -3,7 +3,7 @@
 // standing in the space. Grab, cooking, and netcode come in later scenes.
 
 import * as THREE from 'three'
-import { createUnityLoader, fitOnFloor, hideTriggers, boundsOf } from '../common/unityScene.js'
+import { createUnityLoader, fitOnFloor, fitLongest, restorePattyDisc, hideTriggers, boundsOf } from '../common/unityScene.js'
 import { createFirstPersonPlayer } from '../systems/player.js'
 import { createCrowd } from '../systems/npc.js'
 import { createFoodWorld, inferFoodType } from '../systems/food.js'
@@ -11,14 +11,30 @@ import { createHands } from '../systems/hands.js'
 import { createRatDen } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
 import { createSoundboard } from '../systems/soundboard.js'
+import { createDelivery, makeOpenNet, BOX_SIZE } from '../systems/delivery.js'
+import { createScaler } from '../systems/scaler.js'
+import { installHarness } from '../common/harness.js'
 
 const FEATURED = [
   { slug: 'heroes/Player', caption: 'Player' },
-  { slug: 'mobs/Npc',      caption: 'NPC' },
-  { slug: 'heroes/Arm',    caption: 'Arm' },
   { slug: 'mobs/Rat',      caption: 'Rat' },
-  { slug: 'items/Truck',   caption: 'Truck' },
 ]
+
+// Pedestals we skip: live in the hall already (Arm, NPC), unused Kritz
+// leftovers, or a light we will add natively later.
+const SKIP_EXHIBITS = new Set([
+  'heroes/Arm',
+  'mobs/Npc',
+  'items/Notepad',
+  'items/Paper',
+  'items/PointLight',
+  'ui/BunBottom',
+  'ui/BunTop',
+  'ui/Cheese',
+  'ui/Lettuce',
+  'ui/Patty',
+  'ui/CustomerMenu',
+])
 
 const GROUP_ORDER = ['heroes', 'mobs', 'items', 'ui']
 
@@ -28,10 +44,46 @@ const FACE_AISLE = new Set([
   'items/NumberStand',
 ])
 
+// Flat cards / world-space UI. Yaw so +Z tracks the camera (SpeechBubble.cs
+// LookRotation; NpcSpeechBubble is a canvas; Fire is a Quad).
+const FACE_PLAYER = new Set([
+  'ui/SpeechBubble',
+  'ui/NpcSpeechBubble',
+])
+
 const SPACING_X = 4.6
 const SPACING_Z = 7.8
 const PEDESTAL_H = 0.88
 const PEDESTAL_W = 1.25
+
+// Longest-edge targets in meters. Pedestal sizes from the in-museum scale-gun
+// pass. Player / Rat / Whiteboard / Monitor stay on the 0.4–2.35 m clamp.
+const EXHIBIT_LONGEST = {
+  'items/Spatula': 1.021,
+  'items/Cupboard': 1.381,
+  'items/NumberStand': 1.011,
+  'items/Knife': 0.888,
+  'items/LightSwitch': 0.437,
+  'items/Pencil': 0.524,
+  'items/Fire': 0.828,
+  'items/Plate': 0.714,
+  'items/Cheese': 0.326,
+  'items/Tip': 0.511,
+  'items/Box': 0.856,
+  'items/BoxOpen': 3.157,
+  'items/FireExtinguisher': 0.771,
+  'items/Bacon': 0.449,
+  'items/BunTop': 0.369,
+  'items/BunBottom': 0.369,
+  'items/Lettuce': 0.446,
+  'items/LettuceHead': 0.417,
+  'items/LettucePart': 0.451,
+  'items/Patty': 0.371,
+  'items/Tomato': 0.324,
+  'ui/SpeechBubble': 1.238,
+  'ui/NpcSpeechBubble': 1.048,
+  'ui/StaffMenu': 0.937,
+}
 
 const $ = id => document.getElementById(id)
 
@@ -60,6 +112,12 @@ let hands = null
 let rats = null
 let demoPlayers = null
 let soundboard = null
+let delivery = null
+const fireSprites = []
+const facePlayer = []
+const scaler = createScaler({ scene, player, exhibits, pedestalH: PEDESTAL_H })
+const _fireCam = new THREE.Vector3()
+const _firePos = new THREE.Vector3()
 const raycaster = new THREE.Raycaster()
 const ndc = new THREE.Vector2(0, 0)
 
@@ -72,6 +130,23 @@ function canvasTexture(w, h, draw) {
   t.colorSpace = THREE.SRGBColorSpace
   t.anisotropy = 4
   return t
+}
+
+function makePlaqueStand(title, sub) {
+  const face = makePlaque(title, sub)
+  const g = new THREE.Group()
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(1.52, 0.48, 0.05),
+    // Same mocha as makePedestal() — not the lighter Wood.png.
+    new THREE.MeshStandardMaterial({
+      color: 0x3a322c, roughness: 0.72, metalness: 0.04,
+    }),
+  )
+  board.position.z = -0.028
+  board.castShadow = board.receiveShadow = true
+  face.position.z = 0.027
+  g.add(board, face)
+  return g
 }
 
 function makePlaque(title, sub) {
@@ -216,6 +291,7 @@ function addLights() {
 function isExhibit(item) {
   if (item.kind !== 'prefab') return false
   if (!item.meshes && !item.ui) return false
+  if (SKIP_EXHIBITS.has(item.slug)) return false
   // Script hosts / trigger volumes / nav gizmos — behavior lives in JS, not these JSON poses.
   if (/Particles|Pathfinding|triggers|GameManagement\/Spawn/.test(item.slug)) return false
   if (/\/(ServerBox|PhysCube|3rd_Person_Controller|First_Person_Controller|GTextEras|Text3D|PlayerMenu|Bubbles)$/.test(item.slug)) return false
@@ -223,6 +299,47 @@ function isExhibit(item) {
   if (/Scripts\/Computer\/Graphics\//.test(item.slug)) return false
   if (item.slug === 'Resources/Skins/Cheese') return false
   return true
+}
+
+function flipStaffMenuUVs(root) {
+  root.traverse(o => {
+    if (!o.isMesh || !o.geometry || !o.geometry.attributes.uv) return
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()
+    const uv = g.attributes.uv
+    const nrm = g.attributes.normal
+    if (!uv || !nrm) return
+    for (let i = 0; i < uv.count; i += 3) {
+      const nz = (nrm.getZ(i) + nrm.getZ(i + 1) + nrm.getZ(i + 2)) / 3
+      if (nz <= 0.35) continue
+      for (let k = 0; k < 3; k++) {
+        const vi = i + k
+        uv.setX(vi, 1 - uv.getX(vi))
+      }
+    }
+    uv.needsUpdate = true
+    o.geometry = g
+  })
+}
+
+function addStaffMenuWhiteBack(root) {
+  let mesh = null
+  root.traverse(o => { if (!mesh && o.isMesh) mesh = o })
+  if (!mesh || !mesh.geometry) return
+  mesh.geometry.computeBoundingBox()
+  const bb = mesh.geometry.boundingBox
+  const w = bb.max.x - bb.min.x
+  const h = bb.max.y - bb.min.y
+  const back = new THREE.Mesh(
+    new THREE.PlaneGeometry(w * 1.02, h * 1.02),
+    new THREE.MeshBasicMaterial({ color: 0xffffff }),
+  )
+  back.rotation.y = Math.PI
+  back.position.set(
+    (bb.min.x + bb.max.x) * 0.5,
+    (bb.min.y + bb.max.y) * 0.5,
+    bb.min.z - 0.002,
+  )
+  mesh.add(back)
 }
 
 function layoutRows(items, featuredSlugs) {
@@ -248,8 +365,21 @@ function layoutRows(items, featuredSlugs) {
 
 function placeOnPedestal(asset, x, z, meta) {
   hideTriggers(asset)
-  const { size, scale, native } = fitOnFloor(asset, { maxSize: 2.35, minSize: 0.4 })
+  // Rotate before centering — FACE_AISLE around a non-centered pivot
+  // walked the Cupboard off the back of its podium.
   if (FACE_AISLE.has(meta.slug)) asset.rotation.y += Math.PI
+  if (meta.slug === 'items/Patty') restorePattyDisc(asset)
+  const target = EXHIBIT_LONGEST[meta.slug]
+  const { size, scale, native } = target != null
+    ? fitLongest(asset, target)
+    : fitOnFloor(asset, { maxSize: 2.35, minSize: 0.4 })
+  if (meta.slug === 'items/Cupboard') {
+    // Sit the aisle-facing face at the front of the plinth, not AABB-centered
+    // (the cabinet body is deeper than the podium).
+    asset.updateMatrixWorld(true)
+    const box = boundsOf(asset)
+    asset.position.z += (PEDESTAL_W * 0.5 - 0.05) - box.max.z
+  }
   asset.position.y += PEDESTAL_H + 0.06
 
   const caption = FEATURED.find(f => f.slug === meta.slug)?.caption || meta.label
@@ -270,12 +400,52 @@ function placeOnPedestal(asset, x, z, meta) {
   const hd = Math.max(PEDESTAL_W / 2, size.z * 0.4)
   player.addCollider({ x: x - hw, z: z - hd }, { x: x + hw, z: z + hd })
 
-  const rec = { ...meta, object: wrap, x, z, size, scale, caption }
+  const rec = {
+    ...meta, object: wrap, display: asset, x, z, size, scale, caption,
+    editMul: 1,
+    native: native ? { x: native.x, y: native.y, z: native.z } : null,
+  }
   const foodType = inferFoodType(meta.slug, meta.label)
   if (foodType !== 'other') rec.foodType = foodType
   exhibits.push(rec)
   wrap.traverse(o => { o.userData.exhibit = rec })
   return rec
+}
+
+// FireAnimate.cs: one PNG, not a sheet. Flicker = periodic localScale.x flip.
+function setupFireSprite(root) {
+  root.traverse(o => {
+    if (!o.isMesh) return
+    o.castShadow = o.receiveShadow = false
+    const map = o.material && o.material.map
+    o.material = new THREE.MeshBasicMaterial({
+      map,
+      color: 0xffffff,
+      transparent: true,
+      alphaTest: 0.45,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+  })
+  fireSprites.push({ root, next: 0.1 + Math.random() * 0.2 })
+}
+
+function faceYaw(root) {
+  root.getWorldPosition(_firePos)
+  root.rotation.y = Math.atan2(_fireCam.x - _firePos.x, _fireCam.z - _firePos.z)
+}
+
+function updateFireSprites(dt) {
+  player.camera.getWorldPosition(_fireCam)
+  for (const f of fireSprites) {
+    f.next -= dt
+    if (f.next <= 0) {
+      f.root.scale.x *= -1
+      f.next = 0.1 + Math.random() * 0.2
+    }
+    faceYaw(f.root)
+  }
+  for (const root of facePlayer) faceYaw(root)
 }
 
 function setStatus(msg) { $('load-msg').textContent = msg }
@@ -285,7 +455,7 @@ async function boot() {
   setStatus('Reading manifest…')
   const manifest = await fetch('./assets/manifest.json').then(r => r.json())
   const featuredSlugs = FEATURED.map(f => f.slug)
-  const items = manifest.filter(isExhibit)
+  const items = manifest.filter(isExhibit).filter(i => i.slug !== 'items/Truck')
   // make sure featured slugs are present even if the filter missed them
   for (const s of featuredSlugs) {
     if (!items.some(i => i.slug === s)) {
@@ -300,6 +470,7 @@ async function boot() {
   let z = 0
   const positions = []
   let audioZ = -SPACING_Z
+  let deliveryZ = -SPACING_Z * 2
 
   for (const row of rows) {
     const n = row.items.length
@@ -310,6 +481,8 @@ async function boot() {
     if (row.name === 'People') {
       audioZ = z
       z -= SPACING_Z
+      deliveryZ = z - 16
+      z -= 32
     }
   }
 
@@ -358,8 +531,51 @@ async function boot() {
         const { root } = await loader.load(item.slug)
         const box = boundsOf(root)
         if (box.isEmpty()) continue
-        if (inferFoodType(item.slug, item.label) !== 'other') foodProtos[item.slug] = root.clone(true)
-        placeOnPedestal(root, x0 + i * SPACING_X, rz, item)
+        if (inferFoodType(item.slug, item.label) !== 'other') {
+          foodProtos[item.slug] = root.clone(true)
+          if (item.slug === 'items/Patty') restorePattyDisc(foodProtos[item.slug])
+        }
+        let display = root
+        if (item.slug === 'ui/StaffMenu') {
+          flipStaffMenuUVs(root)
+          addStaffMenuWhiteBack(root)
+        }
+        if (item.slug === 'ui/NpcSpeechBubble') {
+          // Arrow.png is a small down-triangle in a 100×100 empty square,
+          // parented on the bubble at the same size — the tail sat inside
+          // the circle. Shrink it and park it under the oval.
+          root.traverse(o => {
+            if (o.name !== 'Background') return
+            for (const ch of o.children) {
+              if (!ch.isMesh) continue
+              ch.scale.setScalar(0.28)
+              ch.position.y = -42
+            }
+          })
+        }
+        if (item.slug === 'items/BoxOpen') {
+          let boxTex = null
+          root.traverse(o => {
+            if (o.isMesh && o.material && o.material.map) boxTex = o.material.map
+          })
+          display = makeOpenNet(boxTex, BOX_SIZE)
+        }
+        // Lettuce-Head-Full is a hollow leaf shell; Lettuce-Head-Part is a
+        // solid hemisphere (KnifeTrigger chops Full → two Parts at 180°).
+        // Seat the half inside the shell so the head reads as one vegetable.
+        if (item.slug === 'items/LettuceHead') {
+          try {
+            const part = await loader.load('items/LettucePart')
+            hideTriggers(part.root)
+            part.root.rotation.y = Math.PI
+            root.add(part.root)
+          } catch (err) {
+            console.warn('[museum] LettucePart nest skipped', err)
+          }
+        }
+        const rec = placeOnPedestal(display, x0 + i * SPACING_X, rz, item)
+        if (item.slug === 'items/Fire') setupFireSprite(display)
+        if (FACE_PLAYER.has(item.slug)) facePlayer.push(display)
       } catch (err) {
         console.warn('[museum] skip', item.slug, err)
       }
@@ -395,11 +611,65 @@ async function boot() {
     })
   }
 
+  const needFood = [
+    'items/Patty', 'items/Bacon', 'items/BunTop', 'items/BunBottom',
+    'items/LettuceHead', 'items/Cheese', 'items/Tomato',
+  ]
+  for (const slug of needFood) {
+    if (foodProtos[slug]) continue
+    try {
+      const extra = await loader.load(slug)
+      foodProtos[slug] = extra.root
+    } catch (err) {
+      console.warn('[museum] food proto missing', slug, err)
+    }
+  }
+
+  try {
+    setStatus('Loading delivery truck…')
+    const banner = makeBanner('Delivery')
+    banner.position.set(0, 4.4, deliveryZ + 8.5)
+    scene.add(banner)
+    delivery = await createDelivery({
+      scene, player, loader, foodWorld, foodProtos,
+      x: 0, z: deliveryZ,
+    })
+    const rec = {
+      slug: 'items/Truck',
+      label: 'Truck',
+      caption: 'Truck',
+      group: 'items',
+      x: 0,
+      z: deliveryZ,
+      size: delivery.size,
+    }
+    exhibits.push(rec)
+    const ns = delivery.size
+    const nativeStr = `native ${ns.x.toFixed(2)} × ${ns.y.toFixed(2)} × ${ns.z.toFixed(2)}`
+    const plaque = makePlaqueStand(rec.caption, `${rec.group}  ·  ${nativeStr}`)
+    // Same card as the pedestals, leaned 45° (label up) at the foot of the ramp.
+    const lean = Math.PI / 4
+    const plaqueH = 0.48
+    plaque.rotation.x = -lean
+    plaque.position.set(
+      delivery.ramp.width * 0.5 + 0.82,
+      Math.sin(lean) * plaqueH * 0.5 + 0.01,
+      delivery.ramp.z1 + 0.35,
+    )
+    plaque.traverse(o => { o.userData.exhibit = rec })
+    scene.add(plaque)
+  } catch (err) {
+    console.warn('[museum] delivery truck skipped', err)
+  }
+
   let armRoot = null
   try {
     const arm = await loader.load('heroes/Arm')
     armRoot = arm.root
-    hands = createHands({ scene, player, armProto: armRoot, foodWorld, exhibits, foodProtos })
+    hands = createHands({
+      scene, player, armProto: armRoot, foodWorld, exhibits, foodProtos,
+      getRats: () => rats,
+    })
   } catch (err) {
     console.warn('[museum] arms skipped', err)
   }
@@ -436,32 +706,112 @@ async function boot() {
 
   window.__museum = {
     scene, camera: player.camera, renderer, player, exhibits, crowd,
-    foodWorld, hands, rats, demoPlayers, soundboard,
-    teleport(slug) {
-      if (soundboard && /^(Soundboard|Audio|audio\/Soundboard)$/i.test(slug)) {
-        const v = soundboard.viewSpot()
-        player.spawn(v.stand.x, 0, v.stand.z, 0)
-        player.lookAt(v.look.x, v.look.y, v.look.z)
-        return 'Soundboard'
-      }
-      const e = exhibits.find(x => x.slug === slug || x.label === slug || x.caption === slug)
-      if (!e) return null
-      const back = Math.max(2.8, (e.size?.y || 2) * 0.85 + 1.8)
-      player.spawn(e.x, 0, e.z + back, 0)
-      player.lookAt(e.x, PEDESTAL_H + Math.min((e.size?.y || 2) * 0.45, 1.5), e.z)
-      return e.caption || e.label
-    },
-    enter, pause,
+    foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler,
+    teleport, enter, pause,
+    dbg: harness.dbg,
+    pose: harness.pose,
   }
-  console.log('[museum] ready', exhibits.length, 'exhibits')
+  window.dbg = harness.dbg
+  window.pose = harness.pose
+  console.log('[museum] ready', exhibits.length, 'exhibits — dbg.help() / pose.help()')
 }
 
-const clock = new THREE.Clock()
 let frames = 0, lastFps = performance.now()
 let playing = false
 let lookName = ''
 
+function teleport(slug) {
+  if (soundboard && /^(Soundboard|Audio|audio\/Soundboard)$/i.test(slug)) {
+    const v = soundboard.viewSpot()
+    player.spawn(v.stand.x, 0, v.stand.z, 0)
+    player.lookAt(v.look.x, v.look.y, v.look.z)
+    return 'Soundboard'
+  }
+  if (delivery && /^(Truck|Delivery|items\/Truck)$/i.test(slug)) {
+    const v = delivery.viewSpot()
+    player.spawn(v.stand.x, 0, v.stand.z, 0)
+    player.lookAt(v.look.x, v.look.y, v.look.z)
+    return 'Truck'
+  }
+  const e = exhibits.find(x => x.slug === slug || x.label === slug || x.caption === slug)
+  if (!e) return null
+  const longest = Math.max(e.size?.x || 0, e.size?.y || 0, e.size?.z || 0, 0.4)
+  const back = Math.min(4.2, Math.max(1.55, longest * 1.7 + 1.15))
+  player.spawn(e.x, 0, e.z + back, 0)
+  player.lookAt(e.x, PEDESTAL_H + Math.min((e.size?.y || 2) * 0.45, 1.5), e.z)
+  return e.caption || e.label
+}
+
+function dumpExtras() {
+  return {
+    playing,
+    holding: hands?.holdingLabel() || '',
+    food: (foodWorld?.items || []).map(i => ({
+      type: i.type, kind: i.kind || 'food', contents: i.contents || null, opened: !!i.opened,
+      pos: { x: +i.position.x.toFixed(2), y: +i.position.y.toFixed(2), z: +i.position.z.toFixed(2) },
+      held: !!i.held, onFloor: !!i.onFloor, stolen: !!i.stolen,
+    })),
+    rats: (rats?.rats || []).map(r => ({
+      pos: { x: +r.position.x.toFixed(2), y: +r.position.y.toFixed(2), z: +r.position.z.toFixed(2) },
+      stolen: r.stolen?.type || null, goingHome: !!r.goingHome,
+      held: !!r.held, onFloor: !!r.onFloor,
+    })),
+    npcs: (crowd?.npcs || []).map(n => ({
+      skin: n.skin, want: n.want, notice: !!n.notice,
+      pos: { x: +n.position.x.toFixed(2), z: +n.position.z.toFixed(2) },
+    })),
+    exhibits: exhibits.map(e => e.slug),
+    tool: scaler.tool,
+    scales: scaler.dump(),
+  }
+}
+
+const harness = installHarness({
+  scene, renderer, loader, player,
+  getExhibits: () => exhibits,
+  teleport,
+  dumpExtras,
+  extraDbg: { scaler },
+})
+
+function tick(dt) {
+  player.update(dt)
+  if (soundboard) {
+    soundboard.update(dt)
+    if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) soundboard.tryPress()
+  }
+  if (hands) hands.update(dt, { grab: scaler.tool === 'hand', right: scaler.tool === 'hand' })
+  if (foodWorld) foodWorld.update(dt, harness.time.T)
+  if (rats) rats.update(dt, harness.time.T)
+  if (crowd) crowd.update(dt, harness.time.T)
+  if (demoPlayers) demoPlayers.update(dt)
+  if (fireSprites.length || facePlayer.length) updateFireSprites(dt)
+}
+
+function fitRenderer() {
+  const w = innerWidth, h = innerHeight
+  if (w < 2 || h < 2) return false
+  const el = renderer.domElement
+  if (el.clientWidth !== w || el.clientHeight !== h) {
+    player.camera.aspect = w / h
+    player.camera.updateProjectionMatrix()
+    renderer.setSize(w, h)
+    harness.poser.resize()
+  }
+  return true
+}
+
+function render() {
+  if (!fitRenderer()) return
+  if (harness.poser.active) harness.poser.render()
+  else renderer.render(scene, player.camera)
+}
+
+harness.bind({ tick, render })
+
 function currentLook() {
+  const scaleLook = scaler.lookLabel()
+  if (scaleLook) return scaleLook
   const audioLook = soundboard?.lookLabel()
   if (audioLook) return audioLook
   raycaster.setFromCamera(ndc, player.camera)
@@ -473,9 +823,17 @@ function currentLook() {
       const d = h.object.userData.demoPlayer
       return d.spec.name + ' · ' + d.spec.skin
     }
-    if (h.object.userData.rat) return 'rat'
+    if (h.object.userData.rat) {
+      const rat = h.object.userData.rat
+      return rat.held ? 'rat (held)' : 'rat · pick up'
+    }
     const food = h.object.userData.food
-    if (food) return food.type + (food.held ? ' (held)' : food.onFloor ? ' (floor)' : '')
+    if (food) {
+      if (food.kind === 'box') {
+        return (food.opened ? 'open box' : 'box · ' + (food.contents || 'closed')) + (food.held ? ' (held)' : '')
+      }
+      return food.type + (food.held ? ' (held)' : food.onFloor ? ' (floor)' : '')
+    }
     const rec = h.object.userData.exhibit
     if (rec) return rec.foodType ? (rec.caption || rec.label) + ' · take a copy' : (rec.caption || rec.label)
   }
@@ -483,17 +841,11 @@ function currentLook() {
 }
 
 renderer.setAnimationLoop(() => {
-  const dt = clock.getDelta()
-  player.update(dt)
-  if (soundboard) {
-    soundboard.update(dt)
-    if (player.fire1Down || player.fire2Down) soundboard.tryPress()
+  if (!harness.poser.active) {
+    const dt = harness.time.advance()
+    if (dt > 0) tick(dt)
+    scaler.update()
   }
-  if (hands) hands.update(dt)
-  if (foodWorld) foodWorld.update(dt, clock.elapsedTime)
-  if (rats) rats.update(dt, clock.elapsedTime)
-  if (crowd) crowd.update(dt, clock.elapsedTime)
-  if (demoPlayers) demoPlayers.update(dt)
 
   const look = currentLook()
   if (look !== lookName) {
@@ -509,13 +861,20 @@ renderer.setAnimationLoop(() => {
     ? 'run' : ((k.has('ControlLeft') || k.has('ControlRight')) ? 'walk' : 'move')
   if ($('s-hold')) $('s-hold').textContent = hands?.holdingLabel() || '—'
   if ($('s-rats')) $('s-rats').textContent = String(rats ? rats.count : 0)
+  if ($('s-tool')) $('s-tool').textContent = scaler.tool === 'scale' ? 'scale gun' : 'hand'
+  if ($('help')) {
+    $('help').textContent = scaler.tool === 'scale'
+      ? 'SCALE GUN  ·  aim at an exhibit  ·  hold LMB, drag right = bigger / left = smaller  ·  0 empty hands'
+      : 'WASD move · Space jump · Q/E hands · 0 empty · 1 scale gun · click grab/drop · Shift run · Esc release mouse'
+  }
 
-  renderer.render(scene, player.camera)
+  render()
   if (++frames >= 20) {
     const now = performance.now()
     $('s-fps').textContent = String(Math.round(frames * 1000 / (now - lastFps)))
     lastFps = now
     frames = 0
+    harness.refreshPanel()
   }
 })
 
@@ -532,38 +891,26 @@ function enter() {
 }
 
 function pause() {
-  playing = false
-  player.enabled = false
+  // No game pause (this will be multiplayer). Esc / this helper only
+  // drops pointer lock; WASD and the sim keep running. LMB recaptures.
   player.unlock()
-  soundboard?.pause()
-  $('loader').style.display = 'flex'
-  $('loader').querySelector('h1').textContent = 'Paused'
-  $('loader').querySelector('.sub').textContent = 'click to continue'
 }
 
 $('loader').addEventListener('click', enter)
 renderer.domElement.addEventListener('click', () => {
   if (playing && !player.locked) player.requestLock(renderer.domElement)
 })
-document.addEventListener('pointerlockchange', () => {
-  // Only pause when the user actually had pointer lock and released it
-  // (Esc). A failed requestPointerLock — iframes, missing user gesture —
-  // must not bounce us back to the overlay; WASD still works unlocked.
-  if (playing && !player.locked && document.hidden === false) {
-    if (player._hadLock) pause()
-  }
-  player._hadLock = player.locked
-})
 addEventListener('keydown', e => {
+  if (e.target && e.target.closest('input, textarea, [contenteditable]')) return
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
     e.preventDefault()
   }
-  if (e.code === 'Escape' && playing) pause()
 })
 addEventListener('resize', () => {
   player.camera.aspect = innerWidth / innerHeight
   player.camera.updateProjectionMatrix()
   renderer.setSize(innerWidth, innerHeight)
+  harness.poser.resize()
 })
 
 player.camera.aspect = innerWidth / innerHeight

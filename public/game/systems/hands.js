@@ -12,7 +12,7 @@ const HOLD_LERP = 30
 const ARM_POS_LERP = 25
 const ARM_ROT_LERP = 20
 
-export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos }) {
+export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, onDrop } = {}) {
   hideTriggers(armProto)
 
   function makeArm(side) {
@@ -95,9 +95,12 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
   }
 
   function grabItem(arm, item) {
-    if (!item || item.held || item.stolen) return
+    if (!item || item.held || item.opened) return
+    // Food a rat is carrying is stolen; the rat itself uses .stolen as its morsel.
+    if (item.kind !== 'rat' && item.stolen) return
     item.held = true
     item.onFloor = false
+    item.dropped = false
     if (item.fromSpawner && item.fromSpawner.item === item) item.fromSpawner.item = null
     item.fromSpawner = null
     arm.holding = item
@@ -112,7 +115,7 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     const item = foodWorld.spawn({
       proto, type: rec.foodType || 'other',
       x: _pos.x + _fwd.x, z: _pos.z + _fwd.z,
-      y: _pos.y, onFloor: false, maxSize: 0.48,
+      y: _pos.y, onFloor: false,
     })
     grabItem(arm, item)
   }
@@ -139,7 +142,9 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       item.vel.copy(_fwd).multiplyScalar(2.5)
       item.vel.y = 0.4
     }
+    item.dropped = true
     arm.holding = null
+    if (onDrop) onDrop(item)
   }
 
   function pickTarget() {
@@ -149,8 +154,16 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
 
     for (const h of hits) {
       if (h.distance > GRAB_RANGE) continue
-      if (h.object.userData.food && !h.object.userData.food.held) {
-        return { kind: 'food', item: h.object.userData.food, dist: h.distance }
+      const ratHit = h.object.userData.rat
+      if (ratHit && !ratHit.held) {
+        return { kind: 'rat', item: ratHit, dist: h.distance }
+      }
+      const food = h.object.userData.food
+      if (food && food.stolen && food.stolen.kind === 'rat' && !food.stolen.held) {
+        return { kind: 'rat', item: food.stolen, dist: h.distance }
+      }
+      if (food && !food.held && !food.opened && !food.stolen) {
+        return { kind: 'food', item: food, dist: h.distance }
       }
       const rec = h.object.userData.exhibit
       if (rec && rec.foodType && foodProtos[rec.slug]) {
@@ -160,20 +173,25 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     // SphereCast equivalent — floor cheese is a thin slab the centre ray often misses.
     player.camera.getWorldPosition(_pos)
     player.camera.getWorldDirection(_fwd)
-    let best = null, bestD = GRAB_RANGE
-    for (const item of foodWorld.items) {
-      if (item.held || item.stolen) continue
+    let best = null, bestD = GRAB_RANGE, bestKind = 'food'
+    const consider = (item, kind, minD = 0.2) => {
+      if (!item || item.held || item.opened) return
+      if (kind !== 'rat' && item.stolen) return
       const dx = item.position.x - _pos.x
       const dy = item.position.y - _pos.y
       const dz = item.position.z - _pos.z
       const d = Math.hypot(dx, dy, dz)
-      if (d > bestD || d < 0.2) continue
+      if (d > bestD || d < minD) return
       const nd = 1 / d
-      if (_fwd.x * dx * nd + _fwd.y * dy * nd + _fwd.z * dz * nd < 0.65) continue
+      if (_fwd.x * dx * nd + _fwd.y * dy * nd + _fwd.z * dz * nd < 0.65) return
       best = item
       bestD = d
+      bestKind = kind
     }
-    if (best) return { kind: 'food', item: best, dist: bestD }
+    for (const item of foodWorld.items) consider(item, 'food')
+    const den = getRats && getRats()
+    for (const rat of den ? den.rats : []) consider(rat, 'rat')
+    if (best) return { kind: bestKind, item: best, dist: bestD }
     let bestEx = null
     bestD = GRAB_RANGE
     for (const rec of exhibits) {
@@ -190,25 +208,31 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     return null
   }
 
-  function update(dt) {
+  function update(dt, opts = {}) {
     dt = Math.min(dt, 0.1)
+    const grab = opts.grab !== false
+    const rightOk = opts.right !== false
     const lActive = player.leftHand
-    const rActive = player.rightHand
+    const rActive = player.rightHand && rightOk
     placeArm(left, dt, lActive || !!left.holding)
     placeArm(right, dt, rActive || !!right.holding)
 
-    if (player.fire1Down && lActive && !left.holding) {
-      const t = pickTarget()
-      if (t?.kind === 'food') grabItem(left, t.item)
-      else if (t?.kind === 'exhibit') spawnCopy(left, t.rec)
+    if (player.locked && grab) {
+      if (player.fire1Down && lActive && !left.holding) {
+        const t = pickTarget()
+        if (t?.kind === 'food' || t?.kind === 'rat') grabItem(left, t.item)
+        else if (t?.kind === 'exhibit') spawnCopy(left, t.rec)
+      }
+      if (player.fire2Down && rActive && !right.holding) {
+        const t = pickTarget()
+        if (t?.kind === 'food' || t?.kind === 'rat') grabItem(right, t.item)
+        else if (t?.kind === 'exhibit') spawnCopy(right, t.rec)
+      }
     }
-    if (player.fire2Down && rActive && !right.holding) {
-      const t = pickTarget()
-      if (t?.kind === 'food') grabItem(right, t.item)
-      else if (t?.kind === 'exhibit') spawnCopy(right, t.rec)
+    if (player.locked) {
+      if (player.fire1Up && left.holding) drop(left)
+      if (player.fire2Up && right.holding) drop(right)
     }
-    if (player.fire1Up && left.holding) drop(left)
-    if (player.fire2Up && right.holding) drop(right)
 
     if (left.holding) holdPose(left, dt)
     if (right.holding) holdPose(right, dt)
@@ -219,8 +243,8 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
   }
 
   function holdingLabel() {
-    const a = left.holding?.type
-    const b = right.holding?.type
+    const a = left.holding?.type || (left.holding?.kind === 'rat' ? 'rat' : null)
+    const b = right.holding?.type || (right.holding?.kind === 'rat' ? 'rat' : null)
     if (a && b) return a + ' + ' + b
     return a || b || ''
   }

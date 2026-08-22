@@ -74,13 +74,27 @@ export function createUnityLoader({ base = '.' } = {}) {
       const tint = m.tint || m.color || [1, 1, 1]
       const avg  = m.avg  || [1, 1, 1]
       const rgb  = m.tex ? tint : tint.map((c, i) => c * avg[i])
+      const map = m.tex ? tex(m.tex) : null
+      const side = m.doubleSide ? THREE.DoubleSide : THREE.FrontSide
+      // Cutout sprites (Fire): PNG alpha, unlit, no solid card.
+      if (m.cutout) {
+        return new THREE.MeshBasicMaterial({
+          color: new THREE.Color(...rgb),
+          map,
+          transparent: true,
+          alphaTest: 0.45,
+          depthWrite: false,
+          side: side === THREE.FrontSide ? THREE.DoubleSide : side,
+        })
+      }
       return new THREE.MeshStandardMaterial({
         color: new THREE.Color(...rgb),
-        map: m.tex ? tex(m.tex) : null,
+        map,
         transparent: m.opacity < 1,
         opacity: m.opacity,
         roughness: 0.85,
         metalness: 0.0,
+        side,
       })
     })
     const fallback = new THREE.MeshStandardMaterial({ color: 0x9aa4b2, roughness: 0.9 })
@@ -135,7 +149,8 @@ export function createUnityLoader({ base = '.' } = {}) {
           g = geo(n.mesh)
         }
         o = new THREE.Mesh(g, m)
-        o.castShadow = o.receiveShadow = true
+        const cutout = !!(data.materials && data.materials[n.mat] && data.materials[n.mat].cutout)
+        o.castShadow = o.receiveShadow = !cutout
         meshCount++
       } else {
         o = new THREE.Object3D()
@@ -196,6 +211,19 @@ export function boundsOf(root, { includeTriggers = false } = {}) {
   return box
 }
 
+function sitOnFloor(root) {
+  root.updateMatrixWorld(true)
+  const fitted = boundsOf(root)
+  if (fitted.isEmpty()) return { size: new THREE.Vector3(), native: new THREE.Vector3() }
+  const mid = fitted.getCenter(new THREE.Vector3())
+  const size = fitted.getSize(new THREE.Vector3())
+  root.position.x -= mid.x
+  root.position.z -= mid.z
+  root.position.y -= fitted.min.y
+  root.updateMatrixWorld(true)
+  return { size, native: size }
+}
+
 /** Scale `root` so its longest side equals `target`, then sit its bottom on y=0. */
 export function fitOnFloor(root, { maxSize = 2.2, minSize = 0.35 } = {}) {
   const box = boundsOf(root)
@@ -206,14 +234,35 @@ export function fitOnFloor(root, { maxSize = 2.2, minSize = 0.35 } = {}) {
   if (longest > maxSize) s = maxSize / longest
   else if (longest < minSize && longest > 1e-4) s = minSize / longest
   root.scale.multiplyScalar(s)
+  const fitted = sitOnFloor(root)
+  return { size: fitted.size, scale: s, native: size }
+}
+
+/** Scale longest edge to exactly `target` meters and sit on y=0. */
+export function fitLongest(root, target) {
+  const box = boundsOf(root)
+  if (box.isEmpty()) return { size: new THREE.Vector3(), scale: 1 }
+  const size = box.getSize(new THREE.Vector3())
+  const longest = Math.max(size.x, size.y, size.z, 1e-4)
+  const s = target / longest
+  root.scale.multiplyScalar(s)
+  const fitted = sitOnFloor(root)
+  return { size: fitted.size, scale: s, native: size }
+}
+
+/**
+ * The Patty prefab's authored scale is (0.5, 0.5, 0.1). After the Y-up
+ * conversion that already made a disc, the Z-squash turns it into a hotdog.
+ * Equalize XZ so it's a short cylinder again.
+ */
+export function restorePattyDisc(root) {
+  root.traverse(o => {
+    if (!o.isMesh && o.name !== 'Patty') return
+    if (Math.abs(o.scale.z) < Math.abs(o.scale.x) * 0.4) {
+      o.scale.z = o.scale.x
+    }
+  })
   root.updateMatrixWorld(true)
-  const fitted = boundsOf(root)
-  const mid = fitted.getCenter(new THREE.Vector3())
-  root.position.x -= mid.x
-  root.position.z -= mid.z
-  root.position.y -= fitted.min.y
-  root.updateMatrixWorld(true)
-  return { size: fitted.getSize(new THREE.Vector3()), scale: s, native: size }
 }
 
 export function hideTriggers(root) {
