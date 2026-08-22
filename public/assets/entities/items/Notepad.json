@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/Drawing/Notepad.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Notepad",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    15.46351,
+    5.3880877,
+    9.227612
+   ],
+   "quat": [
+    3.1339706e-08,
+    0.70710695,
+    0.70710665,
+    -3.133972e-08
+   ],
+   "scale": [
+    0.5,
+    0.5,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "720cd582718181345ab0b6ee3d055be5:4300000",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "notepad",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.5605,
+    0.5072,
+    0.4735
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Notepad.png"
+  }
+ ]
+}

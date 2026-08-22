@@ -1,0 +1,46 @@
+{
+ "source": "Resources/Prefabs/Food/Cheese.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Cheese",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -9.278669,
+    3.7646961,
+    11.379861
+   ],
+   "quat": [
+    -0.0,
+    -3.475746e-07,
+    0.0,
+    -1.0
+   ],
+   "scale": [
+    1.0,
+    0.05,
+    1.0
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "cheese",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.8672,
+    0.7154,
+    0.142
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Cheese.png"
+  }
+ ]
+}

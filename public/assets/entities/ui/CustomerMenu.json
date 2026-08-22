@@ -1,0 +1,46 @@
+{
+ "source": "Resources/Prefabs/Menus/!CustomerMenu.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "'!CustomerMenu'",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    8.043993,
+    3.0999355,
+    19.631657
+   ],
+   "quat": [
+    -0.696816,
+    -0.0,
+    0.0,
+    0.71724993
+   ],
+   "scale": [
+    1.2,
+    1.7999998,
+    0.1
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "green",
+   "tint": [
+    0.566,
+    1.0,
+    0.6641
+   ],
+   "avg": [
+    0.0119,
+    0.4478,
+    0.0697
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Green.png"
+  }
+ ]
+}

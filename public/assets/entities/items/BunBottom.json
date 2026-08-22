@@ -1,0 +1,95 @@
+{
+ "source": "Resources/Prefabs/Food/bun-bottom.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "bun-bottom",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -20.161621,
+    3.4671688,
+    10.496135
+   ],
+   "quat": [
+    -0.0,
+    -3.475746e-07,
+    0.0,
+    -1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "ac391c3a2ab4b2b4792a6d89af45acb5:4300000",
+   "mat": 0
+  },
+  {
+   "id": "400002",
+   "name": "burger-bottom",
+   "active": 1,
+   "parent": "400000",
+   "pos": [
+    0.0,
+    0.0,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "mesh": "Cube",
+   "render": false
+  },
+  {
+   "id": "400004",
+   "name": "triggerBunStack",
+   "active": 1,
+   "parent": "400002",
+   "pos": [
+    0.0,
+    0.15,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    0.07534175,
+    1.0
+   ],
+   "mesh": "Cube",
+   "render": false
+  }
+ ],
+ "materials": [
+  {
+   "name": "bun-bottom",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.6805,
+    0.4224,
+    0.2023
+   ],
+   "opacity": 1.0,
+   "tex": "textures/BunBottom.png"
+  }
+ ]
+}

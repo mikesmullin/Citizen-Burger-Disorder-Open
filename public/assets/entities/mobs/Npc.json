@@ -1,0 +1,70 @@
+{
+ "source": "Resources/Prefabs/NPC/NPC.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "NPC",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -41.6,
+    4.1,
+    -63.7
+   ],
+   "quat": [
+    -0.0,
+    -0.54247016,
+    0.0,
+    -0.84007514
+   ],
+   "scale": [
+    2.0,
+    3.0,
+    2.0048094
+   ],
+   "mesh": "Capsule",
+   "mat": 0
+  },
+  {
+   "id": "425814",
+   "name": "LocalAvoid",
+   "active": 1,
+   "parent": "400000",
+   "pos": [
+    0.0,
+    0.352,
+    -0.41
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    2.273306,
+    1.501245,
+    2.273307
+   ],
+   "mesh": "Sphere",
+   "render": false
+  }
+ ],
+ "materials": [
+  {
+   "name": "2",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.3249,
+    0.5194,
+    0.5034
+   ],
+   "opacity": 1.0,
+   "tex": "textures/skins/Npc2.png"
+  }
+ ]
+}

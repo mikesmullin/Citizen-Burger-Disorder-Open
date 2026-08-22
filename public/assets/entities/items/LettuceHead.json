@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/Food/Lettuce-Head-Full.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Lettuce-Head-Full",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -34.75,
+    4.86,
+    4.38
+   ],
+   "quat": [
+    0.7071069,
+    -0.0,
+    -0.0,
+    0.70710677
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "301672509e4206c44ba1644bbc9f1af8:4300000",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "lettuce-head-uv",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.4384,
+    0.5005,
+    0.2207
+   ],
+   "opacity": 1.0,
+   "tex": "textures/LettuceHead.png"
+  }
+ ]
+}

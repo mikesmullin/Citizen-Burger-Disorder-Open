@@ -1,0 +1,46 @@
+{
+ "source": "Resources/Prefabs/Objects/Tip.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Tip",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -22.675133,
+    4.5562706,
+    -19.111553
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.86037177,
+    0.25665668,
+    1.6864703
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "green",
+   "tint": [
+    0.566,
+    1.0,
+    0.6641
+   ],
+   "avg": [
+    0.0119,
+    0.4478,
+    0.0697
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Green.png"
+  }
+ ]
+}

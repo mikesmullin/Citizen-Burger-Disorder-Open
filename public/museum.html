@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>CBD — Scene 01 · Player &amp; NPCs</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; overflow:hidden; background:#1a1714; }
+  body { font:13px/1.5 ui-sans-serif, system-ui, sans-serif; color:#e8dcc8; }
+  canvas { display:block; position:fixed; inset:0; z-index:0; }
+  #hud {
+    display:none; position:fixed; z-index:2; top:14px; left:14px;
+    background:#14110ee6; border:1px solid #3a322c; border-radius:8px;
+    padding:12px 14px; min-width:220px; pointer-events:none;
+  }
+  #hud h1 { font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+            color:#9a8f80; margin-bottom:8px; font-weight:600; }
+  #hud .r { display:flex; justify-content:space-between; gap:18px; }
+  #hud b { color:#f0e6d4; font-weight:600; }
+  #look {
+    display:none; position:fixed; z-index:2; left:50%; bottom:48px;
+    transform:translateX(-50%); pointer-events:none;
+    background:#14110ee6; border:1px solid #6b5a45; border-radius:6px;
+    padding:6px 14px; letter-spacing:.04em; opacity:0; transition:opacity .15s;
+  }
+  #cross {
+    display:none; position:fixed; z-index:2; left:50%; top:50%;
+    width:10px; height:10px; transform:translate(-50%,-50%); pointer-events:none;
+  }
+  #cross::before, #cross::after {
+    content:''; position:absolute; background:#f0e6d4cc;
+  }
+  #cross::before { left:4px; top:0; width:2px; height:10px; }
+  #cross::after  { left:0; top:4px; width:10px; height:2px; }
+  #help {
+    position:fixed; z-index:2; bottom:12px; left:14px; color:#6b5a45;
+    pointer-events:none; font-size:12px;
+  }
+  #help a { color:#c4a574; pointer-events:auto; }
+  #loader {
+    position:fixed; inset:0; z-index:5; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:10px;
+    background:#1a1714f2; cursor:pointer;
+  }
+  #loader h1 { font-size:28px; font-weight:700; letter-spacing:.04em; }
+  #loader .sub { color:#9a8f80; }
+  #load-msg { color:#6b5a45; min-height:1.4em; font-variant-numeric:tabular-nums; }
+  #hint { margin-top:18px; color:#c4a574; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
+</style>
+
+<div id="loader">
+  <h1>Asset museum</h1>
+  <div class="sub">Scene 01 — player controller + NPCs</div>
+  <div id="load-msg">Loading…</div>
+  <div id="hint">please wait</div>
+</div>
+<div id="hud">
+  <h1>Scene 01 · Player &amp; NPCs</h1>
+  <div class="r"><span>exhibits</span><b id="s-exhibits">-</b></div>
+  <div class="r"><span>NPCs</span><b id="s-visitors">-</b></div>
+  <div class="r"><span>rats</span><b id="s-rats">-</b></div>
+  <div class="r"><span>holding</span><b id="s-hold">-</b></div>
+  <div class="r"><span>gait</span><b id="s-speed">-</b></div>
+  <div class="r"><span>pos</span><b id="s-pos">-</b></div>
+  <div class="r"><span>fps</span><b id="s-fps">-</b></div>
+</div>
+<div id="look"></div>
+<div id="cross"></div>
+<div id="help">WASD move · Q/E hands · click grab/drop food · Shift run · Esc pause</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="./game/scenes/museum.js"></script>

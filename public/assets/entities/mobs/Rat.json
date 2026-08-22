@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/NPC/rat.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "rat",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -0.06815097,
+    1.0102054,
+    33.66769
+   ],
+   "quat": [
+    -0.0,
+    0.7761674,
+    0.0,
+    0.630527
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "0956b60b4d7716749b924a1e921cf8ae:4300000",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "rat-Tex",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.0196,
+    0.0065,
+    0.0031
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Rat.png"
+  }
+ ]
+}

@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/Food/Tomato.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Tomato",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -13.91,
+    3.9,
+    10.636
+   ],
+   "quat": [
+    -0.0,
+    -1.0,
+    0.0,
+    -4.371139e-08
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    0.083290696
+   ],
+   "mesh": "External",
+   "meshRef": "575617890e051c24295d96e45a5a1476:4300000",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "tomato6",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.8484,
+    0.233,
+    0.0908
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Tomato.png"
+  }
+ ]
+}

@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/Food/Lettuce.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Lettuce",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    14.219338,
+    3.5716329,
+    11.179798
+   ],
+   "quat": [
+    -0.0,
+    -3.475746e-07,
+    0.0,
+    -1.0
+   ],
+   "scale": [
+    0.4,
+    0.4,
+    0.4
+   ],
+   "mesh": "External",
+   "meshRef": "87e0fa6a7c76c5d41a0e4461f50ced7b:4300000",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "lettuce2",
+   "tint": [
+    0.9326,
+    1.0,
+    0.8306
+   ],
+   "avg": [
+    0.7315,
+    0.7613,
+    0.4484
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Lettuce.png"
+  }
+ ]
+}

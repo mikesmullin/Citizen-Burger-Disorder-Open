@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/Food/Patty.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Patty",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -1.596,
+    5.463,
+    10.421
+   ],
+   "quat": [
+    -0.0,
+    -3.475746e-07,
+    0.0,
+    -1.0
+   ],
+   "scale": [
+    0.5,
+    0.5,
+    0.1
+   ],
+   "mesh": "External",
+   "meshRef": "b61233be8ca644d4699f353ec999f4bb:4300002",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "brown",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.4936,
+    0.1975,
+    0.0939
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Brown.png"
+  }
+ ]
+}

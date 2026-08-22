@@ -1,0 +1,46 @@
+{
+ "source": "Resources/UI/IngredientSprites/sBunTop.prefab",
+ "nodes": [
+  {
+   "id": "22455352",
+   "name": "sBunTop",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    0.0,
+    0.0,
+    1.3645725e-06
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "rect": [
+    64.5,
+    64.5
+   ],
+   "pivot": [
+    0.5,
+    0.5
+   ],
+   "ui": {
+    "color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "alpha": 1.0,
+    "tex": "textures/BunTop.png",
+    "text": null
+   }
+  }
+ ],
+ "materials": []
+}

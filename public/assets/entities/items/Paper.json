@@ -1,0 +1,46 @@
+{
+ "source": "Resources/Prefabs/Drawing/Paper.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Paper",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    6.546055,
+    5.2005754,
+    32.894306
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    -0.9,
+    1.2,
+    -0.03
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "Paper",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.6038,
+    0.5787,
+    0.4797
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Paper.png"
+  }
+ ]
+}

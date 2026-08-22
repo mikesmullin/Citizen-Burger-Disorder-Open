@@ -1,0 +1,46 @@
+{
+ "source": "Resources/Prefabs/Computer/!MonitorPickup.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "'!MonitorPickup'",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -0.68060684,
+    5.039251,
+    -5.4469943
+   ],
+   "quat": [
+    -0.47798532,
+    0.046559438,
+    0.02538276,
+    0.87676567
+   ],
+   "scale": [
+    2.6666667,
+    1.5,
+    0.2
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "greyDark",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.0546,
+    0.0546,
+    0.0546
+   ],
+   "opacity": 1.0,
+   "tex": "textures/GreyDark.png"
+  }
+ ]
+}

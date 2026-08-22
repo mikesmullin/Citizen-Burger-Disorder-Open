@@ -1,0 +1,85 @@
+{
+ "source": "Resources/Prefabs/Drawing/!Whiteboard.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "'!Whiteboard'",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    16.282831,
+    7.0055914,
+    37.30567
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    7.0,
+    7.0,
+    1.0
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  },
+  {
+   "id": "400002",
+   "name": "base",
+   "active": 1,
+   "parent": "400000",
+   "pos": [
+    0.0,
+    -0.45951927,
+    -0.13398743
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0285715,
+    0.14285715,
+    1.0
+   ],
+   "mesh": "Cube",
+   "mat": 1
+  }
+ ],
+ "materials": [
+  {
+   "name": "unknown",
+   "tint": [
+    0.8,
+    0.8,
+    0.8
+   ],
+   "avg": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "opacity": 1.0,
+   "tex": null
+  },
+  {
+   "name": "brown",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.4936,
+    0.1975,
+    0.0939
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Brown.png"
+  }
+ ]
+}

@@ -1,0 +1,91 @@
+{
+ "source": "Resources/Prefabs/Fire/FireExtinguisher.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "FireExtinguisher",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    19.62,
+    5.85,
+    10.68
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.308092,
+    1.0,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "7f6347bd1e5703c4fa90332e3065d523:4300000",
+   "mat": 0
+  },
+  {
+   "id": "400002",
+   "name": "Foam",
+   "active": 1,
+   "parent": "400000",
+   "pos": [
+    -0.0,
+    1.3517394,
+    -0.40597343
+   ],
+   "quat": [
+    -0.6040429,
+    -0.0,
+    0.0,
+    0.79695183
+   ],
+   "scale": [
+    0.76447225,
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "id": "400004",
+   "name": "WaterEmitter",
+   "active": 1,
+   "parent": "400000",
+   "pos": [
+    0.0,
+    1.3517394,
+    -0.40597343
+   ],
+   "quat": [
+    -0.6819984,
+    -0.0,
+    0.0,
+    0.7313537
+   ],
+   "scale": [
+    0.76447225,
+    1.0,
+    1.0
+   ]
+  }
+ ],
+ "materials": [
+  {
+   "name": "fire-extinguisher-tex",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.7346,
+    0.0202,
+    0.0174
+   ],
+   "opacity": 1.0,
+   "tex": "textures/FireExtinguisher.png"
+  }
+ ]
+}

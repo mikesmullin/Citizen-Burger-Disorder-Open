@@ -1,0 +1,124 @@
+{
+ "source": "Resources/Prefabs/Utensils/!Knife.prefab",
+ "nodes": [
+  {
+   "id": "417444",
+   "name": "'!Knife'",
+   "active": 1,
+   "parent": "417448",
+   "pos": [
+    0.0,
+    0.094892256,
+    -1.5846977
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.3917501,
+    0.66187495,
+    2.3086898
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  },
+  {
+   "id": "417446",
+   "name": "'!KnifeBlade'",
+   "active": 1,
+   "parent": "417448",
+   "pos": [
+    0.0,
+    -0.3160304,
+    -1.5846977
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.391756,
+    0.15996906,
+    2.3086898
+   ],
+   "mesh": "Cube",
+   "mat": 1
+  },
+  {
+   "id": "417448",
+   "name": "'!Knife'",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -32.0,
+    5.07,
+    11.36
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.6472395,
+    0.7622867
+   ],
+   "scale": [
+    0.12732452,
+    0.23645979,
+    0.67130834
+   ],
+   "mesh": "Cube",
+   "mat": 2
+  }
+ ],
+ "materials": [
+  {
+   "name": "grey",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.2157,
+    0.2157,
+    0.2157
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Grey.png"
+  },
+  {
+   "name": "lightGrey",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.5115,
+    0.5115,
+    0.5115
+   ],
+   "opacity": 1.0,
+   "tex": "textures/LightGrey.png"
+  },
+  {
+   "name": "brown",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.4936,
+    0.1975,
+    0.0939
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Brown.png"
+  }
+ ]
+}

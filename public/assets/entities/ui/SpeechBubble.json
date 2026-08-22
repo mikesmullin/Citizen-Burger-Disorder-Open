@@ -1,0 +1,86 @@
+{
+ "source": "Resources/Prefabs/Misc/!speechBubble.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "'!speech'",
+   "active": 1,
+   "parent": "400002",
+   "pos": [
+    0.0,
+    0.0,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.7071068,
+    0.0,
+    0.7071068
+   ],
+   "scale": [
+    0.03,
+    1.5,
+    1.5
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  },
+  {
+   "id": "400002",
+   "name": "'!speechBubble'",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -15.29,
+    7.85,
+    -23.7
+   ],
+   "quat": [
+    -0.0,
+    0.9996309,
+    0.0,
+    0.027167914
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "b2ba08e7dae3cc642852a305a3209c83:4300000",
+   "mat": 1
+  }
+ ],
+ "materials": [
+  {
+   "name": "burger",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.6258,
+    0.5057,
+    0.1559
+   ],
+   "opacity": 1.0,
+   "tex": "textures/ui/Burger.png"
+  },
+  {
+   "name": "speechBubbleTex",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.7027,
+    0.9908,
+    0.9723
+   ],
+   "opacity": 1.0,
+   "tex": "textures/ui/SpeechBubble.png"
+  }
+ ]
+}

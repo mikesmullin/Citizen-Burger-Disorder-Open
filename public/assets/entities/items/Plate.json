@@ -1,0 +1,71 @@
+{
+ "source": "Resources/Prefabs/Plates/Plate.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Plate",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    8.444175,
+    3.5637937,
+    10.99974
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "af5496e49acc4a543bb6f52b44f85521:4300000",
+   "mat": 0
+  },
+  {
+   "id": "400002",
+   "name": "triggerPlate",
+   "active": 1,
+   "parent": "400000",
+   "pos": [
+    0.0,
+    0.09640312,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.8,
+    0.1,
+    1.8
+   ],
+   "mesh": "Cube",
+   "render": false
+  }
+ ],
+ "materials": [
+  {
+   "name": "plate",
+   "tint": [
+    0.59,
+    0.5631,
+    0.5075
+   ],
+   "avg": [
+    0.8601,
+    0.8785,
+    0.9043
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Plate.png"
+  }
+ ]
+}

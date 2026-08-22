@@ -1,0 +1,157 @@
+{
+ "source": "Resources/Prefabs/Misc/NPC-Speech-Bubble.prefab",
+ "nodes": [
+  {
+   "id": "22444174",
+   "name": "NPC-Speech-Bubble",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    0.0,
+    0.0,
+    -24.27
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.2,
+    0.2,
+    0.2
+   ],
+   "rect": [
+    10.0,
+    10.0
+   ],
+   "pivot": [
+    0.5,
+    0.5
+   ],
+   "canvas": 2
+  },
+  {
+   "id": "22444176",
+   "name": "Background",
+   "active": 1,
+   "parent": "22444174",
+   "pos": [
+    -2.8312206e-07,
+    -7.7486e-07,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "rect": [
+    100.0,
+    100.0
+   ],
+   "pivot": [
+    0.5,
+    0.5
+   ],
+   "ui": {
+    "color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "alpha": 1.0,
+    "tex": "textures/ui/Bubble.png",
+    "text": null
+   }
+  },
+  {
+   "id": "22444178",
+   "name": "Image",
+   "active": 1,
+   "parent": "22444176",
+   "pos": [
+    0.0,
+    -1.9,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "rect": [
+    100.0,
+    100.0
+   ],
+   "pivot": [
+    0.5,
+    0.5
+   ],
+   "ui": {
+    "color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "alpha": 1.0,
+    "tex": "textures/ui/Arrow.png",
+    "text": null
+   }
+  },
+  {
+   "id": "22444180",
+   "name": "Image",
+   "active": 1,
+   "parent": "22444174",
+   "pos": [
+    -4.053116e-06,
+    9.536743e-07,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.099999994,
+    0.099999994,
+    0.099999994
+   ],
+   "rect": [
+    60.0,
+    60.0
+   ],
+   "pivot": [
+    0.5,
+    0.5
+   ],
+   "ui": {
+    "color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "alpha": 1.0,
+    "tex": "textures/ui/Family.png",
+    "text": null
+   }
+  }
+ ],
+ "materials": []
+}

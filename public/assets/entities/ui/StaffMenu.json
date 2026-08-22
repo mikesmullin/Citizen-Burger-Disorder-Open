@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/Menus/!StaffMenu.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "'!StaffMenu'",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    9.470383,
+    6.2834325,
+    17.542562
+   ],
+   "quat": [
+    0.9914449,
+    -0.0,
+    0.0,
+    0.13052598
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    0.2
+   ],
+   "mesh": "External",
+   "meshRef": "acefb94b60d91c544a273f608307a2b4:4300000",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "StaffMenuTex 1",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.7268,
+    0.5838,
+    0.4182
+   ],
+   "opacity": 1.0,
+   "tex": "textures/ui/StaffMenu.png"
+  }
+ ]
+}

@@ -1,0 +1,85 @@
+{
+ "source": "Resources/Prefabs/Player/arm.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "hand",
+   "active": 1,
+   "parent": "400002",
+   "pos": [
+    0.0,
+    0.0,
+    -0.6002401
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.2,
+    1.2,
+    0.20000002
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  },
+  {
+   "id": "400002",
+   "name": "arm",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -18.024776,
+    3.4206767,
+    -0.030624032
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.5,
+    0.5,
+    3.0
+   ],
+   "mesh": "Cube",
+   "mat": 1
+  }
+ ],
+ "materials": [
+  {
+   "name": "unknown",
+   "tint": [
+    0.8,
+    0.8,
+    0.8
+   ],
+   "avg": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "opacity": 1.0,
+   "tex": null
+  },
+  {
+   "name": "orange",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    1.0,
+    0.2157,
+    0.0161
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Orange.png"
+  }
+ ]
+}

@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/Food/bun-top.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "bun-top",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -20.316929,
+    3.480679,
+    12.239355
+   ],
+   "quat": [
+    -0.0,
+    -3.475746e-07,
+    0.0,
+    -1.0
+   ],
+   "scale": [
+    1.2863969,
+    1.2863969,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "d957210ab5910f04aa1e9df4077a27fa:4300000",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "unnamed",
+   "tint": [
+    0.7733,
+    0.7733,
+    0.7733
+   ],
+   "avg": [
+    0.6922,
+    0.411,
+    0.1885
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Bread.png"
+  }
+ ]
+}

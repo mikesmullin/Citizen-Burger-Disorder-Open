@@ -1,0 +1,109 @@
+{
+ "source": "Resources/Prefabs/Misc/LightSwitch.prefab",
+ "nodes": [
+  {
+   "id": "423806",
+   "name": "LightPane",
+   "active": 1,
+   "parent": "462752",
+   "pos": [
+    0.94,
+    -0.78,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    3.2830567,
+    18.990807,
+    10.0
+   ],
+   "mesh": "Cube",
+   "mat": 0
+  },
+  {
+   "id": "455552",
+   "name": "Switch",
+   "active": 1,
+   "parent": "462752",
+   "pos": [
+    3.68,
+    0.0,
+    -0.0
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    4.764626,
+    1.8990808,
+    2.2755082
+   ],
+   "mesh": "Cube",
+   "mat": 1
+  },
+  {
+   "id": "462752",
+   "name": "LightSwitch",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -8.55,
+    6.52,
+    -8.37
+   ],
+   "quat": [
+    -0.0,
+    -0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "mesh": "Cube",
+   "mat": 1
+  }
+ ],
+ "materials": [
+  {
+   "name": "lightGrey",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.5115,
+    0.5115,
+    0.5115
+   ],
+   "opacity": 1.0,
+   "tex": "textures/LightGrey.png"
+  },
+  {
+   "name": "unknown",
+   "tint": [
+    0.8,
+    0.8,
+    0.8
+   ],
+   "avg": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "opacity": 1.0,
+   "tex": null
+  }
+ ]
+}

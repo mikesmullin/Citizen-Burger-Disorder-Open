@@ -1,0 +1,47 @@
+{
+ "source": "Resources/Prefabs/Food/Bacon.prefab",
+ "nodes": [
+  {
+   "id": "400000",
+   "name": "Bacon",
+   "active": 1,
+   "parent": null,
+   "pos": [
+    -17.229082,
+    4.1829796,
+    11.503431
+   ],
+   "quat": [
+    -0.0,
+    -3.475746e-07,
+    0.0,
+    -1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "mesh": "External",
+   "meshRef": "b17914db665ce08418dca00014c57681:4300000",
+   "mat": 0
+  }
+ ],
+ "materials": [
+  {
+   "name": "bacon",
+   "tint": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "avg": [
+    0.3474,
+    0.1693,
+    0.1764
+   ],
+   "opacity": 1.0,
+   "tex": "textures/Bacon.png"
+  }
+ ]
+}

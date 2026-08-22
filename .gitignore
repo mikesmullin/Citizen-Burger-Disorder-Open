@@ -1,0 +1,36 @@
+# Scratch, Unity dumps, original source archive, screenshots, plans
+tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env/
+.pytest_cache/
+.mypy_cache/
+
+# Node / Vite (future web build)
+node_modules/
+dist/
+.vite/
+*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log

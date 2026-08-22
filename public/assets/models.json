@@ -1,0 +1,212 @@
+{
+ "0956b60b4d7716749b924a1e921cf8ae:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/Rat.bin",
+  "verts": 1098,
+  "tris": 366,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Rat/rat.fbx"
+ },
+ "0f221aa95d701d343b450718af1c91fd:4300000": {
+  "fileId": 4300000,
+  "name": "Sphere",
+  "bin": "models/LettucePart.bin",
+  "verts": 750,
+  "tris": 250,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Food/LettuceHead/lettuce-head.blend"
+ },
+ "2d6096594e0a02a4d8dd493867096e80:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/Box.bin",
+  "verts": 72,
+  "tris": 24,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Food/box2.blend"
+ },
+ "301672509e4206c44ba1644bbc9f1af8:4300000": {
+  "fileId": 4300000,
+  "name": "Sphere",
+  "bin": "models/LettuceHead.bin",
+  "verts": 660,
+  "tris": 220,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Food/LettuceHead/lettuce-head-full.blend"
+ },
+ "575617890e051c24295d96e45a5a1476:4300000": {
+  "fileId": 4300000,
+  "name": "Cylinder",
+  "bin": "models/Tomato.bin",
+  "verts": 6345,
+  "tris": 2115,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Food/tomato.fbx"
+ },
+ "720cd582718181345ab0b6ee3d055be5:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/Notepad.bin",
+  "verts": 84,
+  "tris": 28,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/notepad/notepad2-1.fbx"
+ },
+ "7f6347bd1e5703c4fa90332e3065d523:4300000": {
+  "fileId": 4300000,
+  "name": "Cylinder",
+  "bin": "models/FireExtinguisher.bin",
+  "verts": 654,
+  "tris": 218,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/FireExtinguisher/fire-extinguisher.blend"
+ },
+ "87e0fa6a7c76c5d41a0e4461f50ced7b:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/Lettuce.bin",
+  "verts": 2424,
+  "tris": 808,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Food/lettuce.fbx"
+ },
+ "ac391c3a2ab4b2b4792a6d89af45acb5:4300000": {
+  "fileId": 4300000,
+  "name": "Sphere",
+  "bin": "models/BunBottom.bin",
+  "verts": 1140,
+  "tris": 380,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/FBX Models/bun-bottom.fbx"
+ },
+ "acefb94b60d91c544a273f608307a2b4:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/StaffMenu.bin",
+  "verts": 108,
+  "tris": 36,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Menus/StaffMenu.fbx"
+ },
+ "af5496e49acc4a543bb6f52b44f85521:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/Plate.bin",
+  "verts": 3876,
+  "tris": 1292,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Plate/plate3.fbx"
+ },
+ "b17914db665ce08418dca00014c57681:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/Bacon.bin",
+  "verts": 1044,
+  "tris": 348,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Food/bacon.fbx"
+ },
+ "b2ba08e7dae3cc642852a305a3209c83:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/SpeechBubble.bin",
+  "verts": 180,
+  "tris": 60,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Speech/speechBubble.fbx"
+ },
+ "b61233be8ca644d4699f353ec999f4bb:4300002": {
+  "fileId": 4300002,
+  "name": "Cylinder",
+  "bin": "models/Patty.bin",
+  "verts": 5760,
+  "tris": 1920,
+  "hasNormals": true,
+  "hasUvs": false,
+  "source": "Assets/Models/Food/patty001.blend"
+ },
+ "d957210ab5910f04aa1e9df4077a27fa:4300000": {
+  "fileId": 4300000,
+  "name": "Sphere",
+  "bin": "models/BunTop.bin",
+  "verts": 2298,
+  "tris": 766,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/FBX Models/bun-top2.fbx"
+ },
+ "f939bda6a5fc24745ac9856f11c42111:4300000": {
+  "fileId": 4300000,
+  "name": "Cube",
+  "bin": "models/Truck.bin",
+  "verts": 1362,
+  "tris": 454,
+  "hasNormals": true,
+  "hasUvs": true,
+  "source": "Assets/Models/Food/truck.blend"
+ },
+ "f939bda6a5fc24745ac9856f11c42111:4300002": {
+  "fileId": 4300002,
+  "name": "Cylinder",
+  "bin": "models/Truck_2.bin",
+  "verts": 372,
+  "tris": 124,
+  "hasNormals": true,
+  "hasUvs": false,
+  "source": "Assets/Models/Food/truck.blend"
+ },
+ "f939bda6a5fc24745ac9856f11c42111:4300004": {
+  "fileId": 4300004,
+  "name": "Cylinder.001",
+  "bin": "models/Truck_3.bin",
+  "verts": 372,
+  "tris": 124,
+  "hasNormals": true,
+  "hasUvs": false,
+  "source": "Assets/Models/Food/truck.blend"
+ },
+ "f939bda6a5fc24745ac9856f11c42111:4300006": {
+  "fileId": 4300006,
+  "name": "Cylinder.002",
+  "bin": "models/Truck_4.bin",
+  "verts": 372,
+  "tris": 124,
+  "hasNormals": true,
+  "hasUvs": false,
+  "source": "Assets/Models/Food/truck.blend"
+ },
+ "f939bda6a5fc24745ac9856f11c42111:4300008": {
+  "fileId": 4300008,
+  "name": "Cylinder.003",
+  "bin": "models/Truck_5.bin",
+  "verts": 372,
+  "tris": 124,
+  "hasNormals": true,
+  "hasUvs": false,
+  "source": "Assets/Models/Food/truck.blend"
+ },
+ "f939bda6a5fc24745ac9856f11c42111:4300010": {
+  "fileId": 4300010,
+  "name": "Cylinder.005",
+  "bin": "models/Truck_6.bin",
+  "verts": 372,
+  "tris": 124,
+  "hasNormals": true,
+  "hasUvs": false,
+  "source": "Assets/Models/Food/truck.blend"
+ }
+}
