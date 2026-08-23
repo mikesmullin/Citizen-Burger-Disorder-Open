@@ -4,6 +4,9 @@
 
 import * as THREE from 'three'
 import { hideTriggers, boundsOf } from '../common/unityScene.js'
+import { isTool } from './food.js'
+import { grabStackWith, layoutStack, layoutPlate } from './stacking.js'
+import { createSpray } from './spray.js'
 
 const ARM_EXTRA = 1.2
 const MAX_PITCH = 86
@@ -20,7 +23,7 @@ const CAM_Y = -0.48
 const CAM_Z = -0.68
 const CAM_PITCH = 18
 
-export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, onDrop, spawnSwatch, spawnPoster } = {}) {
+export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, getFires, onDrop, spawnSwatch, spawnPoster } = {}) {
   hideTriggers(armProto)
 
   function makeArm(side) {
@@ -43,6 +46,9 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
 
   const left = makeArm('left')
   const right = makeArm('right')
+  const spray = createSpray({ scene, camera: player.camera })
+  const _sprayOrigin = new THREE.Vector3()
+  const _sprayDir = new THREE.Vector3()
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2(0, 0)
   const _pos = new THREE.Vector3()
@@ -138,7 +144,9 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     if (_pos.y < gy + half + FLOOR_PAD) _pos.y = gy + half + FLOOR_PAD
     item.object.position.lerp(_pos, Math.min(1, HOLD_LERP * dt))
     item.object.quaternion.slerp(arm.object.getWorldQuaternion(_q), Math.min(1, HOLD_LERP * dt))
-    item.vel.set(0, 0, 0)
+    if (item.vel) item.vel.set(0, 0, 0)
+    if (item.type === 'plate' && item.plated) layoutPlate(item)
+    else if (item.type === 'bun') layoutStack(item)
     recordHistory(arm)
   }
 
@@ -146,38 +154,61 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     if (!item || item.held || item.opened) return
     // Food a rat is carrying is stolen; the rat itself uses .stolen as its morsel.
     if (item.kind !== 'rat' && item.stolen) return
-    item.held = true
-    item.onFloor = false
-    item.dropped = false
-    if (item.fromSpawner && item.fromSpawner.item === item) item.fromSpawner.item = null
-    item.fromSpawner = null
-    arm.holding = item
-    for (const h of arm.history) h.copy(item.object.position)
+    const bunch = grabStackWith(item)
+    const hold = bunch[0] || item
+    hold.held = true
+    hold.onFloor = false
+    hold.dropped = false
+    if (hold.fromSpawner && hold.fromSpawner.item === hold) hold.fromSpawner.item = null
+    hold.fromSpawner = null
+    for (const f of bunch) {
+      f.held = true
+      f.onFloor = false
+    }
+    arm.holding = hold
+    for (const h of arm.history) h.copy(hold.object.position)
   }
 
   function spawnCopy(arm, rec) {
-    const proto = foodProtos[rec.slug]
-    if (!proto) return
     player.camera.getWorldPosition(_pos)
     player.camera.getWorldDirection(_fwd)
+    const x = _pos.x + _fwd.x, z = _pos.z + _fwd.z, y = _pos.y
+    if (rec.slug === 'mobs/Rat' || rec.pickup === 'rat') {
+      const den = getRats && getRats()
+      const rat = den && den.spawnAt(x, z)
+      if (rat) {
+        rat.position.y = y
+        rat.onFloor = false
+        grabItem(arm, rat)
+      }
+      return
+    }
+    const proto = foodProtos[rec.slug]
+    if (!proto) return
+    const type = rec.foodType || rec.pickup || 'other'
     const item = foodWorld.spawn({
-      proto, type: rec.foodType || rec.pickup || 'other', slug: rec.slug,
-      x: _pos.x + _fwd.x, z: _pos.z + _fwd.z,
-      y: _pos.y, onFloor: false,
+      proto, type, slug: rec.slug,
+      x, z, y, onFloor: false,
     })
+    if (rec.slug === 'items/PlateDirty' || rec.cookState === 'dirty') {
+      item.dirty = true
+    }
     grabItem(arm, item)
   }
 
   function drop(arm) {
     const item = arm.holding
     if (!item) return
+    const bunch = grabStackWith(item)
     item.held = false
+    for (const f of bunch) f.held = false
     if (arm.hand) {
       arm.hand.getWorldPosition(_pos)
       arm.hand.getWorldDirection(_fwd)
       item.object.position.copy(_pos).addScaledVector(_fwd, 0.8)
     }
     const d = arm.history[2].distanceTo(arm.history[1])
+    if (!item.vel) item.vel = new THREE.Vector3()
     if (d > 0.12) {
       _fwd.copy(arm.history[2]).sub(arm.history[1])
       if (_fwd.lengthSq() > 1e-6) {
@@ -191,8 +222,138 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       item.vel.y = 0.4
     }
     item.dropped = true
+    item.onFloor = false
+    if (item.kind === 'rat' || item.type === 'rat') {
+      item.goingHome = false
+      const den = getRats && getRats()
+      if (den && den.holes && den.holes.length) {
+        item.hole = den.holes[(Math.random() * den.holes.length) | 0]
+      }
+    }
+    if (item.spraying) item.spraying = false
     arm.holding = null
     if (onDrop) onDrop(item)
+  }
+
+  const knifeCd = { t: 0 }
+  const spatulaHit = new Set()
+
+  function playChop() {
+    try { new Audio('./assets/audio/sfx/Chopping.mp3').play() } catch (_) { /* ignore */ }
+  }
+
+  function toolOrigin(arm) {
+    if (arm.hand) arm.hand.getWorldPosition(_pos)
+    else arm.object.getWorldPosition(_pos)
+    player.camera.getWorldDirection(_fwd)
+    _pos.addScaledVector(_fwd, 0.55)
+    return _pos
+  }
+
+  function nearbyFood(origin, range) {
+    const out = []
+    for (const item of foodWorld.items) {
+      if (item.held || item.inFood) continue
+      const d = Math.hypot(item.position.x - origin.x, item.position.y - origin.y, item.position.z - origin.z)
+      if (d < range) out.push(item)
+    }
+    return out
+  }
+
+  function chopLettuce(item) {
+    const pos = item.object.position
+    if (item.type === 'lettuceHead') {
+      playChop()
+      const proto = foodProtos['items/LettucePart']
+      if (proto) {
+        for (let i = 0; i < 2; i++) {
+          const part = foodWorld.spawn({
+            proto, type: 'lettucePart', slug: 'items/LettucePart',
+            x: pos.x + (i ? 0.08 : -0.08), z: pos.z, y: pos.y + 0.05,
+          })
+          part.object.rotation.y = i ? Math.PI : 0
+          part.vel.y = 1.2
+        }
+      }
+      foodWorld.destroy(item)
+      return
+    }
+    if (item.type === 'lettucePart') {
+      playChop()
+      const proto = foodProtos['items/Lettuce']
+      if (proto) {
+        for (let i = 0; i < 3; i++) {
+          const leaf = foodWorld.spawn({
+            proto, type: 'lettuce', slug: 'items/Lettuce',
+            x: pos.x + i * 0.1, z: pos.z, y: pos.y + 0.04,
+          })
+          leaf.object.rotation.z = -Math.PI / 2
+          leaf.vel.y = 0.8
+        }
+      }
+      foodWorld.destroy(item)
+    }
+  }
+
+  function tryKnife(arm, dt) {
+    knifeCd.t -= dt
+    if (knifeCd.t > 0) return
+    const o = toolOrigin(arm)
+    for (const item of nearbyFood(o, 0.85)) {
+      if (item.type === 'lettuceHead' || item.type === 'lettucePart') {
+        chopLettuce(item)
+        knifeCd.t = 0.3
+        return
+      }
+      if (isTool(item.type) || item.type === 'plate') continue
+      // KnifeTrigger: PhysicsFood gets a toss.
+      item.vel.y += 6
+      item.vel.x += _fwd.x * -3.5
+      item.vel.z += _fwd.z * -3.5
+      knifeCd.t = 0.3
+      return
+    }
+  }
+
+  function trySpatula(arm) {
+    const o = toolOrigin(arm)
+    for (const item of nearbyFood(o, 0.7)) {
+      if (item.type === 'plate' || isTool(item.type)) continue
+      const id = item
+      if (spatulaHit.has(id)) continue
+      spatulaHit.add(id)
+      // SpatulaTrigger: up * 900 - forward * 500
+      item.vel.y += 7.5
+      item.vel.x += _fwd.x * -4
+      item.vel.z += _fwd.z * -4
+      setTimeout(() => spatulaHit.delete(id), 400)
+    }
+  }
+
+  function extinguisherNozzle(item) {
+    player.camera.getWorldPosition(_sprayOrigin)
+    player.camera.getWorldDirection(_sprayDir)
+    _sprayOrigin.addScaledVector(_sprayDir, 0.55)
+    _sprayOrigin.y -= 0.08
+    if (item && item.object) {
+      item.object.getWorldPosition(_world)
+      _sprayOrigin.lerp(_world, 0.2)
+      _sprayOrigin.y += 0.32
+    }
+  }
+
+  function toolUse(arm, dt) {
+    const item = arm.holding
+    if (!item) return
+    if (item.type === 'knife') tryKnife(arm, dt)
+    if (item.type === 'spatula') trySpatula(arm)
+    if (item.type === 'fireExtinguisher') {
+      const sprayBtn = arm.side === 'left' ? player.fire2 : player.fire1
+      item.spraying = !!sprayBtn
+      if (item.spraying) extinguisherNozzle(item)
+    }
+    if (item.type === 'bun') layoutStack(item)
+    if (item.type === 'plate' && item.plated) layoutPlate(item)
   }
 
   function pickTarget() {
@@ -210,7 +371,11 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       if (food && food.stolen && food.stolen.kind === 'rat' && !food.stolen.held) {
         return { kind: 'rat', item: food.stolen, dist: h.distance }
       }
-      if (food && !food.held && !food.opened && !food.stolen) {
+      if (food && food.inFood && (food.stackedOn || food.onPlate)) {
+        const root = food.onPlate || food.stackedOn
+        return { kind: 'food', item: root.onPlate || root, dist: h.distance }
+      }
+      if (food && !food.held && !food.opened && !food.stolen && !food.inFood) {
         return { kind: 'food', item: food, dist: h.distance }
       }
       const poster = h.object.userData.poster
@@ -229,7 +394,7 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     player.camera.getWorldDirection(_fwd)
     let best = null, bestD = GRAB_RANGE, bestKind = 'food'
     const consider = (item, kind, minD = 0.2) => {
-      if (!item || item.held || item.opened) return
+      if (!item || item.held || item.opened || item.inFood) return
       if (kind !== 'rat' && item.stolen) return
       const dx = item.position.x - _pos.x
       const dy = item.position.y - _pos.y
@@ -292,8 +457,23 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       if (player.fire2Up && right.holding) drop(right)
     }
 
-    if (left.holding) holdPose(left, dt)
-    if (right.holding) holdPose(right, dt)
+    if (left.holding) {
+      holdPose(left, dt)
+      toolUse(left, dt)
+    }
+    if (right.holding) {
+      holdPose(right, dt)
+      toolUse(right, dt)
+    }
+
+    const ext = (left.holding && left.holding.type === 'fireExtinguisher' && left.holding)
+      || (right.holding && right.holding.type === 'fireExtinguisher' && right.holding)
+    spray.update(dt, {
+      emitting: !!(ext && ext.spraying),
+      origin: _sprayOrigin,
+      dir: _sprayDir,
+      fires: getFires ? getFires() : [],
+    })
 
     if (!lActive && left.holding) { /* keep showing arm while holding */ }
     if (!lActive && !left.holding) left.object.visible = false

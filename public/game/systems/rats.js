@@ -6,6 +6,8 @@ import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { ratWillSteal } from './food.js'
 
+export const RAT_SIZE = 1.05
+
 const MAX_RATS = 4
 const SPAWN_DELAY = 12          // original FloorTrigger is 30s; 12s so you see it
 const SPAWN_COOLDOWN = 8
@@ -57,7 +59,7 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     const box = boundsOf(root)
     const size = box.getSize(new THREE.Vector3())
     const longest = Math.max(size.x, size.y, size.z, 1e-4)
-    root.scale.multiplyScalar(1.05 / longest)
+    root.scale.multiplyScalar(RAT_SIZE / longest)
     root.updateMatrixWorld(true)
     const fitted = boundsOf(root)
     const mid = fitted.getCenter(new THREE.Vector3())
@@ -94,6 +96,8 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
       targetFood: null,
       target: target ? { x: target.x, z: target.z } : { x: hole.x, z: hole.z },
       defeated: false,
+      dead: false,
+      cooked: 0,
       goingHome: !target,
       born: 0,
       held: false,
@@ -191,6 +195,19 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
 
     for (const rat of [...rats]) {
       rat.born += dt
+      if (rat.dead || (rat.cooked > 0.12)) {
+        rat.dead = true
+        rat.defeated = true
+        if (rat.stolen) {
+          rat.stolen.stolen = null
+          rat.stolen = null
+        }
+        if (!foodWorld.items.includes(rat)) {
+          foodWorld.items.push(rat)
+          rat.object.userData.food = rat
+        }
+        continue
+      }
       if (rat.held) {
         placeStolen(rat)
         continue
@@ -247,11 +264,13 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
   }
 
   function spawnAt(x, z) {
-    const hole = holes[0] || { x, z }
+    const hole = holes.length ? holes[(Math.random() * holes.length) | 0] : { x, z }
     const rat = spawnRat(hole, { x, z })
     if (rat) {
       const gy = player.groundY ? player.groundY(x, z) : 0
       rat.position.set(x, gy, z)
+      rat.goingHome = false
+      rat.target = { x, z }
     }
     return rat
   }

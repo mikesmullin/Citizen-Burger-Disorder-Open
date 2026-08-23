@@ -5,7 +5,7 @@
 // Floor is DiningFloor. Grill.cs cook() runs on food that lands on the range.
 
 import * as THREE from 'three'
-import { applyCookLook, COOK_RGB, isFood } from './food.js'
+import { applyCookLook, isFood, cookTick } from './food.js'
 
 export const BOOTH_W = 6.4
 export const BOOTH_D = 14.6
@@ -163,6 +163,7 @@ async function makeOrderScreen() {
 
 export async function createKitchen({
   scene, player, foodWorld, foodProtos,
+  getRats,
   x = 0, z = 0, facingY = 0,
 } = {}) {
   const object = new THREE.Group()
@@ -288,26 +289,32 @@ export async function createKitchen({
   object.add(hood)
 
   const rangeLabel = makeLabel('RANGE')
-  rangeLabel.position.set(rInner - 0.02, 1.55, cookZ)
+  rangeLabel.scale.set(1.25, 1.25, 1)
+  // Inner face of the right wall, above the cook surface (range body is only ~0.94 m tall).
+  rangeLabel.position.set(hx - WALL_T - 0.04, 1.92, cookZ)
   rangeLabel.rotation.y = -Math.PI / 2
   object.add(rangeLabel)
 
-  // —— Order board (hanging TV) ——
+  // —— Order board: top-left corner, 45° yaw, pitched down so you look up at it ——
   const orderMap = await makeOrderScreen()
   const order = new THREE.Group()
   order.name = 'OrderBoard'
-  order.position.set(-0.15, 2.38, -2.55)
-  const bezel = box(3.72, 2.22, 0.12, mat(0x111111, { roughness: 0.45 }), 0, 0, 0)
+  // Pulled toward the aisle (+Z / +X) so the 45° corners clear the left wall and partition.
+  order.position.set(-hx + 1.62, 2.58, doorZ + 1.72)
+  order.rotation.order = 'YXZ'
+  order.rotation.set(0.48, Math.PI / 4, 0)
+  const bezel = box(3.05, 1.82, 0.10, mat(0x111111, { roughness: 0.45 }), 0, 0, 0)
   const screen = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.48, 2.02),
+    new THREE.PlaneGeometry(2.86, 1.64),
     new THREE.MeshBasicMaterial({ map: orderMap, toneMapped: false }),
   )
-  screen.position.z = 0.065
+  screen.position.z = 0.055
   order.add(bezel, screen)
   object.add(order)
 
+  // Adjacent wall in the same corner: the partition, facing the galley.
   const ordersLabel = makeLabel('ORDERS')
-  ordersLabel.position.set(0, 1.22, -2.42)
+  ordersLabel.position.set(-hx + 1.45, 1.55, doorZ + 0.09)
   object.add(ordersLabel)
 
   // —— Dish pit through a yellow doorway at the back-right ——
@@ -332,21 +339,20 @@ export async function createKitchen({
     cladWall(rightPartW, WALL_T, partX, doorZ, true)
   }
 
-  // Sink run along the back wall of the dish room.
-  const sinkZ = -hz + WALL_T + 0.55
-  const sinkX0 = 0.15
-  const sinkX1 = hx - WALL_T - 0.08
-  const sinkW = sinkX1 - sinkX0
-  const sinkX = (sinkX0 + sinkX1) / 2
-  const basinW = 1.55
-  const dryW = sinkW - basinW - 0.08
-  const basinX = sinkX1 - basinW / 2
-  const dryX = sinkX0 + dryW / 2
+  // Sink on the back wall of the dish-pit room (not in the doorway).
+  // 2× original basin width, 1.5× z-depth.
+  const basinW = 3.10
+  const sinkD = 1.29
   const sinkY = 0.90
-
-  const sinkD = 0.86
-  const basinFloorY = 0.42
-  const rim = 0.07
+  const basinFloorY = 0.38
+  const rim = 0.08
+  const sinkZ = -hz + WALL_T + sinkD / 2 + 0.18
+  const basinX = doorX
+  const dryW = 0.85
+  const dryX = basinX - basinW / 2 - dryW / 2 - 0.06
+  const sinkX0 = Math.min(dryX - dryW / 2, basinX - basinW / 2)
+  const sinkX1 = basinX + basinW / 2
+  const sinkX = (sinkX0 + sinkX1) / 2
   // Dry rack cabinet + top.
   object.add(box(dryW, sinkY - 0.04, sinkD, greyMat, dryX, (sinkY - 0.04) / 2, sinkZ))
   object.add(box(dryW + 0.02, 0.05, sinkD, greyMat, dryX, sinkY, sinkZ))
@@ -419,7 +425,7 @@ export async function createKitchen({
   addWorldCollider(hx - WALL_T, hx, -hz, hz)
   addWorldCollider(-hx + WALL_T, doorX0, doorZ - 0.08, doorZ + 0.08)
   addWorldCollider(doorX1, hx - WALL_T, doorZ - 0.08, doorZ + 0.08)
-  addWorldCollider(sinkX0, sinkX1, sinkZ - 0.4, sinkZ + 0.4)
+  addWorldCollider(dryX - dryW / 2, dryX + dryW / 2, sinkZ - sinkD / 2, sinkZ + sinkD / 2)
 
   const counterPlat = addWorldPlatform(-hx + WALL_T, cInner, cZ0, cZ1, COUNTER_Y + 0.03)
   const grillPlat = addWorldPlatform(rInner + 0.04, rOuter - 0.04, cookZ0 + 0.04, cookZ1 - 0.04, RANGE_Y + 0.03)
@@ -439,9 +445,10 @@ export async function createKitchen({
 
   // Prep line, near → far (entrance tomatoes … buns under the board).
   const prepLine = [
-    { slug: 'items/Tomato', type: 'tomato', n: 4 },
-    { slug: 'items/Cheese', type: 'cheese', n: 4 },
-    { slug: 'items/Lettuce', type: 'lettuce', n: 3 },
+    { slug: 'items/Tomato', type: 'tomato', n: 3 },
+    { slug: 'items/Cheese', type: 'cheese', n: 3 },
+    { slug: 'items/LettuceHead', type: 'lettuceHead', n: 3 },
+    { slug: 'items/Lettuce', type: 'lettuce', n: 2 },
     { slug: 'items/Bacon', type: 'bacon', n: 3 },
     { slug: 'items/BunBottom', type: 'bun', n: 3 },
     { slug: 'items/BunTop', type: 'topBun', n: 3 },
@@ -470,19 +477,23 @@ export async function createKitchen({
 
   const plateProto = foodProtos['items/Plate']
   if (plateProto) {
-    for (let i = 0; i < 3; i++) {
-      const w = worldOf(dryX + (i - 1) * 0.22, sinkY + 0.08, sinkZ + (i === 1 ? 0.08 : -0.06))
-      foodWorld.spawn({
+    for (let i = 0; i < 2; i++) {
+      const w = worldOf(dryX + (i - 0.5) * 0.28, sinkY + 0.08, sinkZ)
+      const item = foodWorld.spawn({
         proto: plateProto, type: 'plate', slug: 'items/Plate',
         x: w.x, z: w.z, y: sinkY + 0.1,
       })
+      item.dirty = true
+      applyCookLook(item.object, { mapUrl: './assets/textures/PlateDirty.png' })
     }
-    for (let i = 0; i < 2; i++) {
-      const w = worldOf(basinX + (i - 0.5) * 0.32, basinFloorY + 0.22, sinkZ + (i ? 0.08 : -0.1))
-      foodWorld.spawn({
+    for (let i = 0; i < 3; i++) {
+      const w = worldOf(basinX + (i - 1) * 0.55, basinFloorY + 0.22, sinkZ + (i % 2 ? 0.12 : -0.12))
+      const item = foodWorld.spawn({
         proto: plateProto, type: 'plate', slug: 'items/Plate',
         x: w.x, z: w.z, y: basinFloorY + 0.22,
       })
+      item.dirty = true
+      applyCookLook(item.object, { mapUrl: './assets/textures/PlateDirty.png' })
     }
   }
 
@@ -499,27 +510,109 @@ export async function createKitchen({
     Dish: worldOf(doorX, 1.4, doorZ + 1.4),
   }
 
-  let cookAcc = 0
+  const WASH_TIME = 3
+
+  function inBasin(p) {
+    return onRect(p, basinPlat, 0.55)
+  }
+
+  // Cooktop slab: xz of the grill platform, y near RANGE_Y. Held food cooks
+  // only while its collider overlaps this volume (Grill.cs OnTriggerStay).
+  function onCooktop(item) {
+    if (!item || !item.object) return false
+    const p = item.object.position
+    const half = Math.max(0.04, (item.height || 0.12) * 0.5)
+    const pad = 0.08
+    if (p.x < grillPlat.minx - pad || p.x > grillPlat.maxx + pad) return false
+    if (p.z < grillPlat.minz - pad || p.z > grillPlat.maxz + pad) return false
+    const bottom = p.y - half
+    const top = p.y + half
+    return bottom < grillPlat.y + 0.2 && top > grillPlat.y - 0.06
+  }
+
+  function cookable(item) {
+    return item && !item.stolen && (isFood(item.type) || item.type === 'rat')
+  }
+
+  function cookTree(item, dt) {
+    cookTick(item, dt)
+    for (const f of item.stack || []) cookTick(f, dt)
+    if (item.plated) cookTree(item.plated, dt)
+  }
+
+  let listener = player.camera.children.find(c => c.type === 'AudioListener') || null
+  if (!listener) {
+    listener = new THREE.AudioListener()
+    player.camera.add(listener)
+  }
+  let pattyBuf = null
+  new THREE.AudioLoader().load('./assets/audio/sfx/Patty.mp3', buf => { pattyBuf = buf })
+
+  function setGrillSound(item, on) {
+    if (!item || !item.object) return
+    if (on) {
+      if (!item.cookAudio && pattyBuf) {
+        const a = new THREE.PositionalAudio(listener)
+        a.setBuffer(pattyBuf)
+        a.setLoop(true)
+        a.setRefDistance(2.2)
+        a.setMaxDistance(18)
+        a.setRolloffFactor(1)
+        a.setVolume(0.75)
+        item.object.add(a)
+        item.cookAudio = a
+      }
+      if (item.cookAudio && pattyBuf && !item.cookAudio.isPlaying) {
+        try { item.cookAudio.play() } catch (_) { /* autoplay */ }
+      }
+      item.onGrill = true
+    } else if (item.onGrill) {
+      item.onGrill = false
+      if (item.cookAudio && item.cookAudio.isPlaying) {
+        try { item.cookAudio.stop() } catch (_) { /* ignore */ }
+      }
+    }
+  }
+
+  let washAcc = 0
   function update(dt) {
-    cookAcc += dt
-    if (cookAcc < 0.18) return
-    const step = cookAcc
-    cookAcc = 0
+    dt = Math.min(dt, 0.1)
+    washAcc += dt
+
+    const den = getRats && getRats()
+    const seen = new Set()
+    function consider(item) {
+      if (!item || seen.has(item) || !cookable(item)) return
+      if (item.inFood && item.stackedOn && item.stackedOn.type === 'bun') return
+      seen.add(item)
+      const hot = onCooktop(item)
+        || (item.stack || []).some(f => onCooktop(f))
+        || (item.plated && onCooktop(item.plated))
+      if (hot) {
+        cookTree(item, dt)
+        setGrillSound(item, true)
+      } else {
+        setGrillSound(item, false)
+      }
+    }
+    for (const item of foodWorld.items) consider(item)
+    for (const rat of den ? den.rats : []) consider(rat)
+
+    if (washAcc < 0.12) return
+    const step = washAcc
+    washAcc = 0
     for (const item of foodWorld.items) {
-      if (item.held || item.stolen || !isFood(item.type)) continue
+      if (item.held || item.stolen || item.type !== 'plate') continue
       const p = item.object.position
-      if (!onRect(p, grillPlat, 0.5)) continue
-      item.cooked = (item.cooked || 0) + step / 10
-      if (item.cooked > 1) item.overcooked = (item.overcooked || 0) + step / 10
-      const cooked = Math.min(1, item.cooked)
-      const overcooked = Math.min(1, item.overcooked || 0)
-      const rgb = COOK_RGB[item.type] || COOK_RGB.default
-      const mapUrl = item.type === 'bacon'
-        ? (overcooked > 0.4
-          ? './assets/textures/BaconCooked.png'
-          : './assets/textures/BaconCooked2.png')
-        : null
-      applyCookLook(item.object, { cooked, overcooked, cookedRGB: rgb, mapUrl })
+      if (inBasin(p)) {
+        item.soakTime = (item.soakTime || 0) + step
+        if (item.dirty && item.soakTime >= WASH_TIME) {
+          item.dirty = false
+          applyCookLook(item.object, { mapUrl: './assets/textures/Plate.png' })
+        }
+      } else {
+        item.soakTime = 0
+      }
     }
   }
 
@@ -536,13 +629,13 @@ export async function createKitchen({
       return { stand, look, label: 'Sink' }
     }
     if (key === 'Orders' || key === 'Board') {
-      const stand = worldOf(0, 0, 0.4)
-      const look = worldOf(0, 2.38, -2.55)
+      const stand = worldOf(-0.2, 0, 2.2)
+      const look = worldOf(-hx + 1.62, 2.35, doorZ + 1.72)
       return { stand, look, label: 'Orders' }
     }
     if (key === 'Range' || key === 'Grill' || key === 'Cooktop') {
-      const stand = worldOf(0.15, 0, boardZ + 0.55)
-      const look = worldOf(rX, RANGE_Y + 0.08, cookZ)
+      const stand = worldOf(rInner - 1.35, 0, cookZ)
+      const look = worldOf(rX, 1.55, cookZ)
       return { stand, look, label: 'Range' }
     }
     const stand = worldOf(cInner + 1.2, 0, cZ + 1.0)

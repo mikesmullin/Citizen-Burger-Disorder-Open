@@ -3,6 +3,7 @@
 
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
+import { tryLandStack, tickStacks, layoutStack, layoutPlate } from './stacking.js'
 
 export function inferFoodType(slug = '', label = '') {
   const s = (slug + ' ' + label).toLowerCase()
@@ -10,21 +11,31 @@ export function inferFoodType(slug = '', label = '') {
   if (s.includes('patty')) return 'patty'
   if (s.includes('bacon')) return 'bacon'
   if (s.includes('tomato')) return 'tomato'
+  if (s.includes('lettucehead') || s.includes('lettuce-head') || s.includes('lettuce_head')) return 'lettuceHead'
+  if (s.includes('lettucepart') || s.includes('lettuce-part') || s.includes('lettuce_part')) return 'lettucePart'
   if (s.includes('lettuce')) return 'lettuce'
-  if (s.includes('bun-top') || s.includes('bun_top') || s.includes('topbun')) return 'topBun'
+  if (s.includes('bun-top') || s.includes('bun_top') || s.includes('topbun') || s.includes('buntop')) return 'topBun'
   if (s.includes('bun')) return 'bun'
+  if (s.includes('rat')) return 'rat'
   return 'other'
 }
 
+export function isTool(type) {
+  return type === 'knife' || type === 'spatula' || type === 'fireExtinguisher'
+}
+
 export function isFood(type) {
-  return type && type !== 'other' && type !== 'plate' && type !== 'tip' && type !== 'box'
+  return type && type !== 'other' && type !== 'plate' && type !== 'tip' && type !== 'box' && !isTool(type)
 }
 
 // Pedestal copies you can grab. Plate / tip / box are items, not edible food.
 export function inferPickup(slug = '', label = '') {
+  const s = (slug + ' ' + label).toLowerCase()
+  if (s.includes('fireextinguisher') || s.includes('extinguisher')) return 'fireExtinguisher'
+  if (s.includes('spatula')) return 'spatula'
+  if (s.includes('knife')) return 'knife'
   const food = inferFoodType(slug, label)
   if (food !== 'other') return food
-  const s = (slug + ' ' + label).toLowerCase()
   if (s.includes('plate')) return 'plate'
   if (s.includes('tip')) return 'tip'
   if (s.includes('boxopen')) return null
@@ -50,6 +61,10 @@ export const FOOD_SIZE_BY_SLUG = {
   'items/Plate': 0.714,
   'items/PlateDirty': 0.714,
   'items/Tip': 0.511,
+  'items/Knife': 0.888,
+  'items/Spatula': 1.021,
+  'items/FireExtinguisher': 0.771,
+  'items/LettucePart': 0.32,
 }
 
 export const FOOD_SIZE = {
@@ -63,6 +78,11 @@ export const FOOD_SIZE = {
   box: FOOD_SIZE_BY_SLUG['items/Box'],
   plate: FOOD_SIZE_BY_SLUG['items/Plate'],
   tip: FOOD_SIZE_BY_SLUG['items/Tip'],
+  lettuceHead: FOOD_SIZE_BY_SLUG['items/LettuceHead'],
+  lettucePart: FOOD_SIZE_BY_SLUG['items/LettucePart'],
+  knife: FOOD_SIZE_BY_SLUG['items/Knife'],
+  spatula: FOOD_SIZE_BY_SLUG['items/Spatula'],
+  fireExtinguisher: FOOD_SIZE_BY_SLUG['items/FireExtinguisher'],
 }
 
 export function foodLongest(type, slug) {
@@ -118,6 +138,35 @@ export function applyCookLook(root, {
   })
 }
 
+// Food.cs cook(): 10s to cooked, 10s hold, 10s to burned.
+export function cookTick(item, dt) {
+  if (!item) return
+  item.cooked = item.cooked || 0
+  item.cookedDelay = item.cookedDelay || 0
+  item.overcooked = item.overcooked || 0
+  if (item.cooked < 1) item.cooked = Math.min(1, item.cooked + dt / 10)
+  else if (item.cookedDelay < 1) item.cookedDelay = Math.min(1, item.cookedDelay + dt / 10)
+  else item.overcooked = Math.min(1, item.overcooked + dt / 10)
+  // ~1.5 s on the grill (cookTimeIdeal 10 → cooked 0.15) before a rat dies.
+  if (item.type === 'rat' && item.cooked >= 0.15) {
+    item.dead = true
+    item.defeated = true
+  }
+  const rgb = COOK_RGB[item.type] || COOK_RGB.default
+  const mapUrl = item.type === 'bacon'
+    ? (item.overcooked > 0.4
+      ? './assets/textures/BaconCooked.png'
+      : './assets/textures/BaconCooked2.png')
+    : null
+  const root = item.object
+  if (root) applyCookLook(root, {
+    cooked: Math.min(1, item.cooked),
+    overcooked: Math.min(1, item.overcooked),
+    cookedRGB: rgb,
+    mapUrl,
+  })
+}
+
 export function layoutFood(root, { maxSize, sit = false, type, slug } = {}) {
   hideTriggers(root)
   if (type === 'patty') {
@@ -157,7 +206,8 @@ export function createFoodWorld({ scene, player }) {
     object.position.y = y != null && !onFloor ? y : height * 0.5
     scene.add(object)
     const item = {
-      object, type,
+      object, type, slug: slug || null,
+      kind: isTool(type) ? 'tool' : (type === 'plate' ? 'plate' : 'food'),
       position: object.position,
       radius: Math.max(0.22, (size?.x || height) * 0.45),
       height,
@@ -167,6 +217,11 @@ export function createFoodWorld({ scene, player }) {
       vel: new THREE.Vector3(),
       onFloor: !!onFloor,
       fromSpawner,
+      cooked: 0,
+      cookedDelay: 0,
+      overcooked: 0,
+      inFood: false,
+      soakTime: 0,
     }
     object.userData.food = item
     object.traverse(o => { o.userData.food = item })
@@ -206,7 +261,7 @@ export function createFoodWorld({ scene, player }) {
 
     const landed = []
     for (const item of items) {
-      if (item.held || item.stolen) continue
+      if (item.held || item.stolen || item.inFood) continue
       item.vel.y -= 9.81 * dt
       item.object.position.addScaledVector(item.vel, dt)
       const half = item.height * 0.5
@@ -223,7 +278,8 @@ export function createFoodWorld({ scene, player }) {
         // Only the museum floor counts as "the floor" for rats. Food on a
         // counter, grill, or trailer bed is resting, not dropped.
         if (gy <= 0.08) item.foodBeenOnFloor = true
-        if (wasAir && item.dropped && item.onLand) landed.push(item)
+        if (wasAir && item.dropped) landed.push(item)
+        if (wasAir) tryLandStack(item, items)
       } else {
         item.onFloor = false
       }
@@ -237,7 +293,15 @@ export function createFoodWorld({ scene, player }) {
         item.object.position.z = hit.z
       }
     }
-    for (const item of landed) item.onLand(item)
+    for (const item of landed) {
+      tryLandStack(item, items)
+      if (item.onLand) item.onLand(item)
+    }
+    for (const item of items) {
+      if (item.held && item.type === 'bun') layoutStack(item)
+      if (item.held && item.type === 'plate' && item.plated) layoutPlate(item)
+    }
+    tickStacks(items)
   }
 
   return { items, spawners, spawn, destroy, addSpawner, foodOnFloor, update, SPAWN_EVERY }

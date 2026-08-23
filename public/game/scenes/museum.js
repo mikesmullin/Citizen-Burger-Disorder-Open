@@ -8,7 +8,7 @@ import { createFirstPersonPlayer } from '../systems/player.js'
 import { createCrowd } from '../systems/npc.js'
 import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG, applyCookLook, COOK_RGB } from '../systems/food.js'
 import { createHands } from '../systems/hands.js'
-import { createRatDen } from '../systems/rats.js'
+import { createRatDen, RAT_SIZE } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
 import { createSoundboard } from '../systems/soundboard.js'
 import { createDelivery, makeOpenNet, BOX_SIZE } from '../systems/delivery.js'
@@ -167,6 +167,7 @@ const PEDESTAL_W = 1.25
 // Longest-edge targets in meters. Pedestal sizes from the in-museum scale-gun
 // pass. Player / Rat / Wainscoting / Monitor stay on the 0.4–2.35 m clamp.
 const EXHIBIT_LONGEST = {
+  'mobs/Rat': RAT_SIZE,
   'items/Spatula': 1.021,
   'items/Cupboard': 1.381,
   'items/NumberStand': 1.011,
@@ -521,7 +522,7 @@ function addStaffMenuWhiteBack(root) {
 function clusterOf(item) {
   const s = item.variantOf || item.slug
   if (s === 'heroes/Player' || s === 'heroes/Arm' || s === 'mobs/Rat') return 'people'
-  if (s === 'items/Spatula' || s === 'items/Knife' || s === 'items/Plate' || s === 'items/Cupboard') return 'line'
+  if (s === 'items/Spatula' || s === 'items/Knife' || s === 'items/Plate') return 'line'
   const food = inferFoodType(s, item.label)
   if (food !== 'other') return 'ingredients'
   if (s === 'items/Fire' || s === 'items/FireExtinguisher') return 'chaos'
@@ -653,6 +654,7 @@ function faceYaw(root) {
 function updateFireSprites(dt) {
   player.camera.getWorldPosition(_fireCam)
   for (const f of fireSprites) {
+    if (f.out || (f.root && f.root.visible === false)) continue
     f.next -= dt
     if (f.next <= 0) {
       f.root.scale.x *= -1
@@ -896,8 +898,9 @@ async function boot() {
 
   const needFood = [
     'items/Patty', 'items/Bacon', 'items/BunTop', 'items/BunBottom',
-    'items/LettuceHead', 'items/Lettuce', 'items/Cheese', 'items/Tomato',
-    'items/Plate',
+    'items/LettuceHead', 'items/Lettuce', 'items/LettucePart',
+    'items/Cheese', 'items/Tomato', 'items/Plate',
+    'items/Knife', 'items/Spatula', 'items/FireExtinguisher',
   ]
   for (const slug of needFood) {
     if (foodProtos[slug]) continue
@@ -917,6 +920,7 @@ async function boot() {
     setStatus('Loading kitchen…')
     kitchen = await createKitchen({
       scene, player, foodWorld, foodProtos,
+      getRats: () => rats,
       x: BOOTHS.kitchen.x, z: BOOTHS.kitchen.z, facingY: 0,
     })
     exhibits.push({
@@ -988,6 +992,7 @@ async function boot() {
     hands = createHands({
       scene, player, armProto: armRoot, foodWorld, exhibits, foodProtos,
       getRats: () => rats,
+      getFires: () => fireSprites,
       spawnSwatch: spec => swatches && swatches.take(spec),
       spawnPoster: spec => posters && posters.take(spec),
     })
