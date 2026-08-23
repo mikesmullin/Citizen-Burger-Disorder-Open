@@ -2,18 +2,22 @@
 // trade-show exhibit with a button wall at the back. Music toggles
 // (loop, one at a time); SFX are one-shots that stack and restart
 // on re-press.
+//
+// Draws: kit greybox (panel/frame/grill) + one face canvas + two
+// InstancedMeshes (bodies, LEDs). Labels live on the canvas so a
+// clip does not cost a Mesh.
 
 import * as THREE from 'three'
 import { createSwitchSet, SWITCH_Y } from './lightSwitch.js'
 import { whenAudio, resumeAudio, safePlay } from '../common/audio.js'
+import { createKit, UNIT_BOX, UNIT_PLANE } from '../common/kit.js'
+import { atlasUvMaterial } from '../common/atlasUv.js'
 
 const BOARD_W = 3.85
 const BOARD_H = 2.42
 const BOARD_T = 0.10
 const BOARD_Y = 0.48
 const MUSIC_W = 1.12
-// Extra canvas on the right so the light switch sits on the panel
-// with margin, without shifting the music / SFX layout.
 const SWITCH_COL = 0.58
 const PRESS_RANGE = 6.8
 const SFX_PRESS = 0.11
@@ -22,22 +26,25 @@ const COLS = 5
 const BOOTH_W = 5.6
 const BOOTH_D = 3.5
 const BOOTH_H = 3.2
-const WALL_T = 0.09
-const POST = 0.14
 
-function canvasTexture(w, h, draw) {
-  const c = document.createElement('canvas')
-  c.width = w
-  c.height = h
-  draw(c.getContext('2d'), w, h)
-  const t = new THREE.CanvasTexture(c)
-  t.colorSpace = THREE.SRGBColorSpace
-  t.anisotropy = 4
-  return t
-}
+const REST_Z = BOARD_T / 2 + 0.046
+const IN_Z = BOARD_T / 2 + 0.016
+const BODY_Z = 0.055
+const LED_Z = 0.033
+
+const musicMatIdle = { color: 0x3a322c }
+const musicMatOn = { color: 0x8a5a18 }
+const sfxMatIdle = { color: 0x2e2824 }
+const sfxMatHover = { color: 0x4a4034 }
+const sfxMatPress = { color: 0x6b4420 }
+
+const _dummy = new THREE.Object3D()
+const _col = new THREE.Color()
+const _face = new THREE.Vector3()
+const _q = new THREE.Quaternion()
 
 function wrapLines(g, text, maxWidth) {
-  const words = text.split(' ')
+  const words = String(text || '').split(' ')
   const lines = []
   let cur = ''
   for (const w of words) {
@@ -51,69 +58,32 @@ function wrapLines(g, text, maxWidth) {
   return lines.slice(0, 3)
 }
 
-function labelMap(text) {
-  return canvasTexture(512, 256, (g, w, h) => {
-    g.clearRect(0, 0, w, h)
-    g.fillStyle = '#f0e6d4'
-    g.textAlign = 'center'
-    g.textBaseline = 'middle'
-    let size = 44
-    g.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`
-    let lines = wrapLines(g, text, w - 48)
-    while (size > 26 && (lines.length > 2 || g.measureText(lines[0] || '').width > w - 48)) {
-      size -= 2
-      g.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`
-      lines = wrapLines(g, text, w - 48)
-    }
-    const lh = size + 8
-    const y0 = h / 2 - ((lines.length - 1) * lh) / 2 + 10
-    lines.forEach((ln, i) => {
-      g.fillStyle = i === 0 ? '#f0e6d4' : '#d4c4ae'
-      g.fillText(ln, w / 2, y0 + i * lh)
-    })
-  })
-}
-
-function headerMap(title, sub) {
-  return canvasTexture(1024, 220, (g, w, h) => {
-    g.clearRect(0, 0, w, h)
-    g.fillStyle = '#f0e6d4'
-    g.font = '700 72px ui-sans-serif, system-ui, sans-serif'
-    g.textAlign = 'left'
-    g.fillText(title, 36, 88)
-    g.fillStyle = '#b5a48a'
-    g.font = '32px ui-sans-serif, system-ui, sans-serif'
-    g.fillText(sub, 36, 150)
-  })
-}
-
-function sectionMap(title, sub) {
-  return canvasTexture(1024, 220, (g, w, h) => {
-    g.clearRect(0, 0, w, h)
-    g.fillStyle = '#c4a574'
-    g.font = '700 64px ui-sans-serif, system-ui, sans-serif'
-    g.textAlign = 'left'
-    g.fillText(title, 16, 78)
-    g.fillStyle = '#9a8f80'
-    g.font = '36px ui-sans-serif, system-ui, sans-serif'
-    g.fillText(sub, 16, 148)
-  })
-}
-
-function makePlane(w, h, map) {
-  const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, h),
-    new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false }),
-  )
-  m.raycast = () => {}
-  return m
-}
-
 function retrigger(audio) {
   if (!audio || !audio.buffer) return false
   audio.offset = 0
   safePlay(audio, { restart: true })
   return true
+}
+
+function colorize(mesh, i, hex) {
+  mesh.setColorAt(i, _col.setHex(hex))
+  mesh.instanceColor.needsUpdate = true
+}
+
+function stampAt(mesh, i, x, y, z, sx, sy, sz) {
+  _dummy.position.set(x, y, z)
+  _dummy.rotation.set(0, 0, 0)
+  _dummy.scale.set(sx, sy, sz)
+  _dummy.updateMatrix()
+  mesh.setMatrixAt(i, _dummy.matrix)
+}
+
+function enableInstanceColor(mesh, n) {
+  const attr = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3)
+  attr.setUsage(THREE.DynamicDrawUsage)
+  mesh.instanceColor = attr
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  for (let i = 0; i < n; i++) mesh.instanceColor.setXYZ(i, 1, 1, 1)
 }
 
 function buildBooth(object) {
@@ -142,6 +112,19 @@ export async function createSoundboard({
 
   let listener = null
 
+  const object = new THREE.Group()
+  object.name = 'AudioBooth'
+  object.position.set(x, y, z)
+  object.rotation.y = facingY
+  const overhead = buildBooth(object)
+
+  const board = new THREE.Group()
+  board.name = 'ButtonWall'
+  board.position.set(0, BOARD_Y, -BOOTH_D / 2 + 0.09 + BOARD_T / 2 + 0.03)
+  object.add(board)
+
+  const panelW = BOARD_W + SWITCH_COL
+  const panelX = SWITCH_COL / 2
   const panelMat = new THREE.MeshStandardMaterial({
     color: 0x1c1814, roughness: 0.62, metalness: 0.08,
   })
@@ -151,64 +134,259 @@ export async function createSoundboard({
   const grillMat = new THREE.MeshStandardMaterial({
     color: 0x0d0b09, roughness: 0.9, metalness: 0.04,
   })
-  const musicMatIdle = { color: 0x3a322c, emissive: 0x1a140c }
-  const musicMatOn = { color: 0x8a5a18, emissive: 0x5a3208 }
-  const sfxMatIdle = { color: 0x2e2824, emissive: 0x000000 }
-  const sfxMatHover = { color: 0x4a4034, emissive: 0x22180c }
-  const sfxMatPress = { color: 0x6b4420, emissive: 0x3a2008 }
 
-  const object = new THREE.Group()
-  object.name = 'AudioBooth'
-  object.position.set(x, y, z)
-  object.rotation.y = facingY
-  const overhead = buildBooth(object)
-
-  const board = new THREE.Group()
-  board.name = 'ButtonWall'
-  board.position.set(0, BOARD_Y, -BOOTH_D / 2 + WALL_T + BOARD_T / 2 + 0.03)
-  object.add(board)
-
-  const panelW = BOARD_W + SWITCH_COL
-  const panelX = SWITCH_COL / 2
-  const panel = new THREE.Mesh(
-    new THREE.BoxGeometry(panelW, BOARD_H, BOARD_T),
-    panelMat,
-  )
-  panel.position.set(panelX, BOARD_H / 2, 0)
-  panel.castShadow = panel.receiveShadow = true
-  panel.userData.soundboard = true
-  board.add(panel)
-
-  const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(panelW + 0.08, BOARD_H + 0.08, BOARD_T * 0.55),
-    trimMat,
-  )
-  frame.position.set(panelX, BOARD_H / 2, -0.02)
-  board.add(frame)
-
-  const header = makePlane(BOARD_W - 0.18, 0.38, headerMap('AUDIO', 'original game sounds'))
-  header.position.set(0, BOARD_H - 0.28, BOARD_T / 2 + 0.012)
-  board.add(header)
-
+  const kit = createKit({ parent: board, max: 24 })
+  kit.box(panelMat, panelW, BOARD_H, BOARD_T, panelX, BOARD_H / 2, 0)
+  kit.box(trimMat, panelW + 0.08, BOARD_H + 0.08, BOARD_T * 0.55, panelX, BOARD_H / 2, -0.02)
   const splitX = -BOARD_W / 2 + MUSIC_W
-  const divider = new THREE.Mesh(new THREE.BoxGeometry(0.025, BOARD_H - 0.58, 0.04), trimMat)
-  divider.position.set(splitX, BOARD_H / 2 - 0.08, BOARD_T / 2)
-  board.add(divider)
-
-  const musicHead = makePlane(MUSIC_W - 0.12, 0.34, sectionMap('MUSIC', 'toggle · loop · exclusive'))
-  musicHead.position.set((-BOARD_W / 2 + splitX) / 2, BOARD_H - 0.64, BOARD_T / 2 + 0.012)
-  board.add(musicHead)
-
-  const sfxHead = makePlane(BOARD_W - MUSIC_W - 0.16, 0.34, sectionMap('SOUND EFFECTS', 'one-shot · stacks · re-press restarts'))
-  sfxHead.position.set((splitX + BOARD_W / 2) / 2, BOARD_H - 0.64, BOARD_T / 2 + 0.012)
-  board.add(sfxHead)
-
+  kit.box(trimMat, 0.025, BOARD_H - 0.58, 0.04, splitX, BOARD_H / 2 - 0.08, BOARD_T / 2)
   for (let i = 0; i < 7; i++) {
-    const slot = new THREE.Mesh(new THREE.BoxGeometry(MUSIC_W - 0.28, 0.045, 0.03), grillMat)
-    slot.position.set((-BOARD_W / 2 + splitX) / 2, 0.38 + i * 0.09, BOARD_T / 2 + 0.01)
-    slot.raycast = () => {}
-    board.add(slot)
+    kit.box(
+      grillMat, MUSIC_W - 0.28, 0.045, 0.03,
+      (-BOARD_W / 2 + splitX) / 2, 0.38 + i * 0.09, BOARD_T / 2 + 0.01,
+    )
   }
+  kit.finalize()
+
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(panelW, BOARD_H, BOARD_T),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  )
+  hit.name = 'AudioHit'
+  hit.position.set(panelX, BOARD_H / 2, 0)
+  hit.userData.soundboard = true
+  board.add(hit)
+
+  const buttons = []
+  const ndc = new THREE.Vector2(0, 0)
+  const raycaster = new THREE.Raycaster()
+  let hovered = null
+  let musicId = null
+
+  const nBtn = musicClips.length + sfxClips.length
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 0.48, metalness: 0.12,
+  })
+  const ledMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 0.38, metalness: 0.12,
+    emissive: 0x000000, emissiveIntensity: 0,
+  })
+  const bodies = new THREE.InstancedMesh(UNIT_BOX, bodyMat, Math.max(1, nBtn))
+  bodies.name = 'AudioBtn'
+  bodies.count = nBtn
+  bodies.castShadow = true
+  bodies.receiveShadow = true
+  bodies.frustumCulled = false
+  enableInstanceColor(bodies, nBtn)
+  bodies.userData.byInstance = buttons
+  board.add(bodies)
+
+  const leds = new THREE.InstancedMesh(UNIT_BOX, ledMat, Math.max(1, nBtn))
+  leds.name = 'AudioLed'
+  leds.count = nBtn
+  leds.castShadow = false
+  leds.receiveShadow = false
+  leds.frustumCulled = false
+  leds.raycast = () => {}
+  enableInstanceColor(leds, nBtn)
+  board.add(leds)
+
+  let labels = null
+
+  function latchK(btn) {
+    const latched = btn.kind === 'music' && musicId === btn.id
+    if (latched) return 1
+    if (btn.kind === 'sfx') return Math.min(1, btn.pressT / SFX_PRESS)
+    return 0
+  }
+
+  function syncButton(btn) {
+    const k = latchK(btn)
+    const z = REST_Z - (REST_Z - IN_Z) * k
+    btn.object.position.z = z
+    stampAt(bodies, btn.i, btn.x, btn.y, z, btn.bw, btn.bh, BODY_Z)
+    const faceW = btn.bw * 0.92
+    const faceH = btn.bh * 0.78
+    if (labels) stampAt(labels, btn.i, btn.x, btn.y, z + 0.029, faceW, faceH, 1)
+    stampAt(
+      leds, btn.i,
+      btn.x, btn.y + faceH * 0.42, z + LED_Z,
+      faceW * 0.56, Math.max(0.01, faceH * 0.05), 0.008,
+    )
+    bodies.instanceMatrix.needsUpdate = true
+    leds.instanceMatrix.needsUpdate = true
+    if (labels) labels.instanceMatrix.needsUpdate = true
+  }
+
+  function paintButton(btn) {
+    const idle = btn.kind === 'music' ? musicMatIdle : sfxMatIdle
+    let look = idle
+    if (btn.kind === 'music' && musicId === btn.id) look = musicMatOn
+    else if (btn.kind === 'sfx' && btn.pressT > 0) look = sfxMatPress
+    else if (hovered === btn) look = btn.kind === 'music' ? musicMatOn : sfxMatHover
+    colorize(bodies, btn.i, look.color)
+    const lit = !!(btn.audio && btn.audio.isPlaying)
+    colorize(leds, btn.i, lit
+      ? 0xffe0a0
+      : (btn.kind === 'music' ? 0xc4a574 : 0x6b5a45))
+    syncButton(btn)
+  }
+
+  function makeButton(clip, kind, bw, bh, bx, by) {
+    const g = new THREE.Object3D()
+    g.position.set(bx, by, REST_Z)
+    board.add(g)
+    const rec = {
+      i: buttons.length,
+      id: clip.id,
+      label: clip.label,
+      kind,
+      src: clip.src,
+      object: g,
+      audio: null,
+      ready: false,
+      pressT: 0,
+      x: bx, y: by, bw, bh,
+    }
+    g.userData.soundButton = rec
+    buttons.push(rec)
+    return rec
+  }
+
+  const musicBtnH = 0.38
+  const musicBtnW = MUSIC_W - 0.22
+  const musicX = (-BOARD_W / 2 + splitX) / 2
+  musicClips.forEach((clip, i) => {
+    makeButton(
+      clip, 'music', musicBtnW, musicBtnH,
+      musicX, BOARD_H - 1.10 - i * (musicBtnH + 0.08),
+    )
+  })
+
+  const sfxAreaLeft = splitX + 0.10
+  const sfxAreaRight = BOARD_W / 2 - 0.10
+  const sfxAreaW = sfxAreaRight - sfxAreaLeft
+  const rows = Math.max(1, Math.ceil(sfxClips.length / COLS))
+  const gapX = 0.055
+  const gapY = 0.05
+  const sfxW = (sfxAreaW - gapX * (COLS - 1)) / COLS
+  const sfxAreaTop = BOARD_H - 0.88
+  const sfxAreaBot = 0.16
+  const sfxH = Math.min(0.30, (sfxAreaTop - sfxAreaBot - gapY * (rows - 1)) / rows)
+
+  sfxClips.forEach((clip, i) => {
+    const col = i % COLS
+    const row = (i / COLS) | 0
+    const bx = sfxAreaLeft + sfxW / 2 + col * (sfxW + gapX)
+    const by = sfxAreaTop - sfxH / 2 - row * (sfxH + gapY)
+    makeButton(clip, 'sfx', sfxW, sfxH, bx, by)
+  })
+
+  const heads = [
+    {
+      text: 'AUDIO', sub: 'original game sounds', kind: 'header',
+      x: 0, y: BOARD_H - 0.28, w: BOARD_W - 0.18, h: 0.38,
+    },
+    {
+      text: 'MUSIC', sub: 'toggle · loop · exclusive', kind: 'section',
+      x: musicX, y: BOARD_H - 0.64, w: MUSIC_W - 0.12, h: 0.34,
+    },
+    {
+      text: 'SOUND EFFECTS', sub: 'one-shot · stacks · re-press restarts', kind: 'section',
+      x: (splitX + BOARD_W / 2) / 2, y: BOARD_H - 0.64,
+      w: BOARD_W - MUSIC_W - 0.16, h: 0.34,
+    },
+  ]
+  const nLabel = buttons.length + heads.length
+  const cellW = 512
+  const cellH = 192
+  const cols = 6
+  const rowsA = Math.max(1, Math.ceil(nLabel / cols))
+  const atlas = document.createElement('canvas')
+  atlas.width = cols * cellW
+  atlas.height = rowsA * cellH
+  const ag = atlas.getContext('2d')
+  const luv = new Float32Array(nLabel * 4)
+  const tw = atlas.width
+  const th = atlas.height
+
+  function packCell(i, draw) {
+    const col = i % cols
+    const row = (i / cols) | 0
+    ag.save()
+    ag.translate(col * cellW, row * cellH)
+    ag.clearRect(0, 0, cellW, cellH)
+    draw(ag, cellW, cellH)
+    ag.restore()
+    luv[i * 4] = (col * cellW) / tw
+    luv[i * 4 + 1] = 1 - ((row + 1) * cellH) / th
+    luv[i * 4 + 2] = cellW / tw
+    luv[i * 4 + 3] = cellH / th
+  }
+
+  for (const b of buttons) {
+    packCell(b.i, (g, w, h) => {
+      g.textAlign = 'center'
+      g.textBaseline = 'middle'
+      let size = b.kind === 'music' ? 48 : 36
+      g.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`
+      let lines = wrapLines(g, b.label, w - 36)
+      while (size > 20 && (lines.length > 2 || g.measureText(lines[0] || '').width > w - 36)) {
+        size -= 2
+        g.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`
+        lines = wrapLines(g, b.label, w - 36)
+      }
+      const lh = size + 8
+      const y0 = h / 2 - ((lines.length - 1) * lh) / 2 + 8
+      lines.forEach((ln, li) => {
+        g.fillStyle = li === 0 ? '#f0e6d4' : '#d4c4ae'
+        g.fillText(ln, w / 2, y0 + li * lh)
+      })
+    })
+  }
+  heads.forEach((h, hi) => {
+    packCell(buttons.length + hi, (g, w, ht) => {
+      const pad = h.kind === 'header' ? 28 : 16
+      g.textAlign = 'left'
+      g.textBaseline = 'alphabetic'
+      g.fillStyle = h.kind === 'header' ? '#f0e6d4' : '#c4a574'
+      g.font = h.kind === 'header'
+        ? '700 72px ui-sans-serif, system-ui, sans-serif'
+        : '700 56px ui-sans-serif, system-ui, sans-serif'
+      g.fillText(h.text, pad, 78)
+      g.fillStyle = h.kind === 'header' ? '#b5a48a' : '#9a8f80'
+      let subSize = 32
+      g.font = `${subSize}px ui-sans-serif, system-ui, sans-serif`
+      while (subSize > 18 && g.measureText(h.sub).width > w - pad * 2) {
+        subSize -= 2
+        g.font = `${subSize}px ui-sans-serif, system-ui, sans-serif`
+      }
+      g.fillText(h.sub, pad, 140)
+    })
+  })
+
+  const labelMap = new THREE.CanvasTexture(atlas)
+  labelMap.colorSpace = THREE.SRGBColorSpace
+  labelMap.anisotropy = 4
+  const labelGeo = UNIT_PLANE.clone()
+  labelGeo.setAttribute('instanceUv', new THREE.InstancedBufferAttribute(luv, 4))
+  labels = new THREE.InstancedMesh(
+    labelGeo,
+    atlasUvMaterial(labelMap, {
+      basic: true, transparent: true, key: 'audio-labels',
+    }),
+    Math.max(1, nLabel),
+  )
+  labels.name = 'AudioLabel'
+  labels.count = nLabel
+  labels.frustumCulled = false
+  labels.raycast = () => {}
+  board.add(labels)
+  const headZ = BOARD_T / 2 + 0.012
+  heads.forEach((h, hi) => {
+    stampAt(labels, buttons.length + hi, h.x, h.y, headZ, h.w, h.h, 1)
+  })
+  labels.instanceMatrix.needsUpdate = true
 
   const lamp = new THREE.PointLight(0xffe0b8, 4, 6, 2)
   lamp.position.set(0, BOARD_H - 0.05, 0.45)
@@ -233,126 +411,6 @@ export async function createSoundboard({
       },
     })
   }
-
-  const buttons = []
-  const ndc = new THREE.Vector2(0, 0)
-  const raycaster = new THREE.Raycaster()
-  const _face = new THREE.Vector3()
-  const _q = new THREE.Quaternion()
-  let hovered = null
-  let musicId = null
-
-  function paintButton(btn) {
-    const idle = btn.kind === 'music' ? musicMatIdle : sfxMatIdle
-    let look = idle
-    if (btn.kind === 'music' && musicId === btn.id) look = musicMatOn
-    else if (btn.kind === 'sfx' && btn.pressT > 0) look = sfxMatPress
-    else if (hovered === btn) look = btn.kind === 'music' ? musicMatOn : sfxMatHover
-    btn.body.material.color.setHex(look.color)
-    btn.body.material.emissive.setHex(look.emissive)
-    const restZ = BOARD_T / 2 + 0.046
-    const inZ = BOARD_T / 2 + 0.016
-    const latched = btn.kind === 'music' && musicId === btn.id
-    const k = latched ? 1 : (btn.kind === 'sfx' ? Math.min(1, btn.pressT / SFX_PRESS) : 0)
-    btn.object.position.z = restZ - (restZ - inZ) * k
-    const lit = !!(btn.audio && btn.audio.isPlaying)
-    if (btn.led) {
-      btn.led.material.color.setHex(lit ? 0xffe0a0 : (btn.kind === 'music' ? 0xc4a574 : 0x6b5a45))
-      btn.led.material.emissive.setHex(lit ? 0xffc060 : 0x000000)
-      btn.led.material.emissiveIntensity = lit ? 1.8 : 0
-    }
-  }
-
-  function makeButton(clip, kind, bw, bh) {
-    const g = new THREE.Group()
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(bw, bh, 0.055),
-      new THREE.MeshStandardMaterial({
-        color: kind === 'music' ? musicMatIdle.color : sfxMatIdle.color,
-        roughness: 0.48,
-        metalness: 0.12,
-        emissive: 0x000000,
-      }),
-    )
-    body.castShadow = true
-    const faceW = bw * 0.92
-    const faceH = bh * 0.78
-    const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(faceW, faceH),
-      new THREE.MeshBasicMaterial({
-        map: labelMap(clip.label),
-        transparent: true,
-        depthWrite: false,
-      }),
-    )
-    face.position.z = 0.029
-    g.add(body, face)
-    const led = new THREE.Mesh(
-      new THREE.BoxGeometry(faceW * 0.56, Math.max(0.01, faceH * 0.05), 0.008),
-      new THREE.MeshStandardMaterial({
-        color: 0x2a2418,
-        roughness: 0.38,
-        metalness: 0.12,
-        emissive: 0x000000,
-        emissiveIntensity: 0,
-      }),
-    )
-    led.position.set(0, faceH * 0.42, 0.033)
-    g.add(led)
-
-    const rec = {
-      id: clip.id,
-      label: clip.label,
-      kind,
-      src: clip.src,
-      object: g,
-      body,
-      audio: null,
-      led,
-      ready: false,
-      pressT: 0,
-    }
-    g.userData.soundButton = rec
-    body.userData.soundButton = rec
-    face.userData.soundButton = rec
-    if (led) led.userData.soundButton = rec
-    buttons.push(rec)
-    board.add(g)
-    return rec
-  }
-
-  const musicBtnH = 0.38
-  const musicBtnW = MUSIC_W - 0.22
-  musicClips.forEach((clip, i) => {
-    const b = makeButton(clip, 'music', musicBtnW, musicBtnH)
-    b.object.position.set(
-      (-BOARD_W / 2 + splitX) / 2,
-      BOARD_H - 1.10 - i * (musicBtnH + 0.08),
-      BOARD_T / 2 + 0.046,
-    )
-  })
-
-  const sfxAreaLeft = splitX + 0.10
-  const sfxAreaRight = BOARD_W / 2 - 0.10
-  const sfxAreaW = sfxAreaRight - sfxAreaLeft
-  const rows = Math.max(1, Math.ceil(sfxClips.length / COLS))
-  const gapX = 0.055
-  const gapY = 0.05
-  const sfxW = (sfxAreaW - gapX * (COLS - 1)) / COLS
-  const sfxAreaTop = BOARD_H - 0.88
-  const sfxAreaBot = 0.16
-  const sfxH = Math.min(0.30, (sfxAreaTop - sfxAreaBot - gapY * (rows - 1)) / rows)
-
-  sfxClips.forEach((clip, i) => {
-    const col = i % COLS
-    const row = Math.floor(i / COLS)
-    const b = makeButton(clip, 'sfx', sfxW, sfxH)
-    const bx = sfxAreaLeft + sfxW / 2 + col * (sfxW + gapX)
-    const by = sfxAreaTop - sfxH / 2 - row * (sfxH + gapY)
-    b.object.position.set(bx, by, BOARD_T / 2 + 0.046)
-  })
-
-  scene.add(object)
 
   function stopMusic() {
     for (const b of buttons) {
@@ -387,6 +445,10 @@ export async function createSoundboard({
     const hits = raycaster.intersectObject(object, true)
     for (const h of hits) {
       if (h.distance > PRESS_RANGE) continue
+      if (h.object === bodies && h.instanceId != null) {
+        const rec = buttons[h.instanceId]
+        if (rec) return rec
+      }
       const rec = h.object.userData.soundButton
       if (rec) return rec
       if (h.object.userData.soundboard) return { kind: 'panel', label: 'Soundboard' }
@@ -500,6 +562,8 @@ export async function createSoundboard({
     }
   })
   for (const b of buttons) paintButton(b)
+
+  scene.add(object)
 
   return {
     object, buttons, update, tryPress, press, lookLabel,

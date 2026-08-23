@@ -28,7 +28,7 @@ import { installHarness } from '../common/harness.js'
 import { createFpsOverlay } from '../common/fpsOverlay.js'
 import { createInstancePool, visualMesh, createVisualInstancer } from '../common/instancePool.js'
 import { createBodyInstancer } from '../common/bodyInstancer.js'
-import { createKit, makeFloor, FLOOR_PHYSICS } from '../common/kit.js'
+import { createKit, addTiledFloor, FLOOR_PHYSICS } from '../common/kit.js'
 import { flags, applyFlags } from '../common/flags.js'
 import { bindAudio } from '../common/audio.js'
 import { createLabelField } from '../common/labelField.js'
@@ -68,15 +68,6 @@ const EXHIBIT_CAPTION = {
 
 // Show-floor clusters — grouped by how systems work together, not by asset folder.
 const CLUSTER_ORDER = ['people', 'line', 'ingredients', 'chaos', 'service', 'storage', 'back']
-const CLUSTER_BANNER = {
-  people: 'People',
-  line: 'On the line',
-  ingredients: 'Ingredients',
-  chaos: 'Chaos',
-  service: 'Service',
-  storage: 'Storage',
-  back: 'Back of house',
-}
 
 // Prefabs authored facing -Z (away from spawn). Turn them to face the aisle.
 const FACE_AISLE = new Set([
@@ -237,6 +228,7 @@ let npcProto = null
 let exhibitSwitches = null
 let daySwitchSpot = null
 let fires = null
+let hallKit = null
 const fireSprites = []
 const facePlayer = []
 const scaler = createScaler({
@@ -344,21 +336,6 @@ function makePlaque(title, sub) {
   )
 }
 
-function makeBanner(text) {
-  const map = canvasTexture(1024, 192, (g, w, h) => {
-    g.clearRect(0, 0, w, h)
-    g.fillStyle = '#f0e6d4'
-    g.font = '700 92px ui-sans-serif, system-ui, sans-serif'
-    g.textAlign = 'center'
-    g.fillText(text.toUpperCase(), w / 2, 120)
-  })
-  const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(6.5, 1.2),
-    new THREE.MeshBasicMaterial({ map, transparent: true, side: THREE.DoubleSide })
-  )
-  return m
-}
-
 function makeTitleWall() {
   const map = canvasTexture(2048, 768, (g, w, h) => {
     g.fillStyle = '#cfc6b8'
@@ -379,14 +356,13 @@ function makeTitleWall() {
     new THREE.PlaneGeometry(14, 5.25),
     new THREE.MeshBasicMaterial({ map })
   )
+  m.name = 'TitleWall'
   return m
 }
 
-function tiledFloor(w, d) {
+function hallFloorMap() {
   const map = new THREE.TextureLoader().load('./assets/entities/tiles/MuseumFloor.png')
   map.colorSpace = THREE.SRGBColorSpace
-  map.wrapS = map.wrapT = THREE.RepeatWrapping
-  map.repeat.set(w / 3.2, d / 3.2)
   map.anisotropy = 4
   return map
 }
@@ -394,18 +370,19 @@ function tiledFloor(w, d) {
 function buildRoom(minx, maxx, minz, maxz, height) {
   const w = maxx - minx, d = maxz - minz
   const cx = (minx + maxx) / 2, cz = (minz + maxz) / 2
-  const map = tiledFloor(w, d)
-  scene.add(makeFloor({ map, w, d, x: cx, z: cz, layer: 0, tile: 3.2, roughness: 0.88 }))
+  hallKit = createKit({ parent: scene, max: 16 })
+  addTiledFloor(hallKit, {
+    map: hallFloorMap(), w, d, x: cx, z: cz, layer: 0, tile: 3.2, roughness: 0.88,
+  })
   // Open to sky — the hall has no ceiling; skybox is the dome.
 
   const wallMat = new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.88 })
-  const kit = createKit({ parent: scene, max: 8 })
   const thick = 0.4
-  kit.box(wallMat, w, height, thick, cx, height / 2, minz - thick / 2)
-  kit.box(wallMat, w, height, thick, cx, height / 2, maxz + thick / 2)
-  kit.box(wallMat, thick, height, d, minx - thick / 2, height / 2, cz)
-  kit.box(wallMat, thick, height, d, maxx + thick / 2, height / 2, cz)
-  kit.finalize()
+  hallKit.box(wallMat, w, height, thick, cx, height / 2, minz - thick / 2)
+  hallKit.box(wallMat, w, height, thick, cx, height / 2, maxz + thick / 2)
+  hallKit.box(wallMat, thick, height, d, minx - thick / 2, height / 2, cz)
+  hallKit.box(wallMat, thick, height, d, maxx + thick / 2, height / 2, cz)
+  hallKit.finalize()
 
   const title = makeTitleWall()
   title.position.set(cx, 3.4, maxz - 0.22)
@@ -532,7 +509,7 @@ function layoutClusters(items, featuredSlugs) {
   const people = by.get('people') || []
   people.sort((a, b) => featuredSlugs.indexOf(a.slug) - featuredSlugs.indexOf(b.slug))
   return CLUSTER_ORDER
-    .map(id => ({ id, name: CLUSTER_BANNER[id] || id, items: by.get(id) || [] }))
+    .map(id => ({ id, items: by.get(id) || [] }))
     .filter(c => c.items.length)
 }
 
@@ -660,18 +637,6 @@ function updateFireSprites(dt) {
 
 function setStatus(msg) { $('load-msg').textContent = msg }
 
-function placeBannerAt(text, x, z, yaw = 0, dist = 1.7) {
-  const banner = makeBanner(text)
-  banner.position.set(
-    x + Math.sin(yaw) * dist,
-    4.4,
-    z + Math.cos(yaw) * dist,
-  )
-  banner.rotation.y = yaw
-  scene.add(banner)
-  return banner
-}
-
 async function boot() {
   setStatus('Reading manifest…')
   const manifest = await fetch('./assets/manifest.json').then(r => r.json())
@@ -714,7 +679,6 @@ async function boot() {
       z: BOOTHS.audio.z,
       facingY: Math.PI / 5,
     })
-    placeBannerAt('Audio', BOOTHS.audio.x, BOOTHS.audio.z, Math.PI / 5)
     exhibits.push({
       slug: 'audio/Soundboard',
       label: 'Soundboard',
@@ -734,7 +698,6 @@ async function boot() {
   for (const cluster of clusters) {
     const plan = FLOOR[cluster.id] || { x: 0, z: 0, yaw: 0, cols: cluster.items.length, spacing: SPACING_X }
     const slots = clusterSlots(cluster.items.length, plan.x, plan.z, plan.yaw, plan)
-    placeBannerAt(cluster.name, plan.x, plan.z, plan.yaw)
 
     for (let i = 0; i < cluster.items.length; i++) {
       const item = cluster.items[i]
@@ -806,7 +769,6 @@ async function boot() {
 
   try {
     setStatus('Loading texture samples…')
-    placeBannerAt('Textures', (BOOTHS.textures.x + BOOTHS.posters.x) / 2, BOOTHS.posters.z, 0, 3.4)
     swatches = createSwatches({
       scene, player, foodWorld, pedestals,
       x: BOOTHS.textures.x, z: BOOTHS.textures.z, facingY: 0,
@@ -855,7 +817,6 @@ async function boot() {
       nestLettuceHead: root => nestLettuceHead(root, loader),
       x: kx, z: kz, yaw,
     })
-    placeBannerAt('Food', kx, kz, yaw)
     exhibits.push(foodKiosk.rec)
   } catch (err) {
     console.warn('[museum] food kiosk skipped', err)
@@ -1007,10 +968,9 @@ async function boot() {
 
   try {
     setStatus('Loading delivery truck…')
-    placeBannerAt('Delivery', BOOTHS.delivery.x, BOOTHS.delivery.z, 0, 8.5)
     delivery = await createDelivery({
       scene, player, loader, foodWorld, foodProtos,
-      x: BOOTHS.delivery.x, z: BOOTHS.delivery.z,
+      x: BOOTHS.delivery.x, z: BOOTHS.delivery.z, kit: hallKit,
     })
     const rec = {
       slug: 'items/Truck',

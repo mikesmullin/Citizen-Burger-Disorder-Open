@@ -8,6 +8,7 @@
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { layoutFood, FOOD_SIZE } from './food.js'
+import { floorY } from '../common/kit.js'
 
 export const Contents = {
   meat: 'PattMcRat',
@@ -234,32 +235,36 @@ function sampleCargoFloor(root, openZ, x0, x1, bodyMinY, bodyMaxY) {
   return null
 }
 
-function makeWheel(radius, width) {
-  const g = new THREE.Group()
-  g.name = 'Tire'
-  const rubber = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, width, 20),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.92, metalness: 0.05 }),
-  )
-  rubber.rotation.z = Math.PI / 2
-  const hub = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius * 0.4, radius * 0.4, width + 0.05, 12),
-    new THREE.MeshStandardMaterial({ color: 0x6e6e6e, roughness: 0.45, metalness: 0.35 }),
-  )
-  hub.rotation.z = Math.PI / 2
-  const cap = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius * 0.18, radius * 0.18, width + 0.08, 10),
-    new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5, metalness: 0.4 }),
-  )
-  cap.rotation.z = Math.PI / 2
-  g.add(rubber, hub, cap)
-  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
-  return g
+async function loadTireGeometry() {
+  const meta = await fetch('./assets/models/Tire.json').then(r => {
+    if (!r.ok) throw new Error('Tire.json ' + r.status)
+    return r.json()
+  })
+  const buf = await fetch('./assets/' + meta.bin).then(r => {
+    if (!r.ok) throw new Error('Tire.bin ' + r.status)
+    return r.arrayBuffer()
+  })
+  const n = meta.verts | 0
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(buf, 0, n * 3), 3))
+  geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(buf, n * 12, n * 3), 3))
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(buf, n * 24, n * 2), 2))
+  geo.computeBoundingBox()
+  geo.computeBoundingSphere()
+  const map = new THREE.TextureLoader().load('./assets/' + meta.tex)
+  map.colorSpace = THREE.SRGBColorSpace
+  map.magFilter = THREE.NearestFilter
+  map.minFilter = THREE.NearestFilter
+  map.generateMipmaps = false
+  const mat = new THREE.MeshStandardMaterial({
+    map, color: 0xffffff, roughness: 0.72, metalness: 0.18,
+  })
+  return { geo, mat }
 }
 
 export async function createDelivery({
   scene, player, loader, foodWorld, foodProtos = {},
-  x = 0, z = 0,
+  x = 0, z = 0, kit = null,
 } = {}) {
   const { root } = await loader.load('items/Truck')
   hideTriggers(root)
@@ -304,13 +309,33 @@ export async function createDelivery({
   const AXLE_FROM_CAB = [0.215, 0.743]
   const axleX = [x0 - TIRE_W * 0.15, x1 + TIRE_W * 0.15]
   const axleZ = AXLE_FROM_CAB.map(t => z0 + size.z * t)
-  for (const ax of axleX) {
-    for (const az of axleZ) {
-      const w = makeWheel(TIRE_R, TIRE_W)
-      w.position.set(ax, TIRE_R, az)
-      scene.add(w)
-      root.attach(w)
+  try {
+    const { geo, mat } = await loadTireGeometry()
+    const tires = new THREE.InstancedMesh(geo, mat, 4)
+    tires.name = 'Tire'
+    tires.count = 4
+    tires.castShadow = tires.receiveShadow = true
+    tires.frustumCulled = false
+    const dummy = new THREE.Object3D()
+    const inv = new THREE.Matrix4()
+    root.updateMatrixWorld(true)
+    inv.copy(root.matrixWorld).invert()
+    let ti = 0
+    for (const ax of axleX) {
+      for (const az of axleZ) {
+        dummy.position.set(ax, TIRE_R, az)
+        dummy.rotation.set(0, 0, 0)
+        dummy.scale.set(TIRE_W, TIRE_R, TIRE_R)
+        dummy.updateMatrix()
+        dummy.matrix.premultiply(inv)
+        tires.setMatrixAt(ti++, dummy.matrix)
+      }
     }
+    tires.instanceMatrix.needsUpdate = true
+    tires.computeBoundingSphere()
+    root.add(tires)
+  } catch (err) {
+    console.warn('[delivery] tire mesh skipped', err)
   }
 
   // Cargo floor sits above the tires so you cannot step in without the ramp.
@@ -323,14 +348,23 @@ export async function createDelivery({
   const rampZ0 = openZ - 0.35
   const rampZ1 = openZ + rampLen
 
-  const dock = new THREE.Mesh(
-    new THREE.PlaneGeometry(size.x + 4.5, size.z + rampLen + 5),
-    new THREE.MeshStandardMaterial({ color: 0x3a3530, roughness: 0.95 }),
-  )
-  dock.rotation.x = -Math.PI / 2
-  dock.position.set(x, 0.008, z)
-  dock.receiveShadow = true
-  scene.add(dock)
+  const dockW = size.x + 4.5
+  const dockD = size.z + rampLen + 5
+  const dockMat = new THREE.MeshStandardMaterial({ color: 0x3a3530, roughness: 0.95 })
+  if (kit) {
+    kit.floor(dockMat, dockW, dockD, x, floorY(1), z)
+    kit.finalize()
+  } else {
+    const dock = new THREE.Mesh(
+      new THREE.PlaneGeometry(dockW, dockD),
+      dockMat,
+    )
+    dock.name = 'TruckDock'
+    dock.rotation.x = -Math.PI / 2
+    dock.position.set(x, floorY(1), z)
+    dock.receiveShadow = true
+    scene.add(dock)
+  }
 
   const rampMat = new THREE.MeshStandardMaterial({
     color: 0x8d8880, roughness: 0.82, metalness: 0.08,

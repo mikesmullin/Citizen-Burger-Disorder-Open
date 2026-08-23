@@ -1,0 +1,53 @@
+{
+ "name": "Tire",
+ "bin": "models/Tire.bin",
+ "tex": "textures/Tire.png",
+ "verts": 504,
+ "tris": 168,
+ "hasNormals": true,
+ "hasUvs": true,
+ "radius": 1,
+ "width": 1,
+ "axle": "x",
+ "source": "tools/build_tire.py",
+ "min": [
+  -0.61,
+  -1.0,
+  -1.0
+ ],
+ "max": [
+  0.61,
+  1.0,
+  1.0
+ ],
+ "size": [
+  1.22,
+  2.0,
+  2.0
+ ],
+ "center": [
+  0.0,
+  0.0,
+  0.0
+ ],
+ "longest": 2.0,
+ "uv": {
+  "rubber": [
+   0.166667,
+   0.5
+  ],
+  "hub": [
+   0.5,
+   0.5
+  ],
+  "cap": [
+   0.833333,
+   0.5
+  ]
+ },
+ "colors": {
+  "rubber": "#1a1a1a",
+  "hub": "#6e6e6e",
+  "cap": "#3a3a3a"
+ }
+}
