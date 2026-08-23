@@ -24,16 +24,13 @@ import * as View from './view.js'
 import { createPosKiosk } from './posKiosk.js'
 import { boundsOf } from '../common/unityScene.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
+import { createKit, makeFloor, makeRoof, makePane, WALL_T, WAINSCOT, RAIL, WAINSCOT_T, COUNTER_Y } from '../common/kit.js'
 
 export const BOOTH_W = 12
 export const BOOTH_D = 18
 export const BOOTH_H = 3.55
-const WALL_T = 0.12
 const STREET_D = 3.6
-const WAINSCOT = 1.08
-const RAIL = 0.10
 const HALF_H = WAINSCOT + RAIL
-const COUNTER_Y = 0.92
 const TABLE_Y = 0.76
 
 function loadMap(url, { repeatX = 1, repeatY = 1, flipY = true } = {}) {
@@ -63,12 +60,7 @@ function mat(color, { map = null, roughness = 0.78, metalness = 0.04 } = {}) {
   return new THREE.MeshStandardMaterial({ color, map, roughness, metalness })
 }
 
-function box(w, h, d, material, x, y, z) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material)
-  m.position.set(x, y, z)
-  m.castShadow = m.receiveShadow = true
-  return m
-}
+
 
 function makeLabel(text) {
   const map = canvasTexture(512, 128, (g, w, h) => {
@@ -164,18 +156,9 @@ export async function createFront({
 
   const wallUpper = loadMap('./assets/textures/enviro/DiningUpperWall.png')
   const wallLower = loadMap('./assets/textures/enviro/DiningLowerWall.png')
-  const floorTex = loadMap('./assets/textures/enviro/DiningFloor.png', {
-    repeatX: BOOTH_W / 1.55, repeatY: (BOOTH_D - STREET_D) / 1.55,
-  })
-  const passTex = loadMap('./assets/entities/tiles/KitchenFloor.png', {
-    repeatX: BOOTH_W / 1.8, repeatY: 2.2,
-  })
-  const streetTex = loadMap('./assets/textures/Wood.png', {
-    repeatX: BOOTH_W / 2, repeatY: STREET_D / 2,
-  })
-  const roofTex = loadMap('./assets/textures/enviro/KitchenRoof.png', {
-    repeatX: 2.8, repeatY: 3.6,
-  })
+  const floorTex = loadMap('./assets/textures/enviro/DiningFloor.png')
+  const passTex = loadMap('./assets/entities/tiles/KitchenFloor.png')
+  const streetTex = loadMap('./assets/textures/Wood.png')
   const topTex = loadMap('./assets/textures/enviro/TableMain.png')
   const greyTex = loadMap('./assets/textures/Grey.png')
   const darkTex = loadMap('./assets/textures/GreyDark.png')
@@ -192,6 +175,10 @@ export async function createFront({
     transparent: true, opacity: 0.22, depthWrite: false,
     side: THREE.DoubleSide,
   })
+  const kit = createKit({ parent: object })
+  function box(w, h, d, material, x, y, z, yaw = 0) {
+    kit.box(material, w, h, d, x, y, z, yaw)
+  }
 
   const hx = BOOTH_W / 2
   const hz = BOOTH_D / 2
@@ -207,78 +194,41 @@ export async function createFront({
 
   const diningD = doorZ - winZ
   const diningZ = (winZ + doorZ) / 2
-  const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W, 0.04, diningD),
-    mat(0xffffff, { map: floorTex, roughness: 0.9 }),
-  )
-  floor.position.set(0, 0.02, diningZ)
-  floor.receiveShadow = true
-  object.add(floor)
-
-  const passFloor = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W, 0.04, passD),
-    mat(0xffffff, { map: passTex, roughness: 0.88 }),
-  )
-  passFloor.position.set(0, 0.02, passZ)
-  passFloor.receiveShadow = true
-  object.add(passFloor)
-
-  const street = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W + 1.4, 0.03, STREET_D),
-    mat(0xffffff, { map: streetTex, roughness: 0.82 }),
-  )
+  object.add(makeFloor({ map: floorTex, w: BOOTH_W, d: diningD, z: diningZ, layer: 1, tile: 1.55 }))
+  object.add(makeFloor({ map: passTex, w: BOOTH_W, d: passD, z: passZ, layer: 1, tile: 1.8 }))
+  const street = makeFloor({
+    map: streetTex, w: BOOTH_W + 1.4, d: STREET_D, z: hz - STREET_D / 2, layer: 2, tile: 2,
+  })
   street.name = 'StreetFloor'
-  street.position.set(0, 0.015, hz - STREET_D / 2)
-  street.receiveShadow = true
   object.add(street)
+  object.add(makeRoof({ w: BOOTH_W, d: interiorD, y: BOOTH_H, z: interiorZ }))
 
-  const ceil = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W, 0.1, interiorD),
-    mat(0xffffff, { map: roofTex, roughness: 0.95 }),
-  )
-  ceil.name = 'RoomCeiling'
-  ceil.position.set(0, BOOTH_H, interiorZ)
-  ceil.castShadow = true
-  ceil.receiveShadow = false
-  object.add(ceil)
-
-  function wallSeg(w, h, d, px, py, pz, material) {
-    const m = box(w, h, d, material, px, py, pz)
-    object.add(m)
-    return m
-  }
-
-  function cladWall(w, d, px, pz, alongX) {
-    const upperH = BOOTH_H - WAINSCOT - RAIL
-    wallSeg(alongX ? w : WALL_T, WAINSCOT, alongX ? WALL_T : d, px, WAINSCOT / 2, pz, lowerMat)
-    wallSeg(alongX ? w : WALL_T, RAIL, alongX ? WALL_T : d, px, WAINSCOT + RAIL / 2, pz, railMat)
-    wallSeg(alongX ? w : WALL_T, upperH, alongX ? WALL_T : d, px, WAINSCOT + RAIL + upperH / 2, pz, upperMat)
+  function solidWall(w, d, px, pz, alongX) {
+    const tw = alongX ? w : WALL_T
+    const td = alongX ? WALL_T : d
+    box(tw, BOOTH_H, td, upperMat, px, BOOTH_H / 2, pz)
   }
 
   function doorFrame(x0, x1, z, h = doorH) {
+    kit.doorFrame(railMat, x0, x1, z, h)
     const mid = (x0 + x1) / 2
     const w = x1 - x0
-    const lintelH = 0.28
-    wallSeg(0.16, h, 0.14, x0, h / 2, z, railMat)
-    wallSeg(0.16, h, 0.14, x1, h / 2, z, railMat)
-    wallSeg(w + 0.28, lintelH, 0.16, mid, h + lintelH / 2, z, railMat)
-    const fillStart = h + lintelH - 0.06
+    const fillStart = h + 0.28 - 0.06
     const fillH = BOOTH_H - fillStart
-    if (fillH > 0.08) {
-      wallSeg(w + 0.28, fillH, WALL_T, mid, fillStart + fillH / 2, z, upperMat)
-    }
+    if (fillH > 0.08) box(w + 0.28, fillH, WALL_T, upperMat, mid, fillStart + fillH / 2, z)
   }
 
-  // Exterior shell. Open +Z is the road.
-  cladWall(WALL_T, interiorD, -hx + WALL_T / 2, interiorZ, false)
-  cladWall(WALL_T, interiorD, hx - WALL_T / 2, interiorZ, false)
+  // Exterior shell. Open +Z is the road. Whole wall is the upper (cream)
+  // color; diner wainscot is a separate interior strip.
+  solidWall(WALL_T, interiorD, -hx + WALL_T / 2, interiorZ, false)
+  solidWall(WALL_T, interiorD, hx - WALL_T / 2, interiorZ, false)
 
   const backDoorX0 = -3.55
   const backDoorX1 = -2.05
   const backW = backDoorX0 - (-hx)
   const backE = hx - backDoorX1
-  if (backW > 0.2) cladWall(backW, WALL_T, -hx + backW / 2, -hz + WALL_T / 2, true)
-  if (backE > 0.2) cladWall(backE, WALL_T, hx - backE / 2, -hz + WALL_T / 2, true)
+  if (backW > 0.2) solidWall(backW, WALL_T, -hx + backW / 2, -hz + WALL_T / 2, true)
+  if (backE > 0.2) solidWall(backE, WALL_T, hx - backE / 2, -hz + WALL_T / 2, true)
   doorFrame(backDoorX0, backDoorX1, -hz + WALL_T / 2, 2.2)
 
   const doorW = 2.65
@@ -289,32 +239,11 @@ export async function createFront({
   // Storefront: sill + header + two posts, glass in the hole. No solid
   // wall behind the pane — NPCs looking in actually see the dining room.
   function facadeWindow(x0, x1, z) {
-    const span = x1 - x0
-    if (span < 0.4) return
-    const mid = (x0 + x1) / 2
-    const post = Math.min(0.16, span * 0.12)
-    const gx0 = x0 + post
-    const gx1 = x1 - post
-    const gw = gx1 - gx0
-    const gMid = (gx0 + gx1) / 2
-    const gBot = HALF_H
-    const gTop = 2.68
-    const gH = gTop - gBot
-    const gCy = (gBot + gTop) / 2
-    wallSeg(span, WAINSCOT, WALL_T, mid, WAINSCOT / 2, z, lowerMat)
-    wallSeg(span, RAIL, WALL_T, mid, WAINSCOT + RAIL / 2, z, railMat)
-    wallSeg(post, gH, WALL_T, x0 + post / 2, gCy, z, upperMat)
-    wallSeg(post, gH, WALL_T, x1 - post / 2, gCy, z, upperMat)
-    const headH = BOOTH_H - gTop
-    if (headH > 0.08) {
-      wallSeg(span, headH, WALL_T, mid, gTop + headH / 2, z, upperMat)
-    }
-    wallSeg(gw + 0.06, 0.05, 0.1, gMid, gTop + 0.02, z, railMat)
-    wallSeg(gw + 0.06, 0.05, 0.1, gMid, gBot - 0.02, z, railMat)
-    const pane = new THREE.Mesh(new THREE.BoxGeometry(gw, gH, 0.04), glassMat)
-    pane.position.set(gMid, gCy, z)
-    pane.castShadow = pane.receiveShadow = false
-    object.add(pane)
+    kit.windowWall({
+      x0, x1, z,
+      upper: upperMat, rail: railMat, glassMat,
+      gBot: HALF_H, gTop: 2.68, h: BOOTH_H,
+    })
   }
 
   facadeWindow(-hx, doorX0, doorZ)
@@ -331,14 +260,12 @@ export async function createFront({
   const winX0 = -0.45
   const winX1 = 2.85
   const solidW1 = winX0 - passX1
-  if (solidW1 > 0.2) cladWall(solidW1, WALL_T, passX1 + solidW1 / 2, winZ, true)
+  if (solidW1 > 0.2) solidWall(solidW1, WALL_T, passX1 + solidW1 / 2, winZ, true)
   const solidW2 = (hx - WALL_T) - winX1
-  if (solidW2 > 0.2) cladWall(solidW2, WALL_T, winX1 + solidW2 / 2, winZ, true)
+  if (solidW2 > 0.2) solidWall(solidW2, WALL_T, winX1 + solidW2 / 2, winZ, true)
   const winW = winX1 - winX0
-  wallSeg(winW, HALF_H, WALL_T, (winX0 + winX1) / 2, HALF_H / 2, winZ, lowerMat)
-  wallSeg(winW, RAIL, 0.16, (winX0 + winX1) / 2, HALF_H + 0.04, winZ, railMat)
-  // Pass ledge on the dining side of the window.
-  object.add(box(winW, 0.06, 0.36, topMat, (winX0 + winX1) / 2, HALF_H + 0.03, winZ + 0.22))
+  box(winW, HALF_H, WALL_T, upperMat, (winX0 + winX1) / 2, HALF_H / 2, winZ)
+  box(winW, 0.06, 0.36, topMat, (winX0 + winX1) / 2, HALF_H + 0.03, winZ + 0.22)
 
   const passLabel = makeLabel('PASS')
   passLabel.scale.set(0.72, 0.72, 1)
@@ -354,8 +281,7 @@ export async function createFront({
   const cZ = winZ + 2.88
   const cX0 = cX - cLen / 2
   const cX1 = cX + cLen / 2
-  object.add(box(cLen, COUNTER_Y - 0.04, cD, orangeMat, cX, (COUNTER_Y - 0.04) / 2, cZ))
-  object.add(box(cLen + 0.06, 0.05, cD + 0.04, topMat, cX, COUNTER_Y, cZ))
+  kit.counter(orangeMat, topMat, cLen, cD, cX, cZ, COUNTER_Y)
 
   // Divider on the *guest* side of the counter, west to the exterior.
   // Staff behind the till walk west (north of this wall) to the back door.
@@ -364,8 +290,24 @@ export async function createFront({
   const divideX0 = -hx + WALL_T
   const divideW = cX0 - divideX0
   if (divideW > 0.2) {
-    cladWall(divideW, WALL_T, divideX0 + divideW / 2, divideZ, true)
+    solidWall(divideW, WALL_T, divideX0 + divideW / 2, divideZ, true)
   }
+
+  const inset = WALL_T + WAINSCOT_T / 2
+  const coat = { panel: lowerMat, rail: railMat }
+  const free = { ...coat, cap: 0 }
+  kit.wainscot(interiorD, -hx + inset, interiorZ, Math.PI / 2, coat)
+  kit.wainscot(interiorD, hx - inset, interiorZ, -Math.PI / 2, coat)
+  if (backW > 0.2) kit.wainscot(backW, -hx + backW / 2, -hz + inset, 0, { ...coat, cap1: 0 })
+  if (backE > 0.2) kit.wainscot(backE, hx - backE / 2, -hz + inset, 0, { ...coat, cap0: 0 })
+  const leftWin = doorX0 - (-hx)
+  if (leftWin > 0.2) kit.wainscot(leftWin, -hx + leftWin / 2, doorZ - inset, Math.PI, { ...coat, cap0: 0 })
+  const rightWin = hx - doorX1
+  if (rightWin > 0.2) kit.wainscot(rightWin, doorX1 + rightWin / 2, doorZ - inset, Math.PI, { ...coat, cap1: 0 })
+  if (solidW1 > 0.2) kit.wainscot(solidW1, passX1 + solidW1 / 2, winZ + inset, 0, free)
+  kit.wainscot(winW, (winX0 + winX1) / 2, winZ + inset, 0, free)
+  if (solidW2 > 0.2) kit.wainscot(solidW2, winX1 + solidW2 / 2, winZ + inset, 0, { ...coat, cap0: 0, cap1: WAINSCOT_T })
+  if (divideW > 0.2) kit.wainscot(divideW, divideX0 + divideW / 2, divideZ + inset, 0, { ...coat, cap0: WAINSCOT_T, cap1: 0 })
 
   const staffZ = (winZ + (cZ - cD / 2)) / 2
   const staffX0 = 0.05
@@ -376,8 +318,7 @@ export async function createFront({
   const posG = new THREE.Group()
   posG.position.set(posX, 0, cZ - cD / 2)
   posG.rotation.y = Math.PI
-  const posBezel = box(0.72, 0.48, 0.08, darkMat, 0, COUNTER_Y + 0.42, 0.04)
-  posG.add(posBezel)
+  box(0.72, 0.48, 0.08, darkMat, posX, COUNTER_Y + 0.42, cZ - cD / 2 - 0.04, Math.PI)
   const posScreen = new THREE.Mesh(
     new THREE.PlaneGeometry(0.64, 0.40),
     new THREE.MeshBasicMaterial({
@@ -396,8 +337,7 @@ export async function createFront({
 
   const regX = cX0 + 0.55
   const regZ = cZ
-  const regBody = box(0.62, 0.42, 0.48, darkMat, regX, COUNTER_Y + 0.24, regZ)
-  object.add(regBody)
+  box(0.62, 0.42, 0.48, darkMat, regX, COUNTER_Y + 0.24, regZ)
   const regCanvas = document.createElement('canvas')
   regCanvas.width = 256
   regCanvas.height = 96
@@ -470,7 +410,7 @@ export async function createFront({
   }))
   const markMat = mat(0x2a241f, { roughness: 0.9 })
   for (const q of queueLocal) {
-    object.add(box(0.36, 0.02, 0.52, markMat, q.x, 0.05, q.z))
+    box(0.36, 0.02, 0.52, markMat, q.x, 0.05, q.z)
   }
 
   const backLabel = makeLabel('BACK')
@@ -496,13 +436,10 @@ export async function createFront({
   mountCanvas('Poster2', hx - WALL_T - 0.02, 1.80, -7.2, -Math.PI / 2, 1.1)            // east wall, faces -x
 
   function makeTable(spec) {
-    const g = new THREE.Group()
-    g.position.set(spec.x, 0, spec.z)
     const tw = spec.w
     const td = spec.d
-    g.add(box(tw, TABLE_Y - 0.04, td, greyMat, 0, (TABLE_Y - 0.04) / 2, 0))
-    g.add(box(tw + 0.04, 0.04, td + 0.04, topMat, 0, TABLE_Y, 0))
-    object.add(g)
+    box(tw, TABLE_Y - 0.04, td, greyMat, spec.x, (TABLE_Y - 0.04) / 2, spec.z)
+    box(tw + 0.04, 0.04, td + 0.04, topMat, spec.x, TABLE_Y, spec.z)
 
     const seats = []
     if (spec.capacity === 4) {
@@ -527,26 +464,18 @@ export async function createFront({
   // Wall art: the original's "Promo" shots, mounted like framed posters on the
   // two long side walls of the dining area, one above each table, facing into
   // the room. The wainscot rail ends at WAINSCOT, so the bottoms float free.
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.8 })
   function mountPoster(id, px, pz, yaw, w) {
     const map = new THREE.TextureLoader().load(`./assets/textures/posters/${id}.png`)
     map.colorSpace = THREE.SRGBColorSpace
     map.anisotropy = 4
     const h = w * 0.75
-    const faceMat = new THREE.MeshStandardMaterial({
-      map, color: 0xffffff, roughness: 0.72, metalness: 0.02,
+    const face = makePane({
+      w, h, x: px, y: 2.0, z: pz, yaw,
+      material: mat(0xffffff, { map, roughness: 0.72 }),
     })
-    // +Z is the picture face; -Z gets the frame, the rest is plain frame.
-    const box = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, 0.035),
-      [frameMat, frameMat, frameMat, frameMat, faceMat, frameMat],
-    )
-    box.castShadow = true
-    const g = new THREE.Group()
-    g.add(box)
-    g.position.set(px, 2.0, pz)
-    g.rotation.y = yaw
-    object.add(g)
+    face.material.side = THREE.FrontSide
+    face.castShadow = true
+    object.add(face)
   }
   // West wall (x=-hx) faces +X into the room; east wall (x=+hx) faces -X.
   mountPoster('jTZL8p0', -hx + WALL_T + 0.04, 3.2,  Math.PI / 2, 1.8)  // above table 1
@@ -588,6 +517,7 @@ export async function createFront({
     inwardX: 0, inwardZ: -1,
     label: 'Pass lights',
   })
+  kit.finalize()
   muteBoothShadows(object, { skipNames: ['StreetFloor'], castNames: ['RoomCeiling'] })
 
   function worldOf(lx, ly, lz) {

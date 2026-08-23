@@ -5,6 +5,7 @@
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { ratWillSteal } from './food.js'
+import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
 
 export const RAT_SIZE = 1.05
 
@@ -23,6 +24,14 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
   const b = player.bounds
   const holes = []
   const rats = []
+  const vis0 = visualMesh(ratProto)
+  const ratPool = vis0 ? createInstancePool({
+    geometry: vis0.geometry,
+    material: vis0.material.clone(),
+    max: MAX_RATS,
+    scene,
+    name: 'RatInst',
+  }) : null
   let spawnTimer = 0
   let cooldownUntil = 0
   let currentRats = 0
@@ -66,13 +75,14 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     root.position.x -= mid.x
     root.position.z -= mid.z
     root.position.y -= fitted.min.y
+    return root.position.y
   }
 
   function spawnRat(hole, target) {
     if (currentRats >= MAX_RATS) return null
     const object = ratProto.clone(true)
-    sizeRat(object)
-    object.position.set(hole.x, object.position.y, hole.z)
+    const padY = sizeRat(object) + 0.04
+    object.position.set(hole.x, 0, hole.z)
     scene.add(object)
     // Mouth is a local node so stolen food tracks the snout (Rat.cs
     // `transform.position + transform.forward`). Don't reparent the food
@@ -80,10 +90,13 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     const s = object.scale.x || 1
     const mouth = new THREE.Object3D()
     mouth.name = 'Mouth'
-    mouth.position.set(0, 0.12 / s, -0.42 / s)
+    // Local Y is a world-metre offset divided by scale. Origin used to sit
+    // on the floor; padY lifted the mesh so feet clear — subtract it here
+    // or stolen food floats above the head.
+    mouth.position.set(0, (0.12 - padY) / s, -0.42 / s)
     object.add(mouth)
     const gy = player.groundY ? player.groundY(hole.x, hole.z) : 0
-    object.position.y = gy
+    object.position.y = gy + padY
     const rat = {
       kind: 'rat',
       type: 'rat',
@@ -100,6 +113,7 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
       cooked: 0,
       goingHome: !target,
       born: 0,
+      padY,
       held: false,
       onFloor: true,
       dropped: false,
@@ -111,6 +125,14 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     }
     object.userData.rat = rat
     object.traverse(o => { o.userData.rat = rat })
+    const vis = visualMesh(object)
+    hideVisuals(object)
+    if (ratPool && vis) {
+      rat.visual = vis
+      rat.pool = ratPool
+      rat.slot = ratPool.alloc({ rat })
+      ratPool.setFromObject(rat.slot, vis)
+    }
     player.addMover(rat)
     rats.push(rat)
     currentRats++
@@ -212,6 +234,7 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
       foodWorld.destroy(rat.stolen)
       rat.stolen = null
     }
+    if (rat.pool && rat.slot != null) rat.pool.release(rat.slot)
     scene.remove(rat.object)
     const i = rats.indexOf(rat)
     if (i >= 0) rats.splice(i, 1)
@@ -236,6 +259,10 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
       cooldownUntil = time + SPAWN_COOLDOWN
     }
 
+    const sync = rat => {
+      if (rat.pool && rat.visual) rat.pool.setFromObject(rat.slot, rat.visual)
+    }
+
     for (const rat of [...rats]) {
       rat.born += dt
       if (rat.dead || (rat.cooked > 0.12)) {
@@ -249,19 +276,23 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
           foodWorld.items.push(rat)
           rat.object.userData.food = rat
         }
+        sync(rat)
         continue
       }
       if (rat.held) {
         placeStolen(rat)
+        sync(rat)
         continue
       }
+
+      const gy = player.groundY ? player.groundY(rat.position.x, rat.position.z) : 0
+      const feet = gy + (rat.padY || 0)
 
       if (!rat.onFloor) {
         rat.vel.y -= 9.81 * dt
         rat.object.position.addScaledVector(rat.vel, dt)
-        const gy = player.groundY ? player.groundY(rat.position.x, rat.position.z) : 0
-        if (rat.position.y <= gy) {
-          rat.position.y = gy
+        if (rat.position.y <= feet) {
+          rat.position.y = feet
           rat.vel.set(0, 0, 0)
           rat.onFloor = true
         } else {
@@ -272,13 +303,17 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
           rat.position.z = hit.z
         }
         placeStolen(rat)
+        sync(rat)
         continue
       }
+
+      rat.position.y = feet
 
       if (rat.stolen) {
         placeStolen(rat)
         const d = goTo(rat, rat.hole.x, rat.hole.z, dt, time)
         if (d < HOME_DIST && rat.born > 0.4) despawn(rat)
+        else sync(rat)
         continue
       }
 
@@ -303,6 +338,7 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
         const d = goTo(rat, rat.hole.x, rat.hole.z, dt, time)
         if (d < HOME_DIST && rat.born > 0.4) despawn(rat)
       }
+      if (rats.includes(rat)) sync(rat)
     }
   }
 
@@ -311,7 +347,7 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     const rat = spawnRat(hole, { x, z })
     if (rat) {
       const gy = player.groundY ? player.groundY(x, z) : 0
-      rat.position.set(x, gy, z)
+      rat.position.set(x, gy + (rat.padY || 0), z)
       rat.goingHome = false
       rat.target = { x, z }
     }

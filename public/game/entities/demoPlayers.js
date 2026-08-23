@@ -4,6 +4,7 @@
 
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
+import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
 
 export const PLAYER_SKINS = [
   { skin: null,    name: 'PLAYER' },
@@ -160,7 +161,7 @@ function sitPlayer(root) {
   root.position.y -= fitted.min.y
 }
 
-function makeWorldArm(armProto, side) {
+function makeWorldArm(armProto, side, pool) {
   const object = armProto.clone(true)
   object.name = side + '-arm-3p'
   object.visible = false
@@ -174,16 +175,25 @@ function makeWorldArm(armProto, side) {
   pivot.name = side + '-shoulder'
   pivot.add(object)
   const sign = side === 'left' ? -1 : 1
+  const vis = visualMesh(object)
+  const slot = pool && vis ? pool.alloc() : -1
+  if (slot >= 0) {
+    hideVisuals(object)
+    pool.hide(slot)
+  }
   return {
     side, sign, object, pivot,
     baseScale: object.scale.clone(),
     shoulderZ,
     raise: 0,
+    visual: vis,
+    pool,
+    slot,
   }
 }
 
 export function createDemoPlayers({
-  scene, player, playerProto, armProto,
+  scene, player, playerProto, armProto, armPool,
   x = 0, z = 7.2, yaw = -Math.PI / 2, spacing = 2.15,
 } = {}) {
   const skins = {}
@@ -192,7 +202,16 @@ export function createDemoPlayers({
   }
 
   const list = []
+  const pools = {}
   const n = PLAYER_SKINS.length
+  const armVis = visualMesh(armProto)
+  const sharedArmPool = armPool || (armVis ? createInstancePool({
+    geometry: armVis.geometry,
+    material: armVis.material.clone(),
+    max: n * 2,
+    scene,
+    name: 'ArmInst',
+  }) : null)
   const x0 = x - ((n - 1) * spacing) / 2
   // Player faces along local +X. yaw = -π/2 looks toward +Z (incoming camera).
 
@@ -212,21 +231,40 @@ export function createDemoPlayers({
 
     const badge = seatNameTag(body, spec.name)
 
-    const left = makeWorldArm(armProto, 'left')
-    const right = makeWorldArm(armProto, 'right')
+    const left = makeWorldArm(armProto, 'left', sharedArmPool)
+    const right = makeWorldArm(armProto, 'right', sharedArmPool)
     scene.add(left.pivot)
     scene.add(right.pivot)
 
     scene.add(body)
+    const vis = visualMesh(body)
+    const skinKey = spec.skin || 'default'
+    if (!pools[skinKey] && vis) {
+      pools[skinKey] = createInstancePool({
+        geometry: vis.geometry,
+        material: vis.material.clone(),
+        max: n,
+        scene,
+        name: 'PlayerInst:' + skinKey,
+      })
+    }
+    hideVisuals(body)
     const demo = {
       spec, body, left, right, badge,
       inv,
+      visual: vis,
+      pool: pools[skinKey] || null,
+      slot: -1,
       baseY: body.position.y,
       faceYaw: yaw,
       state: 0,
       t: Math.random() * -2,
       radius: 0.45,
       position: body.position,
+    }
+    if (demo.pool && vis) {
+      demo.slot = demo.pool.alloc({ demo })
+      demo.pool.setFromObject(demo.slot, vis)
     }
     body.userData.demoPlayer = demo
     body.traverse(o => { o.userData.demoPlayer = demo })
@@ -260,6 +298,10 @@ export function createDemoPlayers({
     const show = raised || arm.raise > 0.03
     arm.object.visible = show
     arm.pivot.visible = show
+    if (arm.pool && arm.slot >= 0) {
+      if (show && arm.visual) arm.pool.setFromObject(arm.slot, arm.visual)
+      else arm.pool.hide(arm.slot)
+    }
   }
 
   function update(dt) {
@@ -287,6 +329,7 @@ export function createDemoPlayers({
       } else {
         d.body.position.y = THREE.MathUtils.lerp(d.body.position.y, d.baseY, Math.min(1, 10 * dt))
       }
+      if (d.pool && d.visual) d.pool.setFromObject(d.slot, d.visual)
     }
   }
 

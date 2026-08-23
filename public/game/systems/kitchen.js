@@ -7,17 +7,16 @@
 import * as THREE from 'three'
 import { applyCookLook, isFood, cookTick } from './food.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
+import { createKit, makeFloor, makeRoof, WALL_T, WAINSCOT_T } from '../common/kit.js'
+import { loadBuffer, getListener, safePlay } from '../common/audio.js'
 
 export const BOOTH_W = 6.4
 export const BOOTH_D = 14.6
 export const BOOTH_H = 3.55
-const WALL_T = 0.12
 const COUNTER_D = 0.72
 const COUNTER_Y = 0.92
 const RANGE_W = 1.32
 const RANGE_Y = 0.94
-const WAINSCOT = 1.08
-const RAIL = 0.10
 
 const MENU = ['Citizen', 'Family', 'Worker', 'President', 'Mayor', 'Boss']
 
@@ -67,12 +66,7 @@ function mat(color, { map = null, roughness = 0.78, metalness = 0.04 } = {}) {
   })
 }
 
-function box(w, h, d, material, x, y, z) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material)
-  m.position.set(x, y, z)
-  m.castShadow = m.receiveShadow = true
-  return m
-}
+
 
 function makeLabel(text) {
   const map = canvasTexture(512, 128, (g, w, h) => {
@@ -185,12 +179,7 @@ export async function createKitchen({
   scene.add(object)
 
   const wallTex = loadMap('./assets/textures/enviro/KitchenWalls.png')
-  const floorTex = loadMap('./assets/textures/enviro/DiningFloor.png', {
-    repeatX: BOOTH_W / 1.55, repeatY: BOOTH_D / 1.55,
-  })
-  const roofTex = loadMap('./assets/textures/enviro/KitchenRoof.png', {
-    repeatX: 2.2, repeatY: 3.4,
-  })
+  const floorTex = loadMap('./assets/textures/enviro/DiningFloor.png')
   const topTex = loadMap('./assets/textures/enviro/TableMain.png')
   const greyTex = loadMap('./assets/textures/Grey.png')
   const darkTex = loadMap('./assets/textures/GreyDark.png')
@@ -200,30 +189,19 @@ export async function createKitchen({
   const darkMat = mat(0xffffff, { map: darkTex, roughness: 0.62, metalness: 0.08 })
   const topMat = mat(0xffffff, { map: topTex, roughness: 0.55 })
   const railMat = mat(0xd4a24c, { roughness: 0.5 })
-  const frameMat = mat(0xd4a24c, { roughness: 0.48 })
+  const frameMat = railMat
   const waterMat = new THREE.MeshStandardMaterial({
     color: 0x8ec4d4, roughness: 0.18, metalness: 0.12,
     transparent: true, opacity: 0.55,
   })
 
-  // Floor slab — DiningFloor, raised a hair so it reads as the booth footprint.
-  const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W, 0.04, BOOTH_D),
-    mat(0xffffff, { map: floorTex, roughness: 0.9 }),
-  )
-  floor.position.y = 0.02
-  floor.receiveShadow = true
-  object.add(floor)
+  const kit = createKit({ parent: object })
+  function box(w, h, d, material, x, y, z) {
+    kit.box(material, w, h, d, x, y, z)
+  }
 
-  const ceil = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W, 0.1, BOOTH_D),
-    mat(0xffffff, { map: roofTex, roughness: 0.95 }),
-  )
-  ceil.name = 'RoomCeiling'
-  ceil.position.y = BOOTH_H
-  ceil.castShadow = true
-  ceil.receiveShadow = false
-  object.add(ceil)
+  object.add(makeFloor({ map: floorTex, w: BOOTH_W, d: BOOTH_D, layer: 1 }))
+  object.add(makeRoof({ w: BOOTH_W, d: BOOTH_D, y: BOOTH_H }))
 
   const hx = BOOTH_W / 2
   const hz = BOOTH_D / 2
@@ -234,27 +212,17 @@ export async function createKitchen({
   const doorH = 2.42
   const doorX = (doorX0 + doorX1) / 2
 
-  function wallSegment(w, h, d, px, py, pz, material = wallMat) {
-    const m = box(w, h, d, material, px, py, pz)
-    object.add(m)
-    return m
+  function solidWall(w, d, px, pz, alongX) {
+    const tw = alongX ? w : WALL_T
+    const td = alongX ? WALL_T : d
+    box(tw, BOOTH_H, td, wallMat, px, BOOTH_H / 2, pz)
   }
-
-  // Three-sided hardwall. Open +Z is the aisle into the museum.
-  // Lower grey wainscot + orange chair rail + pale kitchen upper, matching
-  // the original galley.
-  function cladWall(w, d, px, pz, alongX) {
-    const upperH = BOOTH_H - WAINSCOT - RAIL
-    wallSegment(alongX ? w : WALL_T, WAINSCOT, alongX ? WALL_T : d, px, WAINSCOT / 2, pz, greyMat)
-    wallSegment(alongX ? w : WALL_T, RAIL, alongX ? WALL_T : d, px, WAINSCOT + RAIL / 2, pz, railMat)
-    wallSegment(alongX ? w : WALL_T, upperH, alongX ? WALL_T : d, px, WAINSCOT + RAIL + upperH / 2, pz, wallMat)
-  }
-  cladWall(BOOTH_W, WALL_T, 0, -hz + WALL_T / 2, true)          // back
-  cladWall(WALL_T, BOOTH_D, -hx + WALL_T / 2, 0, false)         // left
-  cladWall(WALL_T, BOOTH_D, hx - WALL_T / 2, 0, false)          // right
+  solidWall(BOOTH_W, WALL_T, 0, -hz + WALL_T / 2, true)          // back
+  solidWall(WALL_T, BOOTH_D, -hx + WALL_T / 2, 0, false)         // left
+  solidWall(WALL_T, BOOTH_D, hx - WALL_T / 2, 0, false)          // right
 
   // Front header beam + hanging banner.
-  wallSegment(BOOTH_W, 0.22, WALL_T, 0, BOOTH_H - 0.14, hz - WALL_T / 2, railMat)
+  box(BOOTH_W, 0.22, WALL_T, railMat, 0, BOOTH_H - 0.14, hz - WALL_T / 2)
   const banner = makeLabel('KITCHEN')
   banner.scale.set(2.2, 1.6, 1)
   banner.position.set(0, BOOTH_H - 0.42, hz + 0.02)
@@ -267,8 +235,7 @@ export async function createKitchen({
   const cLen = cZ1 - cZ0
   const cZ = (cZ0 + cZ1) / 2
   const cX = -hx + WALL_T + COUNTER_D / 2
-  object.add(box(COUNTER_D, COUNTER_Y - 0.04, cLen, greyMat, cX, (COUNTER_Y - 0.04) / 2, cZ))
-  object.add(box(COUNTER_D + 0.04, 0.05, cLen + 0.04, topMat, cX, COUNTER_Y, cZ))
+  kit.counter(greyMat, topMat, COUNTER_D, cLen, cX, cZ, COUNTER_Y)
 
   const prepLabel = makeLabel('PREP')
   prepLabel.position.set(cInner + 0.02, 1.55, cZ1 - 1.4)
@@ -290,17 +257,12 @@ export async function createKitchen({
   const cookZ = (cookZ0 + cookZ1) / 2
   const boardZ = (cookZ1 + rZ1) / 2
 
-  object.add(box(RANGE_W, RANGE_Y - 0.04, rLen, greyMat, rX, (RANGE_Y - 0.04) / 2, rZ))
-  // Dark cook surface, inset rim.
-  object.add(box(RANGE_W - 0.08, 0.04, cookLen - 0.06, darkMat, rX, RANGE_Y, cookZ))
-  object.add(box(RANGE_W + 0.02, 0.05, boardLen, topMat, rX, RANGE_Y, boardZ))
+  box(RANGE_W, RANGE_Y - 0.04, rLen, greyMat, rX, (RANGE_Y - 0.04) / 2, rZ)
+  box(RANGE_W - 0.08, 0.04, cookLen - 0.06, darkMat, rX, RANGE_Y, cookZ)
+  box(RANGE_W + 0.02, 0.05, boardLen, topMat, rX, RANGE_Y, boardZ)
 
-  // Exhaust hood over the cooktop.
-  const hood = new THREE.Group()
-  hood.position.set(rX, 2.62, cookZ)
-  hood.add(box(RANGE_W + 0.18, 0.08, cookLen + 0.1, greyMat, 0, 0, 0))
-  hood.add(box(RANGE_W * 0.55, 0.85, cookLen * 0.45, greyMat, 0, 0.46, 0))
-  object.add(hood)
+  box(RANGE_W + 0.18, 0.08, cookLen + 0.1, greyMat, rX, 2.62, cookZ)
+  box(RANGE_W * 0.55, 0.85, cookLen * 0.45, greyMat, rX, 2.62 + 0.46, cookZ)
 
   const rangeLabel = makeLabel('RANGE')
   rangeLabel.scale.set(1.25, 1.25, 1)
@@ -318,7 +280,10 @@ export async function createKitchen({
   order.position.set(-hx + 1.62, 2.58, doorZ + 1.72)
   order.rotation.order = 'YXZ'
   order.rotation.set(0.48, Math.PI / 4, 0)
-  const bezel = box(3.05, 1.82, 0.10, mat(0x111111, { roughness: 0.45 }), 0, 0, 0)
+  const bezel = new THREE.Mesh(
+    new THREE.BoxGeometry(3.05, 1.82, 0.10),
+    mat(0x111111, { roughness: 0.45 }),
+  )
   const screen = new THREE.Mesh(
     new THREE.PlaneGeometry(2.86, 1.64),
     new THREE.MeshBasicMaterial({ map: orderMap, toneMapped: false }),
@@ -334,24 +299,39 @@ export async function createKitchen({
 
   // —— Dish pit through a yellow doorway at the back-right ——
   // Partition wall with a hole: two side posts + lintel (the yellow frame).
-  object.add(box(0.16, doorH, 0.14, frameMat, doorX0, doorH / 2, doorZ))
-  object.add(box(0.16, doorH, 0.14, frameMat, doorX1, doorH / 2, doorZ))
-  object.add(box(doorW + 0.28, 0.16, 0.14, frameMat, doorX, doorH + 0.06, doorZ))
-  // Fill above the door up to the ceiling, grey/wainscot already on outer walls.
+  kit.doorFrame(frameMat, doorX0, doorX1, doorZ, doorH, { lintel: 0.16, depth: 0.14, lintelD: 0.14 })
   const fillH = BOOTH_H - doorH - 0.16
   if (fillH > 0.1) {
-    object.add(box(doorW + 0.28, fillH, WALL_T, wallMat, doorX, doorH + 0.16 + fillH / 2, doorZ))
+    box(doorW + 0.28, fillH, WALL_T, wallMat, doorX, doorH + 0.16 + fillH / 2, doorZ)
   }
   // Solid partition either side of the door (closes the galley from the dish pit).
   const partW = doorX0 - (-hx + WALL_T)
   if (partW > 0.2) {
     const partX = -hx + WALL_T + partW / 2
-    cladWall(partW, WALL_T, partX, doorZ, true)
+    solidWall(partW, WALL_T, partX, doorZ, true)
   }
   const rightPartW = (hx - WALL_T) - doorX1
   if (rightPartW > 0.2) {
     const partX = doorX1 + rightPartW / 2
-    cladWall(rightPartW, WALL_T, partX, doorZ, true)
+    solidWall(rightPartW, WALL_T, partX, doorZ, true)
+  }
+
+  const inset = WALL_T + WAINSCOT_T / 2
+  const coat = { panel: greyMat, rail: railMat }
+  const open = { ...coat, cap1: 0 }
+  const openBack = { ...coat, cap0: 0 }
+  kit.wainscot(BOOTH_W, 0, -hz + inset, 0, coat)
+  kit.wainscot(BOOTH_D, -hx + inset, 0, Math.PI / 2, open)
+  kit.wainscot(BOOTH_D, hx - inset, 0, -Math.PI / 2, openBack)
+  if (partW > 0.2) {
+    const partX = -hx + WALL_T + partW / 2
+    kit.wainscot(partW, partX, doorZ + inset, 0, { ...coat, cap0: WAINSCOT_T, cap1: 0 })
+    kit.wainscot(partW, partX, doorZ - inset, Math.PI, { ...coat, cap0: 0, cap1: WAINSCOT_T })
+  }
+  if (rightPartW > 0.2) {
+    const partX = doorX1 + rightPartW / 2
+    kit.wainscot(rightPartW, partX, doorZ + inset, 0, { ...coat, cap0: 0, cap1: WAINSCOT_T })
+    kit.wainscot(rightPartW, partX, doorZ - inset, Math.PI, { ...coat, cap0: WAINSCOT_T, cap1: 0 })
   }
 
   // Sink on the back wall of the dish-pit room (not in the doorway).
@@ -369,16 +349,15 @@ export async function createKitchen({
   const sinkX1 = basinX + basinW / 2
   const sinkX = (sinkX0 + sinkX1) / 2
   // Dry rack cabinet + top.
-  object.add(box(dryW, sinkY - 0.04, sinkD, greyMat, dryX, (sinkY - 0.04) / 2, sinkZ))
-  object.add(box(dryW + 0.02, 0.05, sinkD, greyMat, dryX, sinkY, sinkZ))
-  // Basin: cabinet up to the well floor, then a rim, water in the hole.
-  object.add(box(basinW, basinFloorY, sinkD, greyMat, basinX, basinFloorY / 2, sinkZ))
-  object.add(box(basinW, 0.04, sinkD, darkMat, basinX, basinFloorY, sinkZ))
+  box(dryW, sinkY - 0.04, sinkD, greyMat, dryX, (sinkY - 0.04) / 2, sinkZ)
+  box(dryW + 0.02, 0.05, sinkD, greyMat, dryX, sinkY, sinkZ)
+  box(basinW, basinFloorY, sinkD, greyMat, basinX, basinFloorY / 2, sinkZ)
+  box(basinW, 0.04, sinkD, darkMat, basinX, basinFloorY, sinkZ)
   const rimH = sinkY - basinFloorY
-  object.add(box(basinW, rimH, rim, greyMat, basinX, basinFloorY + rimH / 2, sinkZ + sinkD / 2 - rim / 2))
-  object.add(box(basinW, rimH, rim, greyMat, basinX, basinFloorY + rimH / 2, sinkZ - sinkD / 2 + rim / 2))
-  object.add(box(rim, rimH, sinkD - rim * 2, greyMat, basinX - basinW / 2 + rim / 2, basinFloorY + rimH / 2, sinkZ))
-  object.add(box(rim, rimH, sinkD - rim * 2, greyMat, basinX + basinW / 2 - rim / 2, basinFloorY + rimH / 2, sinkZ))
+  box(basinW, rimH, rim, greyMat, basinX, basinFloorY + rimH / 2, sinkZ + sinkD / 2 - rim / 2)
+  box(basinW, rimH, rim, greyMat, basinX, basinFloorY + rimH / 2, sinkZ - sinkD / 2 + rim / 2)
+  box(rim, rimH, sinkD - rim * 2, greyMat, basinX - basinW / 2 + rim / 2, basinFloorY + rimH / 2, sinkZ)
+  box(rim, rimH, sinkD - rim * 2, greyMat, basinX + basinW / 2 - rim / 2, basinFloorY + rimH / 2, sinkZ)
   const water = new THREE.Mesh(
     new THREE.BoxGeometry(basinW - rim * 2 - 0.04, 0.05, sinkD - rim * 2 - 0.04),
     waterMat,
@@ -386,8 +365,8 @@ export async function createKitchen({
   water.position.set(basinX, basinFloorY + 0.16, sinkZ)
   object.add(water)
   // Faucet on the back rim.
-  object.add(box(0.08, 0.42, 0.08, greyMat, basinX, sinkY + 0.28, sinkZ - sinkD / 2 + 0.12))
-  object.add(box(0.08, 0.08, 0.32, greyMat, basinX, sinkY + 0.46, sinkZ - sinkD / 2 + 0.28))
+  box(0.08, 0.42, 0.08, greyMat, basinX, sinkY + 0.28, sinkZ - sinkD / 2 + 0.12)
+  box(0.08, 0.08, 0.32, greyMat, basinX, sinkY + 0.46, sinkZ - sinkD / 2 + 0.28)
 
   const sinkLabel = makeLabel('DISH PIT')
   sinkLabel.position.set(sinkX, 1.55, -hz + WALL_T + 0.07)
@@ -416,6 +395,7 @@ export async function createKitchen({
     inwardX: -1, inwardZ: 0,
     label: 'Dish pit lights',
   })
+  kit.finalize()
   muteBoothShadows(object, { castNames: ['RoomCeiling'] })
 
   function worldOf(lx, ly, lz) {
@@ -585,18 +565,18 @@ export async function createKitchen({
     if (item.plated) cookTree(item.plated, dt)
   }
 
-  let listener = player.camera.children.find(c => c.type === 'AudioListener') || null
-  if (!listener) {
-    listener = new THREE.AudioListener()
-    player.camera.add(listener)
-  }
+  let listener = null
   let pattyBuf = null
-  new THREE.AudioLoader().load('./assets/audio/sfx/Patty.mp3', buf => { pattyBuf = buf })
+  loadBuffer('./assets/audio/sfx/Patty.mp3', (buf, lis) => {
+    pattyBuf = buf
+    listener = lis
+  })
 
   function setGrillSound(item, on) {
     if (!item || !item.object) return
     if (on) {
-      if (!item.cookAudio && pattyBuf) {
+      listener = listener || getListener()
+      if (!item.cookAudio && pattyBuf && listener) {
         const a = new THREE.PositionalAudio(listener)
         a.setBuffer(pattyBuf)
         a.setLoop(true)
@@ -607,9 +587,7 @@ export async function createKitchen({
         item.object.add(a)
         item.cookAudio = a
       }
-      if (item.cookAudio && pattyBuf && !item.cookAudio.isPlaying) {
-        try { item.cookAudio.play() } catch (_) { /* autoplay */ }
-      }
+      if (item.cookAudio && pattyBuf) safePlay(item.cookAudio)
       item.onGrill = true
     } else if (item.onGrill) {
       item.onGrill = false

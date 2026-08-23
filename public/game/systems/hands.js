@@ -4,6 +4,7 @@
 
 import * as THREE from 'three'
 import { hideTriggers, boundsOf } from '../common/unityScene.js'
+import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
 import { isTool } from './food.js'
 import { grabStackWith, layoutStack, layoutPlate } from './stacking.js'
 import { createSpray } from './spray.js'
@@ -43,8 +44,17 @@ const CAM_Y = -0.48
 const CAM_Z = -0.68
 const CAM_PITCH = 18
 
-export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, getFires, fireWatch, prepareBox, onDrop, spawnSwatch, spawnPoster } = {}) {
+export function createHands({ scene, player, armProto, armPool, foodWorld, exhibits, foodProtos, getRats, getFires, fireWatch, prepareBox, onDrop, spawnSwatch, spawnPoster } = {}) {
   hideTriggers(armProto)
+
+  const armVis = visualMesh(armProto)
+  const pool = armPool || (armVis ? createInstancePool({
+    geometry: armVis.geometry,
+    material: armVis.material.clone(),
+    max: 2,
+    scene,
+    name: 'FpsArmInst',
+  }) : null)
 
   function makeArm(side) {
     const object = armProto.clone(true)
@@ -62,6 +72,12 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     pivot.add(object)
     player.camera.add(pivot)
     const hand = object.getObjectByName('hand') || object.children[0]
+    const vis = visualMesh(object)
+    const slot = pool && vis ? pool.alloc() : -1
+    if (slot >= 0) {
+      hideVisuals(object)
+      pool.hide(slot)
+    }
     const downX = THREE.MathUtils.degToRad(CAM_PITCH - 105)
     pivot.rotation.x = downX
     return {
@@ -71,6 +87,9 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       pitchX: downX,
       holding: null,
       history: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+      visual: vis,
+      pool,
+      slot,
     }
   }
 
@@ -145,6 +164,10 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       }
     }
     if (!active && Math.abs(arm.pitchX - downX) < 0.04) arm.object.visible = false
+    if (arm.pool && arm.slot >= 0) {
+      if (arm.object.visible && arm.visual) arm.pool.setFromObject(arm.slot, arm.visual)
+      else arm.pool.hide(arm.slot)
+    }
   }
 
   function recordHistory(arm) {
@@ -183,7 +206,11 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       const hand = arm.hand || arm.object
       hand.updateMatrixWorld(true)
       const box = boundsOf(hand)
-      if (box.isEmpty()) return
+      if (box.isEmpty()) {
+        // Shouldn't happen (hand is an anchor dummy), but never no-op a hold.
+        box.setFromCenterAndSize(_pos.set(0, 0, 0), _fwd.set(1, 1, 1))
+        box.applyMatrix4(hand.matrixWorld)
+      }
       box.getCenter(_pos)
       _pos.y = box.max.y
       _fwd.setFromMatrixColumn(hand.matrixWorld, 2).normalize()
@@ -427,7 +454,9 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
 
     for (const h of hits) {
       if (h.distance > GRAB_RANGE) continue
-      const ratHit = h.object.userData.rat
+      const ud = h.object.userData || {}
+      const inst = (ud.byInstance && h.instanceId != null) ? ud.byInstance[h.instanceId] : null
+      const ratHit = (inst && inst.rat) || ud.rat
       if (ratHit && !ratHit.held) {
         return { kind: 'rat', item: ratHit, dist: h.distance }
       }
@@ -444,7 +473,9 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
         return { kind: 'food', item: food, dist: h.distance }
       }
       const poster = h.object.userData.poster
-      if (poster && h.object.userData.posterKiosk) {
+        || (inst && inst.poster)
+      const posterKiosk = h.object.userData.posterKiosk || (inst && inst.posterKiosk)
+      if (poster && posterKiosk) {
         return { kind: 'poster', spec: poster, dist: h.distance }
       }
       const bin = h.object.userData.swatchBin

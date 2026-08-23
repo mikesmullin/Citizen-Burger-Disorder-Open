@@ -48,7 +48,7 @@ __museum.enter()   // pointer lock may fail without a user gesture; WASD still w
 
 The integrated browser often starts at **0×0**. A 0-size canvas never
 paints. Emulate a viewport *before* the first screenshot (1280×720 is
-enough), then let the rAF `fitRenderer` pick it up — or:
+enough) so the `resize` listener calls `applySize` — or:
 
 ```js
 __museum.renderer.setSize(innerWidth, innerHeight)
@@ -443,8 +443,8 @@ stale `pose` session across reloads.
 - Return plain JSON. Do not return THREE objects; pick fields.
 - Hide the debug panel before a pose screenshot (`?debug` leaves a
   ⏱ button). `pose.enter` already hides `#dbgToggle` / `#dbgPanel`.
-- `preserveDrawingBuffer` is on; canvas screenshots are the frozen
-  frame, not a later one.
+- `preserveDrawingBuffer` is off (Firefox compositor). Freeze still
+  renders every rAF, so a page screenshot is the frozen frame.
 
 ---
 

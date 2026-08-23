@@ -6,6 +6,7 @@
 import * as THREE from 'three'
 import { hideTriggers } from '../common/unityScene.js'
 import { isFood, isTool, cookTick } from './food.js'
+import { getListener, loadBuffer, safePlay } from '../common/audio.js'
 
 export const BURN_HEALTH = 8
 const IGNITE_OVERCOOK = 0.85
@@ -69,20 +70,25 @@ export function createFireWatch({
   let playerFire = null
   let nextId = 1
 
-  let listener = player?.camera?.children?.find(c => c.type === 'AudioListener') || null
-  if (!listener && player?.camera) {
-    listener = new THREE.AudioListener()
-    player.camera.add(listener)
-  }
+  let listener = null
   let pattyBuf = null
-  new THREE.AudioLoader().load('./assets/audio/sfx/Patty.mp3', buf => {
+  loadBuffer('./assets/audio/sfx/Patty.mp3', (buf, lis) => {
     pattyBuf = buf
-    for (const f of fires) startSizzle(f)
-  }, undefined, err => console.warn('[fire] patty sfx', err))
+    listener = lis
+    for (const f of fires) syncSizzle(f)
+  }, err => console.warn('[fire] patty sfx', err))
+
+  // Pedestal Fire / a held torch copy is not burning anything — no sfx.
+  function shouldSizzle(f) {
+    return !!(f && !f.out && hasFuel(f))
+  }
 
   function startSizzle(f) {
-    if (!f || f.out || f.sizzle || !pattyBuf || !f.root || !listener) return
-    const a = new THREE.PositionalAudio(listener)
+    if (!shouldSizzle(f) || f.sizzle || !pattyBuf || !f.root) return
+    const lis = listener || getListener()
+    if (!lis) return
+    listener = lis
+    const a = new THREE.PositionalAudio(lis)
     a.setBuffer(pattyBuf)
     a.setLoop(true)
     a.setRefDistance(f.large ? 3.6 : 2.4)
@@ -92,7 +98,19 @@ export function createFireWatch({
     if (pattyBuf.duration) a.offset = Math.random() * pattyBuf.duration
     f.root.add(a)
     f.sizzle = a
-    try { a.play() } catch (_) { /* autoplay */ }
+    safePlay(a)
+  }
+
+  function syncSizzle(f) {
+    if (shouldSizzle(f)) {
+      if (f.sizzle) {
+        if (pattyBuf && !f.sizzle.isPlaying) safePlay(f.sizzle)
+      } else {
+        startSizzle(f)
+      }
+    } else {
+      stopSizzle(f)
+    }
   }
 
   function stopSizzle(f) {
@@ -143,7 +161,7 @@ export function createFireWatch({
     f.putOut = () => extinguish(f)
     if (!copy && root.parent !== scene) scene.add(root)
     fires.push(f)
-    startSizzle(f)
+    syncSizzle(f)
     return f
   }
 
@@ -444,9 +462,7 @@ export function createFireWatch({
         f.root.position.set(pp.x, pp.y + 1.15, pp.z)
       }
       if (f.root && f.root.visible !== false) faceYaw(f.root, _cam)
-      if (f.sizzle && pattyBuf && !f.sizzle.isPlaying) {
-        try { f.sizzle.play() } catch (_) { /* autoplay */ }
-      }
+      syncSizzle(f)
       spreadFrom(f, dt)
       if (!f.onPlayer && !hasFuel(f) && !(f.copy && f.item && f.item.held)) {
         f.orphanTime = (f.orphanTime || 0) + dt

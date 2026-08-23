@@ -22,7 +22,6 @@ export const POSTERS = [
 
 const PW = 1.05
 const PH = 1.45
-const PT = 0.02
 const RADIUS = 0.72
 const PRESS_RANGE = 6.5
 
@@ -46,17 +45,50 @@ function canvasTexture(w, h, draw) {
 function makeSheet(map) {
   const g = new THREE.Group()
   const mat = new THREE.MeshStandardMaterial({
-    map, color: 0xffffff, roughness: 0.72, metalness: 0.02, side: THREE.DoubleSide,
+    map, color: 0xffffff, roughness: 0.72, metalness: 0.02, side: THREE.FrontSide,
   })
-  const face = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, PT), mat)
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), mat)
   face.castShadow = true
-  const back = new THREE.Mesh(
-    new THREE.BoxGeometry(PW + 0.02, PH + 0.02, PT * 0.6),
-    new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.8 }),
-  )
-  back.position.z = -PT * 0.4
-  g.add(back, face)
+  g.add(face)
   return g
+}
+
+function atlasMaterial(map) {
+  const mat = new THREE.MeshStandardMaterial({
+    map, color: 0xffffff, roughness: 0.72, metalness: 0.02, side: THREE.FrontSide,
+  })
+  mat.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+attribute vec4 instanceUv;
+varying vec4 vInstanceUv;`,
+      )
+      .replace(
+        '#include <uv_vertex>',
+        `#include <uv_vertex>
+vInstanceUv = instanceUv;`,
+      )
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec4 vInstanceUv;`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#ifdef USE_MAP
+	vec4 sampledDiffuseColor = texture2D( map, vMapUv * vInstanceUv.zw + vInstanceUv.xy );
+	#ifdef DECODE_VIDEO_TEXTURE
+		sampledDiffuseColor = sRGBTransferEOTF( sampledDiffuseColor );
+	#endif
+	diffuseColor *= sampledDiffuseColor;
+#endif`,
+      )
+  }
+  mat.customProgramCacheKey = () => 'poster-atlas-uv'
+  return mat
 }
 
 export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
@@ -99,59 +131,78 @@ export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
   })
   const sign = new THREE.Mesh(
     new THREE.PlaneGeometry(1.6, 0.34),
-    new THREE.MeshBasicMaterial({ map: signMap }),
+    new THREE.MeshBasicMaterial({ map: signMap, side: THREE.FrontSide }),
   )
   sign.position.set(0, 2.12, 0.2)
   object.add(sign)
 
-  const sheets = POSTERS.map((spec, i) => {
-    const sheet = makeSheet(loadMap(spec.file))
-    sheet.userData.poster = spec
-    sheet.traverse(o => { o.userData.poster = spec; o.userData.posterKiosk = true })
-    object.add(sheet)
-    return sheet
-  })
-
   let index = 0
-  const n = sheets.length
-  const _q = new THREE.Quaternion()
-  const _e = new THREE.Euler()
+  const n = POSTERS.length
+  const _dummy = new THREE.Object3D()
+  let carousel = null
 
   function layout() {
-    // Carousel: current poster front and center facing the aisle; the rest in
-    // equidistant slots around the spine, one per 2π/n.
+    if (!carousel) return
     const step = (Math.PI * 2) / n
-    const ringScale = 0.78
-    const ringOff = (PW / 2) * ringScale // left edge on the spine circle
-    // Farthest any ring poster's outer corner reaches toward the aisle is the
-    // hypotenuse of the spine radius and the ring width (at ~49° around).
-    // Park the display past that, plus a visible gap, so nothing clips.
-    const ringReach = Math.sqrt(RADIUS * RADIUS + (PW * ringScale) ** 2)
+    const ringReach = Math.sqrt(RADIUS * RADIUS + (PW * 0.78) ** 2)
     const displayZ = ringReach + 0.12
     for (let i = 0; i < n; i++) {
       const k = (i - index + n) % n
-      const sheet = sheets[i]
-      sheet.visible = true
       if (k === 0) {
-        sheet.position.set(0, 1.15, displayZ)
-        sheet.rotation.set(0, 0, 0)
-        sheet.scale.setScalar(1)
+        _dummy.position.set(0, 1.15, displayZ)
+        _dummy.rotation.set(0, 0, 0)
+        _dummy.scale.setScalar(1)
       } else {
         const a = k * step
-        // The sheet's origin is its center; shift out from the spine by half
-        // its width along local +X so the left long edge sits on the circle.
         const off = (PW / 2) * 0.78
-        sheet.position.set(
+        _dummy.position.set(
           Math.sin(a) * RADIUS + Math.cos(a) * off,
           1.15,
           Math.cos(a) * RADIUS - Math.sin(a) * off,
         )
-        sheet.rotation.set(0, a, 0)
-        sheet.scale.setScalar(0.78)
+        _dummy.rotation.set(0, a, 0)
+        _dummy.scale.setScalar(0.78)
       }
+      _dummy.updateMatrix()
+      carousel.setMatrixAt(i, _dummy.matrix)
     }
+    carousel.instanceMatrix.needsUpdate = true
   }
-  layout()
+
+  fetch('./assets/textures/posters/atlas.json')
+    .then(r => { if (!r.ok) throw new Error('no atlas'); return r.json() })
+    .then(meta => {
+      const map = loadMap(meta.image)
+      const geo = new THREE.PlaneGeometry(PW, PH)
+      const uv = new Float32Array(n * 4)
+      for (let i = 0; i < n; i++) {
+        const f = meta.frames[POSTERS[i].id]
+        if (!f) continue
+        uv[i * 4] = f.u
+        uv[i * 4 + 1] = f.v
+        uv[i * 4 + 2] = f.du
+        uv[i * 4 + 3] = f.dv
+      }
+      geo.setAttribute('instanceUv', new THREE.InstancedBufferAttribute(uv, 4))
+      carousel = new THREE.InstancedMesh(geo, atlasMaterial(map), n)
+      carousel.count = n
+      carousel.castShadow = true
+      carousel.frustumCulled = false
+      carousel.name = 'PosterCarousel'
+      carousel.userData.posterKiosk = true
+      carousel.userData.byInstance = POSTERS.map(p => ({ poster: p, posterKiosk: true }))
+      object.add(carousel)
+      layout()
+    })
+    .catch(err => {
+      console.warn('[posters] atlas missing, one mesh per sheet', err)
+      POSTERS.forEach(spec => {
+        const sheet = makeSheet(loadMap(spec.file))
+        sheet.userData.poster = spec
+        sheet.traverse(o => { o.userData.poster = spec; o.userData.posterKiosk = true })
+        object.add(sheet)
+      })
+    })
 
   player.addCollider(
     { x: x - 0.9, z: z - 0.9 },
@@ -166,7 +217,10 @@ export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
     raycaster.setFromCamera(ndc, player.camera)
     const hits = raycaster.intersectObject(object, true)
     if (!hits.length || hits[0].distance > PRESS_RANGE) return false
-    const spec = hits[0].object.userData.poster
+    const hit = hits[0]
+    const spec = hit.object.userData.poster
+      || (hit.object.userData.byInstance && hit.instanceId != null
+        && hit.object.userData.byInstance[hit.instanceId]?.poster)
     if (spec) {
       const i = POSTERS.findIndex(p => p.id === spec.id)
       if (i >= 0 && i !== index) index = i

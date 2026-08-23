@@ -14,6 +14,7 @@
 
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
+import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
 
 export const Wants = { wander: 'wander', idle: 'idle' }
 
@@ -121,6 +122,24 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
 
   const npcs = []
   const groups = []
+  const pools = {}
+
+  function poolFor(skin) {
+    if (pools[skin]) return pools[skin]
+    const vis = visualMesh(proto)
+    const mat = vis.material.clone()
+    mat.map = skins[skin]
+    mat.color.set(0xffffff)
+    mat.needsUpdate = true
+    pools[skin] = createInstancePool({
+      geometry: vis.geometry,
+      material: mat,
+      max: count,
+      scene,
+      name: 'NpcInst:' + skin,
+    })
+    return pools[skin]
+  }
 
   function inBox(x, z) {
     const pad = RADIUS + 0.15
@@ -193,6 +212,13 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
     }
     object.userData.npc = npc
     object.traverse(o => { o.userData.npc = npc })
+    const vis = visualMesh(object)
+    hideVisuals(object)
+    const pool = poolFor(skin)
+    npc.visual = vis
+    npc.pool = pool
+    npc.slot = pool.alloc({ npc })
+    if (vis) pool.setFromObject(npc.slot, vis)
     player.addMover(npc)
     npcs.push(npc)
     return npc
@@ -448,6 +474,7 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
         const sway = Math.sin(time + npc.phase) * 0.35
         setLook(npc, _look.set(f.x + f.z * sway, 0, f.z - f.x * sway), dt, TURN_IDLE)
       }
+      if (npc.pool && npc.visual) npc.pool.setFromObject(npc.slot, npc.visual)
     }
   }
 

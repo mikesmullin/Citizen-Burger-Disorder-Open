@@ -242,7 +242,8 @@ export function createFoodWorld({ scene, player }) {
     const { height, size } = layoutFood(object, { maxSize, sit: true, type, slug })
     object.position.x = x
     object.position.z = z
-    object.position.y = y != null && !onFloor ? y : height * 0.5
+    const gy = player.groundY ? player.groundY(x, z) : 0
+    object.position.y = y != null && !onFloor ? y : gy + height * 0.5
     scene.add(object)
     const item = {
       object, type, slug: slug || null,

@@ -5,6 +5,7 @@
 
 import * as THREE from 'three'
 import { createSwitchSet, SWITCH_Y } from './lightSwitch.js'
+import { whenAudio, resumeAudio, safePlay } from '../common/audio.js'
 
 const BOARD_W = 3.85
 const BOARD_H = 2.42
@@ -110,43 +111,12 @@ function makePlane(w, h, map) {
 
 function retrigger(audio) {
   if (!audio || !audio.buffer) return false
-  if (audio.isPlaying) audio.stop()
   audio.offset = 0
-  audio.play()
+  safePlay(audio, { restart: true })
   return true
 }
 
 function buildBooth(object) {
-  const carpetMat = new THREE.MeshStandardMaterial({
-    color: 0x4a2418, roughness: 0.92, metalness: 0.0,
-  })
-  const goldMat = new THREE.MeshStandardMaterial({
-    color: 0xc4a574, roughness: 0.45, metalness: 0.28,
-  })
-
-  const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(BOOTH_W - 0.04, 0.04, BOOTH_D - 0.04),
-    carpetMat,
-  )
-  floor.position.set(0, 0.02, 0)
-  floor.receiveShadow = true
-  floor.raycast = () => {}
-  object.add(floor)
-
-  const tapeW = 0.06
-  const tapes = [
-    { w: BOOTH_W, d: tapeW, x: 0, z: BOOTH_D / 2 - tapeW / 2 - 0.02 },
-    { w: BOOTH_W, d: tapeW, x: 0, z: -BOOTH_D / 2 + tapeW / 2 + 0.02 },
-    { w: tapeW, d: BOOTH_D, x: -BOOTH_W / 2 + tapeW / 2 + 0.02, z: 0 },
-    { w: tapeW, d: BOOTH_D, x: BOOTH_W / 2 - tapeW / 2 - 0.02, z: 0 },
-  ]
-  for (const t of tapes) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(t.w, 0.015, t.d), goldMat)
-    m.position.set(t.x, 0.048, t.z)
-    m.raycast = () => {}
-    object.add(m)
-  }
-
   const fill = new THREE.PointLight(0xffe0b8, 8, 11, 2)
   fill.name = 'AudioFill'
   fill.position.set(0, 3.2, 0.2)
@@ -170,9 +140,7 @@ export async function createSoundboard({
   const musicClips = catalog.music || []
   const sfxClips = catalog.sfx || []
 
-  const listener = new THREE.AudioListener()
-  player.camera.add(listener)
-  const loader = new THREE.AudioLoader()
+  let listener = null
 
   const panelMat = new THREE.MeshStandardMaterial({
     color: 0x1c1814, roughness: 0.62, metalness: 0.08,
@@ -331,14 +299,6 @@ export async function createSoundboard({
     )
     led.position.set(0, faceH * 0.42, 0.033)
     g.add(led)
-    const audio = new THREE.PositionalAudio(listener)
-    audio.setRefDistance(8)
-    audio.setMaxDistance(48)
-    audio.setRolloffFactor(1)
-    audio.setDistanceModel('linear')
-    audio.setVolume(kind === 'music' ? 0.5 : 0.9)
-    audio.setLoop(kind === 'music')
-    g.add(audio)
 
     const rec = {
       id: clip.id,
@@ -347,7 +307,7 @@ export async function createSoundboard({
       src: clip.src,
       object: g,
       body,
-      audio,
+      audio: null,
       led,
       ready: false,
       pressT: 0,
@@ -471,12 +431,11 @@ export async function createSoundboard({
   }
 
   function unlock() {
-    const ctx = listener.context
-    if (ctx && ctx.state === 'suspended') ctx.resume()
+    resumeAudio()
   }
 
   function pause() {
-    const ctx = listener.context
+    const ctx = listener?.context
     if (ctx && ctx.state === 'running') ctx.suspend()
   }
 
@@ -510,14 +469,36 @@ export async function createSoundboard({
 
   const loads = buttons.map(async b => {
     try {
-      const buf = await loader.loadAsync('./assets/' + b.src)
-      b.audio.setBuffer(buf)
-      b.ready = true
+      const r = await fetch('./assets/' + b.src)
+      if (!r.ok) throw new Error(r.status)
+      b.raw = await r.arrayBuffer()
     } catch (err) {
       console.warn('[soundboard] skip', b.id, err)
     }
   })
   await Promise.all(loads)
+
+  whenAudio(lis => {
+    listener = lis
+    for (const b of buttons) {
+      const audio = new THREE.PositionalAudio(lis)
+      audio.setRefDistance(8)
+      audio.setMaxDistance(48)
+      audio.setRolloffFactor(1)
+      audio.setDistanceModel('linear')
+      audio.setVolume(b.kind === 'music' ? 0.5 : 0.9)
+      audio.setLoop(b.kind === 'music')
+      b.object.add(audio)
+      b.audio = audio
+      if (!b.raw) continue
+      lis.context.decodeAudioData(b.raw.slice(0)).then(buf => {
+        audio.setBuffer(buf)
+        b.ready = true
+        b.raw = null
+        paintButton(b)
+      }).catch(err => console.warn('[soundboard] decode', b.id, err))
+    }
+  })
   for (const b of buttons) paintButton(b)
 
   return {

@@ -4,6 +4,7 @@
 
 import * as THREE from 'three'
 import { createUnityLoader, fitOnFloor, fitLongest, fitOnFloorNative, fitLongestNative, restorePattyDisc, hideTriggers, boundsOf } from '../common/unityScene.js'
+
 import { createFirstPersonPlayer } from '../systems/player.js'
 import { createCrowd } from '../systems/npc.js'
 import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG, applyCookLook, COOK_RGB } from '../systems/food.js'
@@ -12,9 +13,10 @@ import { createRatDen, RAT_SIZE } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
 import { createSoundboard } from '../systems/soundboard.js'
 import { createFireWatch } from '../systems/fire.js'
-import { createDelivery, makeOpenNet, BOX_SIZE, prepareClosedBox } from '../systems/delivery.js'
+import { createDelivery, BOX_SIZE, prepareClosedBox } from '../systems/delivery.js'
 import { createScaler } from '../systems/scaler.js'
-import { createSwatches, BOOTH_D as TEXTURE_BOOTH_D, BOOTH_W as TEXTURE_BOOTH_W } from '../systems/swatches.js'
+import { createSwatches } from '../systems/swatches.js'
+import { createPedestalField, PEDESTAL_H, PEDESTAL_W } from '../systems/pedestals.js'
 import { createPosters } from '../systems/posters.js'
 import { createKitchen } from '../systems/kitchen.js'
 import { createFront } from '../systems/front.js'
@@ -23,6 +25,10 @@ import { createSkybox, SKY_FOG_DAY, SKY_FOG_DUSK, SKY_FOG_NIGHT } from '../syste
 import { createWorld } from '../common/ecs.js'
 import { installHarness } from '../common/harness.js'
 import { createFpsOverlay } from '../common/fpsOverlay.js'
+import { createInstancePool, visualMesh } from '../common/instancePool.js'
+import { createKit, makeFloor, FLOOR_PHYSICS } from '../common/kit.js'
+import { flags, applyFlags } from '../common/flags.js'
+import { bindAudio } from '../common/audio.js'
 
 const FEATURED = [
   { slug: 'mobs/Rat', caption: 'Rat' },
@@ -38,8 +44,10 @@ const SKIP_EXHIBITS = new Set([
   'items/Pencil',
   'items/PointLight',
   'items/LettucePart',   // nested inside LettuceHead
-  'items/MonitorPickup', // same slab as Monitor, pickup-sized
+  'items/Monitor',       // unused Computer leftover — nComputer is the POS overlay
+  'items/MonitorPickup', // unused Computer leftover
   'items/NumberStand',   // live on the front checkout, next to the order computer
+  'items/BoxOpen',       // live on the delivery truck when a crate unpacks
   'ui/StaffMenu',        // glued to the front counter wall, below the POS
   'ui/BunBottom',
   'ui/BunTop',
@@ -47,11 +55,11 @@ const SKIP_EXHIBITS = new Set([
   'ui/Lettuce',
   'ui/Patty',
   'ui/CustomerMenu',
+  'items/Whiteboard',    // diner wainscot is a kit strip on the Front walls
 ])
 
 // Player-facing plaque names when the Unity slug is a misnomer.
 const EXHIBIT_CAPTION = {
-  'items/Whiteboard': 'Wainscoting',
 }
 
 // Show-floor clusters — grouped by how systems work together, not by asset folder.
@@ -157,7 +165,6 @@ function applyCookState(root, item) {
 const FACE_AISLE = new Set([
   'items/Cupboard',
   'items/NumberStand',
-  'items/Whiteboard',
 ])
 
 // Flat cards / world-space UI. Yaw so +Z tracks the camera (SpeechBubble.cs
@@ -169,11 +176,9 @@ const FACE_PLAYER = new Set([
 
 const SPACING_X = 4.6
 const SPACING_Z = 7.8
-const PEDESTAL_H = 0.88
-const PEDESTAL_W = 1.25
 
 // Longest-edge targets in meters. Pedestal sizes from the in-museum scale-gun
-// pass. Player / Rat / Wainscoting / Monitor stay on the 0.4–2.35 m clamp.
+// pass. Player / Rat / Wainscoting stay on the 0.4–2.35 m clamp.
 const EXHIBIT_LONGEST = {
   'mobs/Rat': RAT_SIZE,
   'items/Spatula': 1.021,
@@ -227,7 +232,11 @@ const DEMO_ARM_SCALE = 0.361
 
 const $ = id => document.getElementById(id)
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+// Firefox/Zen: no MSAA (resolve is another full-size blit into WebRender)
+// and no preserveDrawingBuffer (that copies ~6 MB into the compositor
+// every frame and stalls every tab).
+const gecko = /Firefox\//.test(navigator.userAgent)
+const renderer = new THREE.WebGLRenderer({ antialias: !gecko })
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
@@ -280,6 +289,7 @@ const loader = createUnityLoader({ base: './assets' })
 const player = createFirstPersonPlayer()
 scene.add(player.object)
 player.spawn(0, 0, 11, 0)
+bindAudio(player.camera)
 
 const exhibits = []
 const foodProtos = {}
@@ -291,6 +301,7 @@ let demoPlayers = null
 let soundboard = null
 let delivery = null
 let swatches = null
+let pedestals = null
 let posters = null
 let posKiosk = null
 let kitchen = null
@@ -407,20 +418,6 @@ function makeTitleWall() {
   return m
 }
 
-function makePedestal() {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x3a322c, roughness: 0.72, metalness: 0.04 })
-  const capMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.55, metalness: 0.06 })
-  const g = new THREE.Group()
-  const base = new THREE.Mesh(new THREE.BoxGeometry(PEDESTAL_W, PEDESTAL_H, PEDESTAL_W), mat)
-  base.position.y = PEDESTAL_H / 2
-  base.castShadow = base.receiveShadow = true
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(PEDESTAL_W + 0.12, 0.06, PEDESTAL_W + 0.12), capMat)
-  cap.position.y = PEDESTAL_H + 0.03
-  cap.receiveShadow = true
-  g.add(base, cap)
-  return g
-}
-
 function tiledFloor(w, d) {
   const map = new THREE.TextureLoader().load('./assets/entities/tiles/MuseumFloor.png')
   map.colorSpace = THREE.SRGBColorSpace
@@ -433,36 +430,25 @@ function tiledFloor(w, d) {
 function buildRoom(minx, maxx, minz, maxz, height) {
   const w = maxx - minx, d = maxz - minz
   const cx = (minx + maxx) / 2, cz = (minz + maxz) / 2
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: tiledFloor(w, d), roughness: 0.88 })
-  const wallMat  = new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.88 })
-
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), floorMat)
-  floor.rotation.x = -Math.PI / 2
-  floor.position.set(cx, 0, cz)
-  floor.receiveShadow = true
-  scene.add(floor)
+  const map = tiledFloor(w, d)
+  scene.add(makeFloor({ map, w, d, x: cx, z: cz, layer: 0, tile: 3.2, roughness: 0.88 }))
   // Open to sky — the hall has no ceiling; skybox is the dome.
 
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.88 })
+  const kit = createKit({ parent: scene, max: 8 })
   const thick = 0.4
-  const walls = [
-    { x: cx, z: minz - thick / 2, w,  h: height, d: thick },
-    { x: cx, z: maxz + thick / 2, w,  h: height, d: thick },
-    { x: minx - thick / 2, z: cz, w: thick, h: height, d },
-    { x: maxx + thick / 2, z: cz, w: thick, h: height, d },
-  ]
-  for (const s of walls) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(s.w, s.h, s.d), wallMat)
-    m.position.set(s.x, s.h / 2, s.z)
-    m.receiveShadow = true
-    scene.add(m)
-  }
+  kit.box(wallMat, w, height, thick, cx, height / 2, minz - thick / 2)
+  kit.box(wallMat, w, height, thick, cx, height / 2, maxz + thick / 2)
+  kit.box(wallMat, thick, height, d, minx - thick / 2, height / 2, cz)
+  kit.box(wallMat, thick, height, d, maxx + thick / 2, height / 2, cz)
+  kit.finalize()
 
   const title = makeTitleWall()
   title.position.set(cx, 3.4, maxz - 0.22)
   title.rotation.y = Math.PI
   scene.add(title)
 
-  player.setRoomBounds(minx, maxx, minz, maxz, 0)
+  player.setRoomBounds(minx, maxx, minz, maxz, FLOOR_PHYSICS)
 }
 
 function addLights(minx, maxx, minz, maxz) {
@@ -521,20 +507,6 @@ function flipStaffMenuUVs(root) {
     }
     uv.needsUpdate = true
     o.geometry = g
-  })
-}
-
-// !Whiteboard is diner wainscoting: wood chair-rail on the top edge, paintable
-// panel below (medium gray in the original kitchen). Prefab "base" was authored
-// at local -Y; flip it up so the rail reads as the waist-height trim.
-function setupWainscot(root) {
-  root.traverse(o => {
-    if (o.name === 'base' && o.position.y < 0) o.position.y *= -1
-    if (!o.isMesh) return
-    if (o.name && o.name.indexOf('Whiteboard') !== -1) {
-      o.material = o.material.clone()
-      o.material.color.set(0x6e6e70)
-    }
   })
 }
 
@@ -653,10 +625,10 @@ function placeOnPedestal(asset, x, z, meta, yaw = 0, data = null) {
   const wrap = new THREE.Group()
   wrap.position.set(x, 0, z)
   wrap.rotation.y = yaw
-  wrap.add(makePedestal())
   wrap.add(asset)
   wrap.add(plaque)
   scene.add(wrap)
+  if (pedestals) pedestals.place(x, z, yaw)
 
   const c = Math.abs(Math.cos(yaw))
   const s = Math.abs(Math.sin(yaw))
@@ -760,20 +732,18 @@ async function boot() {
   const BOOTHS = {
     kitchen: { x: 0, z: -13 },
     front: { x: 22, z: -13 },
-    textures: { x: -23, z: -14 },
+    textures: { x: -19.8, z: -12 },
     audio: { x: -16, z: -40 },
-    posters: {
-      x: -23,
-      z: -14 + TEXTURE_BOOTH_D / 2 + 2.4,
-    },
+    posters: { x: -22.4, z: -12 },
     delivery: { x: 0, z: -52 },
   }
 
-  const minx = -Math.max(34, TEXTURE_BOOTH_W / 2 + 24)
+  const minx = -34
   const maxx = 34
   const minz = -64
   const maxz = 16
   buildRoom(minx, maxx, minz, maxz, 9.5)
+  pedestals = createPedestalField({ scene })
   skybox = createSkybox(scene, {
     sunDir: new THREE.Vector3(10, 24, 18),
     onDay: applyHallIllum,
@@ -857,7 +827,6 @@ async function boot() {
           flipStaffMenuUVs(root)
           addStaffMenuWhiteBack(root)
         }
-        if (loadSlug === 'items/Whiteboard') setupWainscot(root)
         if (loadSlug === 'ui/NpcSpeechBubble') {
           // Arrow.png is a small down-triangle in a 100×100 empty square,
           // parented on the bubble at the same size — the tail sat inside
@@ -870,13 +839,6 @@ async function boot() {
               ch.position.y = -42
             }
           })
-        }
-        if (loadSlug === 'items/BoxOpen') {
-          let boxTex = null
-          root.traverse(o => {
-            if (o.isMesh && o.material && o.material.map) boxTex = o.material.map
-          })
-          display = makeOpenNet(boxTex, BOX_SIZE)
         }
         if (loadSlug === 'items/LettuceHead') {
           try {
@@ -919,9 +881,9 @@ async function boot() {
 
   try {
     setStatus('Loading texture samples…')
-    placeBannerAt('Textures', BOOTHS.textures.x, BOOTHS.textures.z, 0, TEXTURE_BOOTH_D / 2 + 1.6)
+    placeBannerAt('Textures', (BOOTHS.textures.x + BOOTHS.posters.x) / 2, BOOTHS.posters.z, 0, 3.4)
     swatches = createSwatches({
-      scene, player, foodWorld,
+      scene, player, foodWorld, pedestals,
       x: BOOTHS.textures.x, z: BOOTHS.textures.z, facingY: 0,
     })
     exhibits.push({
@@ -1162,11 +1124,20 @@ async function boot() {
   })
 
   let armRoot = null
+  let armPool = null
   try {
     const arm = await loader.load('heroes/Arm')
     armRoot = arm.root
+    const vis = visualMesh(armRoot)
+    armPool = vis ? createInstancePool({
+      geometry: vis.geometry,
+      material: vis.material.clone(),
+      max: 24,
+      scene,
+      name: 'ArmInst',
+    }) : null
     hands = createHands({
-      scene, player, armProto: armRoot, foodWorld, exhibits, foodProtos,
+      scene, player, armProto: armRoot, armPool, foodWorld, exhibits, foodProtos,
       getRats: () => rats,
       fireWatch: fires,
       prepareBox: item => prepareClosedBox(item, {
@@ -1186,7 +1157,7 @@ async function boot() {
     hideTriggers(pl.root)
     if (armRoot) {
       demoPlayers = createDemoPlayers({
-        scene, player, playerProto: pl.root, armProto: armRoot,
+        scene, player, playerProto: pl.root, armProto: armRoot, armPool,
         x: 0, z: 7.5, yaw: -Math.PI / 2,
       })
       demoPlayers.setScale(DEMO_ARM_SCALE)
@@ -1266,6 +1237,8 @@ async function boot() {
     console.warn('[museum] rats skipped', err)
   }
 
+  if (pedestals) pedestals.finalize()
+
   player.spawn(0, 0, 11, 0)
   setStatus('')
   $('loader').dataset.ready = '1'
@@ -1275,13 +1248,14 @@ async function boot() {
     scene, camera: player.camera, renderer, player, exhibits, crowd, skybox,
     foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler, swatches,
     posters, posKiosk, kitchen, front, world, fires, fpsOverlay,
-    teleport, enter, pause,
+    teleport, enter, pause, flags,
     dbg: harness.dbg,
     pose: harness.pose,
   }
   window.dbg = harness.dbg
   window.pose = harness.pose
-  console.log('[museum] ready', exhibits.length, 'exhibits — dbg.help() / pose.help()')
+  window.flags = flags
+  console.log('[museum] ready', exhibits.length, 'exhibits — dbg.help() / pose.help() / flags.help()')
 }
 
 let frames = 0
@@ -1405,6 +1379,7 @@ function tick(dt) {
     if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
       const handsUp = player.leftHand || player.rightHand
       if (!handsUp && posters) posters.tryTurn()
+      if (!handsUp && swatches && swatches.tryTurn) swatches.tryTurn()
       soundboard.tryPress()
       if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
       if (front && !front.overlayOpen) front.tryPress()
@@ -1414,6 +1389,7 @@ function tick(dt) {
   } else if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
     const handsUp = player.leftHand || player.rightHand
     if (!handsUp && posters) posters.tryTurn()
+    if (!handsUp && swatches && swatches.tryTurn) swatches.tryTurn()
     if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
     if (front && !front.overlayOpen) front.tryPress()
     if (kitchen) kitchen.tryPress()
@@ -1434,21 +1410,18 @@ function tick(dt) {
   if (skybox) skybox.update(dt)
 }
 
-function fitRenderer() {
+function applySize() {
   const w = innerWidth, h = innerHeight
   if (w < 2 || h < 2) return false
-  const el = renderer.domElement
-  if (el.clientWidth !== w || el.clientHeight !== h) {
-    player.camera.aspect = w / h
-    player.camera.updateProjectionMatrix()
-    renderer.setSize(w, h)
-    harness.poser.resize()
-  }
+  player.camera.aspect = w / h
+  player.camera.updateProjectionMatrix()
+  renderer.setSize(w, h)
+  harness.poser.resize()
   return true
 }
 
 function render() {
-  if (!fitRenderer()) return
+  applyFlags(scene)
   if (harness.poser.active) harness.poser.render()
   else renderer.render(scene, player.camera)
 }
@@ -1462,6 +1435,8 @@ function currentLook() {
   if (audioLook) return audioLook
   const posterLook = posters?.lookLabel()
   if (posterLook) return posterLook
+  const swatchLook = swatches?.lookLabel()
+  if (swatchLook) return swatchLook
   const posLook = posKiosk?.lookLabel()
   if (posLook) return posLook
   const kitchenLook = kitchen?.lookLabel()
@@ -1540,6 +1515,25 @@ renderer.setAnimationLoop(() => {
   }
 
   render()
+  const draws = renderer.info.render.calls
+  if ($('s-draws') && $('s-draws').textContent !== String(draws)) {
+    $('s-draws').textContent = String(draws)
+  }
+  if ($('s-meshes')) {
+    let meshes = 0
+    scene.traverse(o => {
+      if (!o.isMesh || !o.visible) return
+      let p = o.parent
+      while (p) {
+        if (!p.visible) return
+        p = p.parent
+      }
+      meshes++
+    })
+    if ($('s-meshes').textContent !== String(meshes)) {
+      $('s-meshes').textContent = String(meshes)
+    }
+  }
   if (++frames >= 20) {
     frames = 0
     harness.refreshPanel()
@@ -1576,15 +1570,8 @@ addEventListener('keydown', e => {
     e.preventDefault()
   }
 })
-addEventListener('resize', () => {
-  player.camera.aspect = innerWidth / innerHeight
-  player.camera.updateProjectionMatrix()
-  renderer.setSize(innerWidth, innerHeight)
-  harness.poser.resize()
-})
-
-player.camera.aspect = innerWidth / innerHeight
-player.camera.updateProjectionMatrix()
+addEventListener('resize', applySize)
+applySize()
 player.enabled = false
 
 boot().catch(err => {

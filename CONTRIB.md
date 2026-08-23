@@ -226,6 +226,7 @@ export CBD_PROJ=/path/to/Citizen-Burger-Disorder-Open
 python3 tools/convert.py 'Resources/Prefabs/Utensils/!Spatula.prefab'
 python3 tools/build_models.py     # → public/assets/models/*.bin
 python3 tools/manifest.py         # → public/assets/manifest.json
+python3 tools/atlas_posters.py    # → public/assets/textures/posters/atlas.png
 python3 tools/verify.py items/Spatula
 ```
 

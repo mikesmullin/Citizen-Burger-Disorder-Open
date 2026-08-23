@@ -246,7 +246,8 @@ export function createFirstPersonPlayer({
   }
 
   function spawn(x, y, z, lookYaw = 0) {
-    yawObject.position.set(x, y + height / 2, z)
+    const gy = Math.max(y, floorY)
+    yawObject.position.set(x, gy + height / 2, z)
     yaw = lookYaw
     pitch = 0
     vy = 0

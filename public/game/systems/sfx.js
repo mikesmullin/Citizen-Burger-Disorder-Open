@@ -6,6 +6,7 @@
 // and a dedicated plate-collision set (clank / clatter) when a Plate touches.
 
 import * as THREE from 'three'
+import { whenAudio, safePlay } from '../common/audio.js'
 
 const SETS = {
   plate: [
@@ -34,12 +35,7 @@ export function impactSet(type) {
 }
 
 export function createImpactSfx({ player, scene } = {}) {
-  let listener = player?.camera?.children?.find(c => c.type === 'AudioListener')
-  if (!listener && player?.camera) {
-    listener = new THREE.AudioListener()
-    player.camera.add(listener)
-  }
-
+  let listener = null
   const buffers = new Map()   // url -> AudioBuffer
   const last = { plate: 0, wet: 0, dry: 0 }
   let globalLast = 0
@@ -48,15 +44,21 @@ export function createImpactSfx({ player, scene } = {}) {
   const GLOBAL = 0.06
   const MIN_SPEED = 1.1
 
-  const loader = new THREE.AudioLoader()
+  const urls = []
   for (const set of Object.values(SETS)) {
     for (const name of set) {
       const url = BASE + name
-      if (buffers.has(url)) continue
+      if (!urls.includes(url)) urls.push(url)
+    }
+  }
+  whenAudio(lis => {
+    listener = lis
+    const loader = new THREE.AudioLoader()
+    for (const url of urls) {
       loader.load(url, buf => buffers.set(url, buf),
         undefined, err => { /* missing clip: set stays short */ })
     }
-  }
+  })
 
   function pick(setName) {
     const set = SETS[setName] || SETS.dry
@@ -82,13 +84,11 @@ export function createImpactSfx({ player, scene } = {}) {
     host.name = 'sfx' + (nodeSeq++)
     host.add(a)
     scene.add(host)
-    try {
-      a.play()
-      const remove = () => { if (host.parent) host.parent.remove(host) }
-      a.addEventListener('ended', remove)
-      a.addEventListener('error', remove)
-      if (buf.duration) setTimeout(remove, buf.duration * 1000 + 200)
-    } catch (_) { /* autoplay */ }
+    const remove = () => { if (host.parent) host.parent.remove(host) }
+    a.addEventListener('ended', remove)
+    a.addEventListener('error', remove)
+    if (buf.duration) setTimeout(remove, buf.duration * 1000 + 200)
+    safePlay(a)
   }
 
   // `time` is the harness clock (dbg.state().T) so freeze/step stays sane.

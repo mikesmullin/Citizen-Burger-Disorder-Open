@@ -8,6 +8,7 @@
 
 import * as THREE from 'three'
 import { boundsOf, hideTriggers, fitLongest } from '../common/unityScene.js'
+import { getListener, safePlay } from '../common/audio.js'
 
 export const SWITCH_Y = 1.32
 export const SWITCH_SIZE = 0.22
@@ -104,14 +105,17 @@ export function attachSwitch(object, {
   }
 
   function playClick() {
-    if (!listener) return
-    const ctx = listener.context
-    if (ctx && ctx.state === 'suspended') ctx.resume()
-    if (!click) return
-    try {
-      if (click.isPlaying) click.stop()
-      click.play()
-    } catch (_) { /* autoplay */ }
+    const lis = listener || getListener()
+    if (!lis) return
+    if (!click) {
+      const buf = clickBuf || makeClickBuffer(lis.context)
+      click = new THREE.PositionalAudio(lis)
+      click.setBuffer(buf)
+      click.setRefDistance(1.8)
+      click.setVolume(0.85)
+      object.add(click)
+    }
+    safePlay(click, { restart: true })
   }
 
   function applyLight() {
@@ -205,12 +209,6 @@ export function mountSwitch({
 
 export function createSwitchSet({ player, proto } = {}) {
   const items = []
-  let listener = player?.camera?.children?.find(c => c.type === 'AudioListener') || null
-  if (!listener && player?.camera) {
-    listener = new THREE.AudioListener()
-    player.camera.add(listener)
-  }
-  const clickBuf = listener ? makeClickBuffer(listener.context) : null
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2(0, 0)
 
@@ -219,7 +217,7 @@ export function createSwitchSet({ player, proto } = {}) {
     if (!p) return null
     const sw = mountSwitch({
       startOn: true, invertPaddle: true, ...opts,
-      proto: p, listener, clickBuf,
+      proto: p,
     })
     items.push(sw)
     return sw
@@ -229,7 +227,7 @@ export function createSwitchSet({ player, proto } = {}) {
     if (!object) return null
     const sw = attachSwitch(object, {
       startOn: false, label: 'Light switch',
-      ...opts, listener, clickBuf,
+      ...opts,
     })
     items.push(sw)
     return sw

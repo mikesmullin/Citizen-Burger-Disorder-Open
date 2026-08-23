@@ -3,6 +3,7 @@
 // (Unity LH Z-forward → three.js RH Z-back).
 
 import * as THREE from 'three'
+import { mergeByMaterial, bakeColoredCubes } from './geom.js'
 
 const GEO = {
   Cube:     () => new THREE.BoxGeometry(1, 1, 1),
@@ -78,7 +79,7 @@ export function createUnityLoader({ base = '.' } = {}) {
       const side = m.doubleSide ? THREE.DoubleSide : THREE.FrontSide
       // Cutout sprites (Fire): PNG alpha, unlit, no solid card.
       if (m.cutout) {
-        return new THREE.MeshBasicMaterial({
+        const mat = new THREE.MeshBasicMaterial({
           color: new THREE.Color(...rgb),
           map,
           transparent: true,
@@ -86,8 +87,10 @@ export function createUnityLoader({ base = '.' } = {}) {
           depthWrite: false,
           side: side === THREE.FrontSide ? THREE.DoubleSide : side,
         })
+        mat.userData.avg = avg
+        return mat
       }
-      return new THREE.MeshStandardMaterial({
+      const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(...rgb),
         map,
         transparent: m.opacity < 1,
@@ -96,6 +99,8 @@ export function createUnityLoader({ base = '.' } = {}) {
         metalness: 0.0,
         side,
       })
+      mat.userData.avg = avg
+      return mat
     })
     const fallback = new THREE.MeshStandardMaterial({ color: 0x9aa4b2, roughness: 0.9 })
     const placeholder = new THREE.MeshStandardMaterial({
@@ -190,6 +195,9 @@ export function createUnityLoader({ base = '.' } = {}) {
 
     await Promise.all(pending)
     root.updateMatrixWorld(true)
+    mergeByMaterial(root)
+    if (/(^|\/)Arm$/.test(slug)) bakeColoredCubes(root, { keep: ['hand'] })
+    root.updateMatrixWorld(true)
 
     return {
       root, data, objs, slug,
@@ -200,14 +208,31 @@ export function createUnityLoader({ base = '.' } = {}) {
   return { load, tex, geo }
 }
 
+const _anchorBox = new THREE.Box3()
+const _anchorSize = new THREE.Vector3(1, 1, 1)
+const _anchorCenter = new THREE.Vector3()
+
+function expandAnchor(box, o) {
+  _anchorBox.setFromCenterAndSize(_anchorCenter, _anchorSize)
+  _anchorBox.applyMatrix4(o.matrixWorld)
+  box.union(_anchorBox)
+}
+
 export function boundsOf(root, { includeTriggers = false } = {}) {
   const box = new THREE.Box3()
   root.updateMatrixWorld(true)
   root.traverse(o => {
-    if (!o.isMesh) return
-    if (o.userData.trigger && !includeTriggers) return
-    box.expandByObject(o)
+    if (o.isMesh) {
+      if (o.userData.trigger && !includeTriggers) return
+      box.expandByObject(o)
+      return
+    }
+    if (o.userData && o.userData.anchor) expandAnchor(box, o)
   })
+  // Meshless grab dummy (`hand` after arm bake): unit cube × node pose.
+  if (box.isEmpty() && root && (root.userData?.anchor || root.name === 'hand')) {
+    expandAnchor(box, root)
+  }
   return box
 }
 

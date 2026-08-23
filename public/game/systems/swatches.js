@@ -1,30 +1,27 @@
-// Texture sample booth: record-store bins of albedo swatches. Grab a card
-// (the stack stays), look at it in-hand, drop it on the floor.
+// Texture sample booth: one albedo card per shared mocha pedestal.
+// Grab clones a card into the hand; the stand stays.
 
 import * as THREE from 'three'
 import { POSTERS } from './posters.js'
+import { PEDESTAL_W, PEDESTAL_H } from './pedestals.js'
 
 const CARD_W = 0.46
 const CARD_H = 0.58
 const CARD_T = 0.012
-const STACK = 7
-const PRESS_RANGE = 5.5
+// Plane in XY, +Z = front. -45° around X: texture up, low edge toward +Z.
+const CARD_TILT = Math.PI / 4
+const CARD_Y = PEDESTAL_H + 0.06 + (CARD_H / 2) * Math.sin(CARD_TILT)
 
-const BOOTH_H = 3.15
-const WALL_T = 0.09
-const POST = 0.14
-const COLS = 8
-const BIN_W = 0.72
-const BIN_D = 0.62
-const BIN_H = 0.28
-// Player CharacterController radius is 0.5 — leave a full-width aisle
-// between crate AABBs so a body can pass without clipping.
-const AISLE = 1.35
-const GAP_X = BIN_W + AISLE
-const GAP_Z = BIN_D + AISLE
-const MARGIN_X = 1.45
-const MARGIN_Z_FRONT = 1.85
-const MARGIN_Z_BACK = 1.45
+const BOOTH_H = 2.2
+const STACK_N = 7
+const STACK_GAP = 0.034
+const PRESS_RANGE = 6.5
+
+const CARD_GEO = new THREE.PlaneGeometry(CARD_W, CARD_H)
+const TAG_GEO = new THREE.PlaneGeometry(0.62, 0.15)
+
+export const BOOTH_W = PEDESTAL_W + 0.4
+export const BOOTH_D = PEDESTAL_W + 0.8
 
 function pretty(id) {
   return id.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2')
@@ -99,10 +96,6 @@ export const SWATCHES = [
   ...POSTERS.map(p => entry('Posters', p.id, p.file)),
 ]
 
-const ROWS = Math.ceil(SWATCHES.length / COLS)
-export const BOOTH_W = (COLS - 1) * GAP_X + BIN_W + MARGIN_X * 2
-export const BOOTH_D = (ROWS - 1) * GAP_Z + BIN_D + MARGIN_Z_FRONT + MARGIN_Z_BACK
-
 function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas')
   c.width = w
@@ -143,16 +136,11 @@ function makeCard(map, caption) {
   const g = new THREE.Group()
   g.name = 'Swatch:' + caption
   const mat = new THREE.MeshStandardMaterial({
-    map, color: 0xffffff, roughness: 0.78, metalness: 0.02, side: THREE.DoubleSide,
+    map, color: 0xffffff, roughness: 0.78, metalness: 0.02, side: THREE.FrontSide,
   })
-  const face = new THREE.Mesh(new THREE.BoxGeometry(CARD_W, CARD_T, CARD_H), mat)
-  face.castShadow = face.receiveShadow = true
-  const rim = new THREE.Mesh(
-    new THREE.BoxGeometry(CARD_W + 0.012, CARD_T * 0.6, CARD_H + 0.012),
-    new THREE.MeshStandardMaterial({ color: 0x2a241f, roughness: 0.7 }),
-  )
-  rim.position.y = -CARD_T * 0.2
-  g.add(rim, face)
+  const face = new THREE.Mesh(CARD_GEO, mat)
+  face.castShadow = true
+  g.add(face)
   return g
 }
 
@@ -163,121 +151,116 @@ function stamp(object, item) {
 }
 
 export function createSwatches({
-  scene, player, foodWorld,
+  scene, player, foodWorld, pedestals,
   x = 0, y = 0, z = 0, facingY = 0,
 } = {}) {
-  const wood = new THREE.MeshStandardMaterial({ color: 0x5a4634, roughness: 0.82, metalness: 0.04 })
-
   const object = new THREE.Group()
   object.name = 'TextureBooth'
   object.position.set(x, y, z)
   object.rotation.y = facingY
+  scene.add(object)
+  object.updateMatrixWorld(true)
 
-  const kitchenMap = loadMap('./assets/entities/tiles/KitchenFloor.png')
-  kitchenMap.repeat.set(BOOTH_W / 1.4, BOOTH_D / 1.4)
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(BOOTH_W - 0.16, BOOTH_D - 0.16),
-    new THREE.MeshStandardMaterial({ map: kitchenMap, roughness: 0.92 }),
+  if (pedestals) pedestals.place(x, z, facingY)
+  const half = PEDESTAL_W / 2 + 0.06
+  player.addCollider(
+    { x: x - half, z: z - half },
+    { x: x + half, z: z + half },
   )
-  floor.rotation.x = -Math.PI / 2
-  floor.position.y = 0.012
-  floor.receiveShadow = true
-  object.add(floor)
 
-  const diningMap = loadMap('./assets/textures/enviro/DiningFloor.png')
-  diningMap.repeat.set(2.2, 1.4)
-  const tryIt = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.4, 1.6),
-    new THREE.MeshStandardMaterial({ map: diningMap, roughness: 0.9 }),
-  )
-  tryIt.rotation.x = -Math.PI / 2
-  tryIt.position.set(BOOTH_W * 0.22, 0.018, BOOTH_D * 0.22)
-  tryIt.receiveShadow = true
-  object.add(tryIt)
-
-  const cols = COLS
-  const gapX = GAP_X
-  const gapZ = GAP_Z
-  const x0 = -((cols - 1) * gapX) / 2
-  // First catalog entries (tiles) at the open front so ground samples are
-  // the first stacks you walk up to.
-  const z0 = BOOTH_D / 2 - MARGIN_Z_FRONT - BIN_D / 2
-
-  function makeBin(spec, bx, bz) {
-    const bin = new THREE.Group()
-    bin.position.set(bx, 0, bz)
-    const crate = new THREE.Mesh(
-      new THREE.BoxGeometry(BIN_W, BIN_H, BIN_D),
-      wood,
-    )
-    crate.position.y = BIN_H / 2
-    crate.castShadow = crate.receiveShadow = true
-    bin.add(crate)
-    const well = new THREE.Mesh(
-      new THREE.BoxGeometry(0.58, 0.22, 0.48),
-      new THREE.MeshStandardMaterial({ color: 0x2a241f, roughness: 0.9 }),
-    )
-    well.position.y = 0.22
-    bin.add(well)
-
-    const map = loadMap(spec.file)
-    if (spec.tile) {
-      map.wrapS = map.wrapT = THREE.RepeatWrapping
-      map.repeat.set(2, 2)
-    } else {
-      map.wrapS = map.wrapT = THREE.ClampToEdgeWrapping
-      map.repeat.set(1, 1)
+  const maps = new Map()
+  function mapFor(spec) {
+    let t = maps.get(spec.file)
+    if (!t) {
+      t = loadMap(spec.file)
+      if (spec.tile) {
+        t.wrapS = t.wrapT = THREE.RepeatWrapping
+        t.repeat.set(2, 2)
+      } else {
+        t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping
+        t.repeat.set(1, 1)
+      }
+      maps.set(spec.file, t)
     }
-    for (let i = 0; i < STACK; i++) {
-      const card = makeCard(map, spec.caption)
-      // Face the open aisle: tilt toward the player walking in from +Z.
-      card.rotation.set(0.18, 0, 0)
-      card.position.set((i - STACK / 2) * 0.008, 0.34 + i * 0.011, 0.02 - i * 0.006)
-      card.userData.swatchBin = spec
-      card.traverse(o => { o.userData.swatchBin = spec })
-      bin.add(card)
-    }
-    const tag = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.62, 0.15),
-      new THREE.MeshBasicMaterial({ map: labelTex(spec.caption) }),
-    )
-    tag.position.set(0, 0.08, 0.34)
-    tag.userData.swatchBin = spec
-    bin.add(tag)
-    object.add(bin)
-
-    const pad = 0.06
-    player.addCollider(
-      { x: x + bx - BIN_W / 2 - pad, z: z + bz - BIN_D / 2 - pad },
-      { x: x + bx + BIN_W / 2 + pad, z: z + bz + BIN_D / 2 + pad },
-    )
-    return bin
+    return t
   }
 
-  SWATCHES.forEach((spec, i) => {
-    const c = i % cols
-    const r = (i / cols) | 0
-    makeBin(spec, x0 + c * gapX, z0 - r * gapZ)
-  })
+  let index = 0
+  const n = SWATCHES.length
+  const wrap = new THREE.Group()
+  wrap.name = 'SwatchStack'
+  object.add(wrap)
 
-  scene.add(object)
+  const stackMat = new THREE.MeshStandardMaterial({
+    color: 0xc4b496, roughness: 0.88, metalness: 0, side: THREE.FrontSide,
+  })
+  const dummy = new THREE.Object3D()
+  const stack = new THREE.InstancedMesh(CARD_GEO, stackMat, STACK_N)
+  stack.castShadow = true
+  stack.raycast = () => {}
+  for (let i = 0; i < STACK_N; i++) {
+    const k = i + 1
+    dummy.position.set(0, -k * 0.014, -k * STACK_GAP)
+    dummy.rotation.set(0, 0, 0)
+    dummy.scale.set(1, 1, 1)
+    dummy.updateMatrix()
+    stack.setMatrixAt(i, dummy.matrix)
+  }
+  stack.instanceMatrix.needsUpdate = true
+
+  const top = makeCard(mapFor(SWATCHES[0]), SWATCHES[0].caption)
+  top.add(stack)
+  top.rotation.x = -CARD_TILT
+  top.position.set(0, CARD_Y, 0)
+  wrap.add(top)
+
+  const tagMat = new THREE.MeshBasicMaterial({ map: labelTex(SWATCHES[0].caption), side: THREE.FrontSide })
+  const tag = new THREE.Mesh(TAG_GEO, tagMat)
+  tag.position.set(0, 0.55, PEDESTAL_W * 0.52 + 0.02)
+  wrap.add(tag)
+
+  function bind() {
+    const spec = SWATCHES[index]
+    const face = top.children.find(o => o.isMesh && !o.isInstancedMesh)
+    if (face) {
+      face.material.map = mapFor(spec)
+      face.material.needsUpdate = true
+    }
+    top.name = 'Swatch:' + spec.caption
+    tagMat.map = labelTex(spec.caption)
+    tagMat.needsUpdate = true
+    wrap.userData.swatchBin = spec
+    wrap.traverse(o => { o.userData.swatchBin = spec })
+  }
+  bind()
+
+  const raycaster = new THREE.Raycaster()
+  const ndc = new THREE.Vector2(0, 0)
+
+  function tryTurn() {
+    if (!player.locked) return false
+    raycaster.setFromCamera(ndc, player.camera)
+    const hits = raycaster.intersectObject(object, true)
+    if (!hits.length || hits[0].distance > PRESS_RANGE) return false
+    cycle()
+    return true
+  }
+
+  function cycle() {
+    index = (index + 1) % n
+    bind()
+  }
 
   function take(spec) {
-    const map = loadMap(spec.file)
-    if (spec.tile) {
-      map.wrapS = map.wrapT = THREE.RepeatWrapping
-      map.repeat.set(2, 2)
-    } else {
-      map.wrapS = map.wrapT = THREE.ClampToEdgeWrapping
-    }
-    const card = makeCard(map, spec.caption)
+    const s = spec || SWATCHES[index]
+    const card = makeCard(mapFor(s), s.caption)
     player.camera.getWorldPosition(card.position)
     card.position.y -= 0.15
     scene.add(card)
     const item = {
       kind: 'swatch',
-      type: spec.caption,
-      slug: 'textures/' + spec.id,
+      type: s.caption,
+      slug: 'textures/' + s.id,
       object: card,
       position: card.position,
       radius: 0.32,
@@ -296,20 +279,26 @@ export function createSwatches({
     return item
   }
 
+  function current() {
+    return SWATCHES[index]
+  }
+
   function lookLabel() {
-    const hits = []
-    return ''
+    raycaster.setFromCamera(ndc, player.camera)
+    const hits = raycaster.intersectObject(object, true)
+    if (!hits.length || hits[0].distance > PRESS_RANGE) return ''
+    return current().caption + '  ·  click to flip  ·  grab a copy'
   }
 
   function viewSpot() {
     return {
-      stand: { x, z: z + BOOTH_D / 2 + 2.2 },
-      look: { x, y: 1.4, z },
+      stand: { x, z: z + 2.4 },
+      look: { x, y: 1.35, z },
     }
   }
 
   return {
-    object, take, viewSpot, lookLabel,
+    object, take, tryTurn, cycle, current, viewSpot, lookLabel,
     samples: SWATCHES,
     width: BOOTH_W,
     depth: BOOTH_D,
