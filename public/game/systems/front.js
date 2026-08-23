@@ -478,6 +478,23 @@ export async function createFront({
   backLabel.position.set((backDoorX0 + backDoorX1) / 2, 2.55, -hz + WALL_T + 0.08)
   object.add(backLabel)
 
+  // Two wall posters in the back (pass) room, bare canvas style (no frame):
+  // one on the east back-wall section (clear of the back door / staff
+  // corridor), one on the adjacent east wall.
+  function mountCanvas(id, px, py, pz, yaw, w) {
+    // These posters are square (512x512), so height = width, no distortion.
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, w),
+      mat(0xffffff, { map: loadMap(`./assets/textures/posters/${id}.png`), roughness: 0.85 }),
+    )
+    m.castShadow = true
+    m.position.set(px, py, pz)
+    m.rotation.y = yaw
+    object.add(m)
+  }
+  mountCanvas('CoverYourBurger', 1.30, 1.80, -hz + WALL_T + 0.02, 0, 1.1)              // back wall, faces +z
+  mountCanvas('Poster2', hx - WALL_T - 0.02, 1.80, -7.2, -Math.PI / 2, 1.1)            // east wall, faces -x
+
   function makeTable(spec) {
     const g = new THREE.Group()
     g.position.set(spec.x, 0, spec.z)
