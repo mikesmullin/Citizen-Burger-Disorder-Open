@@ -188,7 +188,7 @@ full words for a JS repo.
 |---|---|---|
 | `heroes/` | The body you play as, plus its viewmodel | `Player`, `Arm` |
 | `mobs/` | Characters with AI, not the player | `Npc`, `Rat` |
-| `items/` | Pickup, placeable, appliance | `Cheese`, `Spatula`, `Cupboard`, `Truck` |
+| `items/` | Pickup, placeable, appliance | `Cheese`, `Spatula`, `Truck` |
 | `tiles/` | Repeatable ground / wall | `MuseumFloor.png`, `KitchenFloor.png` |
 | `ui/` | HUD, tickets, bubbles, menus | `StaffMenu`, `SpeechBubble` |
 

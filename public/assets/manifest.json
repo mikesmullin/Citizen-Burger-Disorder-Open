@@ -12,18 +12,6 @@
   "source": "Resources/Prefabs/Utensils/!Spatula.prefab"
  },
  {
-  "slug": "items/Cupboard",
-  "label": "Cupboard",
-  "group": "items",
-  "kind": "prefab",
-  "nodes": 8,
-  "meshes": 8,
-  "prim": 8,
-  "ui": 0,
-  "mats": 3,
-  "source": "Resources/Prefabs/Cupboard/Cupboard.prefab"
- },
- {
   "slug": "items/NumberStand",
   "label": "NumberStand",
   "group": "items",

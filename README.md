@@ -71,7 +71,7 @@ throw, cooking, rats, fire) is what we are after.
 
 `public/museum.html` is the first playable slice: a walkable hall of the
 converted restaurant art, with the original first-person controls, two hands,
-floor cheese, wandering NPCs, and rats that steal dropped food. The real
+wandering NPCs, and rats that steal dropped food. The real
 kitchen level (`testArea01`) still needs reconversion. Cooking, orders, and
 multiplayer come after this.
 

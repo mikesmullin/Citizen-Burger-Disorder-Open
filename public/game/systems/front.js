@@ -160,7 +160,6 @@ export async function createFront({
   const wallLower = loadMap('./assets/textures/enviro/DiningLowerWall.png')
   const floorTex = loadMap('./assets/textures/enviro/DiningFloor.png')
   const passTex = loadMap('./assets/entities/tiles/KitchenFloor.png')
-  const streetTex = loadMap('./assets/textures/Wood.png')
   const topTex = loadMap('./assets/textures/enviro/TableMain.png')
   const greyTex = loadMap('./assets/textures/Grey.png')
   const darkTex = loadMap('./assets/textures/GreyDark.png')
@@ -198,9 +197,6 @@ export async function createFront({
   const diningZ = (winZ + doorZ) / 2
   addTiledFloor(kit, { map: floorTex, w: BOOTH_W, d: diningD, z: diningZ, layer: 1, tile: 1.55 })
   addTiledFloor(kit, { map: passTex, w: BOOTH_W, d: passD, z: passZ, layer: 1, tile: 1.8 })
-  addTiledFloor(kit, {
-    map: streetTex, w: BOOTH_W + 1.4, d: STREET_D, z: hz - STREET_D / 2, layer: 2, tile: 2,
-  })
   kit.roof(BOOTH_W, interiorD, 0, BOOTH_H, interiorZ)
 
   function solidWall(w, d, px, pz, alongX) {

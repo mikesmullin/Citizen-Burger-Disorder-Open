@@ -166,7 +166,6 @@ function applyCookState(root, item) {
 
 // Prefabs authored facing -Z (away from spawn). Turn them to face the aisle.
 const FACE_AISLE = new Set([
-  'items/Cupboard',
   'items/NumberStand',
 ])
 
@@ -185,7 +184,6 @@ const SPACING_Z = 7.8
 const EXHIBIT_LONGEST = {
   'mobs/Rat': RAT_SIZE,
   'items/Spatula': 1.021,
-  'items/Cupboard': 1.381,
   'items/NumberStand': 1.011,
   'items/Knife': 0.888,
   'items/LightSwitch': 0.437,
@@ -294,6 +292,12 @@ scene.add(player.object)
 player.spawn(0, 0, 11, 0)
 bindAudio(player.camera)
 
+const HALL = { minx: -34, maxx: 34, minz: -64, maxz: 16, height: 9.5 }
+
+function setHallDay(day) {
+  if (skybox) skybox.setDay(day)
+}
+
 const exhibits = []
 const foodProtos = {}
 const labels = createLabelField({ scene })
@@ -338,6 +342,44 @@ const _fireCam = new THREE.Vector3()
 const _firePos = new THREE.Vector3()
 const raycaster = new THREE.Raycaster()
 const ndc = new THREE.Vector2(0, 0)
+
+buildRoom(HALL.minx, HALL.maxx, HALL.minz, HALL.maxz, HALL.height)
+pedestals = createPedestalField({ scene })
+skybox = createSkybox(scene, {
+  sunDir: new THREE.Vector3(10, 24, 18),
+  onDay: applyHallIllum,
+})
+hallLit = addLights(HALL.minx, HALL.maxx, HALL.minz, HALL.maxz)
+hallLit.day = {
+  hemi: 1.05,
+  key: 1.9,
+  fill: 0.45,
+  point: 16,
+  hemiSky: 0xfff3e0,
+  hemiGround: 0x3a3228,
+  keyColor: 0xfff4e6,
+  fillColor: 0xb9d4ff,
+}
+hallLit.night = {
+  hemi: 0.15,
+  key: 0.22,
+  fill: 0.06,
+  point: 2.2,
+  hemiSky: 0x9aa8c4,
+  hemiGround: 0x1a1c22,
+  keyColor: 0x8a9bb8,
+  fillColor: 0x5a6a88,
+}
+hallLit.dusk = {
+  hemi: 0.52,
+  key: 0.95,
+  fill: 0.28,
+  point: 6.5,
+  hemiSky: 0xff9a68,
+  hemiGround: 0x4a2418,
+  keyColor: 0xff7a32,
+  fillColor: 0x6a48a0,
+}
 
 function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas')
@@ -602,7 +644,7 @@ function clusterSlots(n, cx, cz, yaw, { cols, spacing = 3.5, rowZ = 3.6 } = {}) 
 function placeOnPedestal(asset, x, z, meta, yaw = 0, data = null) {
   hideTriggers(asset)
   // Rotate before centering — FACE_AISLE around a non-centered pivot
-  // walked the Cupboard off the back of its podium.
+  // walked aisle-facing props off the back of their podium.
   if (FACE_AISLE.has(meta.slug)) asset.rotation.y += Math.PI
   if (meta.slug === 'items/Patty' || meta.variantOf === 'items/Patty') restorePattyDisc(asset)
   const target = EXHIBIT_LONGEST[meta.slug] ?? EXHIBIT_LONGEST[meta.variantOf]
@@ -610,13 +652,6 @@ function placeOnPedestal(asset, x, z, meta, yaw = 0, data = null) {
   const { size, scale, native } = target != null
     ? (useNative ? fitLongestNative(asset, data, target) : fitLongest(asset, target))
     : (useNative ? fitOnFloorNative(asset, data, { maxSize: 2.35, minSize: 0.4 }) : fitOnFloor(asset, { maxSize: 2.35, minSize: 0.4 }))
-  if (meta.slug === 'items/Cupboard') {
-    // Sit the aisle-facing face at the front of the plinth, not AABB-centered
-    // (the cabinet body is deeper than the podium).
-    asset.updateMatrixWorld(true)
-    const box = boundsOf(asset)
-    asset.position.z += (PEDESTAL_W * 0.5 - 0.05) - box.max.z
-  }
   asset.position.y += PEDESTAL_H + 0.06
 
   const caption = FEATURED.find(f => f.slug === meta.slug)?.caption
@@ -754,50 +789,7 @@ async function boot() {
     delivery: { x: 0, z: -52 },
   }
 
-  const minx = -34
-  const maxx = 34
-  const minz = -64
-  const maxz = 16
-  buildRoom(minx, maxx, minz, maxz, 9.5)
-  pedestals = createPedestalField({ scene })
-  skybox = createSkybox(scene, {
-    sunDir: new THREE.Vector3(10, 24, 18),
-    onDay: applyHallIllum,
-  })
-  hallLit = addLights(minx, maxx, minz, maxz)
-  hallLit.day = {
-    hemi: 1.05,
-    key: 1.9,
-    fill: 0.45,
-    point: 16,
-    hemiSky: 0xfff3e0,
-    hemiGround: 0x3a3228,
-    keyColor: 0xfff4e6,
-    fillColor: 0xb9d4ff,
-  }
-  hallLit.night = {
-    hemi: 0.15,
-    key: 0.22,
-    fill: 0.06,
-    point: 2.2,
-    hemiSky: 0x9aa8c4,
-    hemiGround: 0x1a1c22,
-    keyColor: 0x8a9bb8,
-    fillColor: 0x5a6a88,
-  }
-  hallLit.dusk = {
-    hemi: 0.52,
-    key: 0.95,
-    fill: 0.28,
-    point: 6.5,
-    hemiSky: 0xff9a68,
-    hemiGround: 0x4a2418,
-    keyColor: 0xff7a32,
-    fillColor: 0x6a48a0,
-  }
-  function setHallDay(day) {
-    if (skybox) skybox.setDay(day)
-  }
+  const { minx, maxx, minz, maxz } = HALL
 
   try {
     setStatus('Loading soundboard…')
@@ -935,25 +927,6 @@ async function boot() {
     })
   } catch (err) {
     console.warn('[museum] posters skipped', err)
-  }
-
-  let cheeseProto = foodProtos['items/Cheese']
-  if (!cheeseProto) {
-    try {
-      const c = await loader.load('items/Cheese')
-      cheeseProto = c.root
-      foodProtos['items/Cheese'] = cheeseProto
-    } catch (err) {
-      console.warn('[museum] cheese proto missing', err)
-    }
-  }
-  if (cheeseProto) {
-    const spots = [
-      { x: 4.2, z: 8.4 }, { x: -4.4, z: 5.6 },
-      { x: 6.5, z: -22 }, { x: -6.2, z: -22.5 },
-      { x: 4.0, z: -38 }, { x: -8.5, z: -31 },
-    ]
-    for (const s of spots) foodWorld.addSpawner(s.x, s.z, cheeseProto)
   }
 
   const needFood = [
@@ -1252,6 +1225,31 @@ async function boot() {
     const rat = await loader.load('mobs/Rat')
     hideTriggers(rat.root)
     rats = createRatDen({ scene, player, ratProto: rat.root, foodWorld })
+    const lean = Math.PI / 4
+    const plaqueY = Math.sin(lean) * 0.48 * 0.5 + 0.22
+    ;(rats.holes || []).forEach((h, i) => {
+      const yaw = h.facing
+      // Into the hall a little, then to the viewer's right so the opening stays clear.
+      const out = 0.72
+      const side = 1.28
+      const x = h.x + Math.sin(yaw) * out + Math.cos(yaw) * side
+      const z = h.z + Math.cos(yaw) * out - Math.sin(yaw) * side
+      labels.place({
+        text: 'Rat hole',
+        sub: 'mobs · steal dropped food',
+        kind: 'plaque',
+        x, y: plaqueY, z, yaw, pitch: -lean,
+        parent: scene,
+      })
+      exhibits.push({
+        slug: i ? `mobs/RatHole${i + 1}` : 'mobs/RatHole',
+        label: 'Rat hole',
+        caption: 'Rat hole',
+        group: 'mobs',
+        x, z, yaw,
+        size: { x: 1.45, y: 0.4, z: 0.4 },
+      })
+    })
   } catch (err) {
     console.warn('[museum] rats skipped', err)
   }
@@ -1259,7 +1257,6 @@ async function boot() {
   if (pedestals) pedestals.finalize()
   labels.finalize()
 
-  player.spawn(0, 0, 11, 0)
   setStatus('')
   $('loader').dataset.ready = '1'
   $('loader').style.display = 'none'
@@ -1294,6 +1291,16 @@ function teleport(slug) {
     player.spawn(v.stand.x, 0, v.stand.z, 0)
     player.lookAt(v.look.x, v.look.y, v.look.z)
     return wantLights ? 'AudioLights' : 'Soundboard'
+  }
+  if (rats && /^(RatHole|MouseHole|Hole|mobs\/RatHole)/i.test(String(slug))) {
+    const holes = rats.holes || []
+    const n = parseInt(String(slug).replace(/\D/g, ''), 10)
+    const h = holes[Math.max(0, (n || 1) - 1)] || holes[0]
+    if (!h) return null
+    const yaw = h.facing
+    player.spawn(h.x + Math.sin(yaw) * 2.2, 0, h.z + Math.cos(yaw) * 2.2, 0)
+    player.lookAt(h.x, 0.4, h.z)
+    return 'Rat hole'
   }
   if (delivery && /^(Truck|Delivery|items\/Truck)$/i.test(slug)) {
     const v = delivery.viewSpot()
@@ -1567,10 +1574,9 @@ renderer.setAnimationLoop(() => {
 })
 
 function enter() {
-  if ($('loader').dataset.ready !== '1') return
   playing = true
   player.enabled = true
-  $('loader').style.display = 'none'
+  if ($('loader').dataset.ready === '1') $('loader').style.display = 'none'
   $('hud').style.display = 'block'
   $('fpsHud').style.display = 'flex'
   $('cross').style.display = 'block'
@@ -1586,7 +1592,6 @@ function pause() {
 }
 
 renderer.domElement.addEventListener('click', () => {
-  if ($('loader').dataset.ready !== '1') return
   if (!playing) enter()
   else if (!player.locked) player.requestLock(renderer.domElement)
 })
@@ -1598,7 +1603,6 @@ addEventListener('keydown', e => {
 })
 addEventListener('resize', applySize)
 applySize()
-player.enabled = false
 
 boot().catch(err => {
   console.error(err)

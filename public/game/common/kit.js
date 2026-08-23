@@ -17,6 +17,8 @@ export const RAIL = 0.10
 export const WAINSCOT_T = 0.05
 /** Pull each wainscot end in by this so it stays inside a meeting wall. */
 export const WAINSCOT_CAP = WALL_T + WAINSCOT_T
+/** Extra push along local +Z (into the room) so strips don't punch the outer wall. */
+export const WAINSCOT_IN = 0.03
 export const COUNTER_Y = 0.92
 export const DOOR_H = 2.42
 // Floor stack: 3 coplanar-ish planes, 1 cm apart, so kit tiles can sit on
@@ -203,7 +205,7 @@ export function createKit({ parent, max = 192 } = {}) {
   }
 
   function wainscot(len, x, z, yaw = 0, {
-    panel, rail, cap = WAINSCOT_CAP, cap0, cap1,
+    panel, rail, cap = WAINSCOT_CAP, cap0, cap1, inward = WAINSCOT_IN,
   } = {}) {
     const a = cap0 != null ? cap0 : cap
     const b = cap1 != null ? cap1 : cap
@@ -211,8 +213,10 @@ export function createKit({ parent, max = 192 } = {}) {
     if (L < 0.08 || !panel || !rail) return -1
     // cap0 trims local −X, cap1 local +X; shift the centre by (a − b) / 2.
     const mid = (a - b) * 0.5
-    const mx = x + Math.cos(yaw) * mid
-    const mz = z + Math.sin(yaw) * mid
+    // Local +Z is into the room for every current caller. Nudge that way so
+    // the rail (thicker than the panel) never punches the outer wall face.
+    const mx = x + Math.cos(yaw) * mid + Math.sin(yaw) * inward
+    const mz = z + Math.sin(yaw) * mid + Math.cos(yaw) * inward
     box(panel, L, WAINSCOT, WAINSCOT_T, mx, WAINSCOT / 2, mz, yaw)
     box(rail, L, RAIL, WAINSCOT_T + 0.02, mx, WAINSCOT + RAIL / 2, mz, yaw)
   }

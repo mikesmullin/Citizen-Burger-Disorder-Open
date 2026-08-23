@@ -49,7 +49,6 @@ ENTITY_BY_BASENAME = {
     'Plate': ('items', 'Plate'),
     'FireExtinguisher': ('items', 'FireExtinguisher'),
     'Fire': ('items', 'Fire'),
-    'Cupboard': ('items', 'Cupboard'),
     '!Monitor': ('items', 'Monitor'),
     'Monitor': ('items', 'Monitor'),
     '!MonitorPickup': ('items', 'MonitorPickup'),

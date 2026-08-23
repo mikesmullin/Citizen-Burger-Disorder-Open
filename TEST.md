@@ -40,6 +40,10 @@ does not.
 !!window.__museum && document.getElementById('loader')?.dataset?.ready === '1'
 ```
 
+Humans can click to capture the mouse as soon as the empty hall is on
+screen — you do not have to wait for every exhibit. Agents still wait
+for `__museum` (boot finished) before teleport / grab.
+
 Then enable the player if you are not a human with a mouse:
 
 ```js
@@ -296,12 +300,13 @@ rats if it is cheese / patty / bacon / tomato / tip.
 
 ### 4. Rats steal floor food
 
-Cheese spawners write at `T >= next` (first spawn at `T=0`). After boot
-you may already have floor cheese.
+No hall cheese spawners. Drop food on the museum floor (cheese / patty /
+bacon / tomato / tip), then wait for a hole to send a rat.
 
 ```js
 dbg.freeze()
-const floor = dbg.state().food.filter(f => f.onFloor)
+dbg.teleport('Rat hole')
+// drop a stealable item on the floor, or grab cheese from its pedestal
 dbg.stepMs(12000)            // spawn delay in rats.js is 12 s
 dbg.state().rats             // { pos, stolen, goingHome }
 ```

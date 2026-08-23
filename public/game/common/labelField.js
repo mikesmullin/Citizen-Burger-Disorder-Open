@@ -53,6 +53,7 @@ export function createLabelField({ scene, max = 192 } = {}) {
   } = {}) {
     const dummy = new THREE.Object3D()
     dummy.position.set(x, y, z)
+    dummy.rotation.order = 'YXZ'
     dummy.rotation.set(pitch, yaw, 0)
     const bw = kind === 'plaque' ? PLAQUE_W : TAG_W
     const bh = kind === 'plaque' ? PLAQUE_H : TAG_H
