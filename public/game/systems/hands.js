@@ -16,6 +16,27 @@ const ARM_POS_LERP = 25
 const ARM_ROT_LERP = 20
 const HOLD_PAST_HAND = 0.42
 const FLOOR_PAD = 0.03
+// Viewmodel grip: sit the item on the white hand cube (the original
+// "tray" hold). Prefab heldPositionOffset is a small local nudge,
+// not Unity's 2× along hand.forward (that lands on the forearm here).
+const HOLD_NUDGE = { x: 0.22, y: 0.18, z: 0.10 }
+const HOLD_DEFAULT = { x: 0, y: 1, z: 1 }
+const HOLD_OFFSET = {
+  cheese: { x: 0, y: 0, z: 1 },
+  bacon: { x: 0, y: 0, z: 1 },
+  lettuce: { x: 0, y: 0, z: 1 },
+  patty: { x: 0, y: 0, z: 1 },
+  tomato: { x: 0, y: 0, z: 1 },
+  bun: { x: 0, y: 0, z: 1 },
+  topBun: { x: 0, y: 0, z: 1 },
+  plate: { x: 0, y: 0, z: 1 },
+  lettuceHead: { x: 0, y: 1, z: 1 },
+  lettucePart: { x: 0, y: 1, z: 1 },
+  tip: { x: 0, y: 0.2, z: 1 },
+  rat: { x: 0, y: 0.5, z: 1 },
+  box: { x: 0, y: 1, z: 1 },
+  fire: { x: 0, y: 1, z: 1 },
+}
 // Camera-local rest pose. Looking down pushes the cube along the look
 // ray (armExtraReach) without parenting the pitch into the floor.
 const CAM_X = 0.58
@@ -135,21 +156,49 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     arm.history[2].copy(p)
   }
 
+  function holdSpec(item) {
+    return HOLD_OFFSET[item.type] || HOLD_OFFSET[item.kind] || HOLD_DEFAULT
+  }
+
   function holdPose(arm, dt) {
     const item = arm.holding
     if (!item) return
-    if (arm.hand) arm.hand.getWorldPosition(_pos)
-    else arm.object.getWorldPosition(_pos)
-    arm.object.getWorldPosition(_world)
-    _fwd.copy(_pos).sub(_world)
-    if (_fwd.lengthSq() < 1e-8) player.camera.getWorldDirection(_fwd)
-    else _fwd.normalize()
-    _pos.addScaledVector(_fwd, HOLD_PAST_HAND * armScale)
-    const gy = player.groundY ? player.groundY(_pos.x, _pos.z) : 0
-    const half = (item.height || 0.1) * 0.5
-    if (_pos.y < gy + half + FLOOR_PAD) _pos.y = gy + half + FLOOR_PAD
-    item.object.position.lerp(_pos, Math.min(1, HOLD_LERP * dt))
-    item.object.quaternion.slerp(arm.object.getWorldQuaternion(_q), Math.min(1, HOLD_LERP * dt))
+    const k = Math.min(1, HOLD_LERP * dt)
+    if (isTool(item.type)) {
+      if (arm.hand) arm.hand.getWorldPosition(_pos)
+      else arm.object.getWorldPosition(_pos)
+      arm.object.getWorldPosition(_world)
+      _fwd.copy(_pos).sub(_world)
+      if (_fwd.lengthSq() < 1e-8) player.camera.getWorldDirection(_fwd)
+      else _fwd.normalize()
+      _pos.addScaledVector(_fwd, HOLD_PAST_HAND * armScale)
+      const half = (item.height || 0.1) * 0.5
+      const floor = player.groundY ? player.groundY(_pos.x, _pos.z) : 0
+      if (_pos.y < floor + half + FLOOR_PAD) _pos.y = floor + half + FLOOR_PAD
+      item.object.position.lerp(_pos, k)
+      item.object.quaternion.slerp(arm.object.getWorldQuaternion(_q), k)
+    } else {
+      const off = holdSpec(item)
+      const sign = arm.side === 'right' ? -1 : 1
+      const hand = arm.hand || arm.object
+      hand.updateMatrixWorld(true)
+      const box = boundsOf(hand)
+      if (box.isEmpty()) return
+      box.getCenter(_pos)
+      _pos.y = box.max.y
+      _fwd.setFromMatrixColumn(hand.matrixWorld, 2).normalize()
+      _right.setFromMatrixColumn(hand.matrixWorld, 0).normalize()
+      _up.setFromMatrixColumn(hand.matrixWorld, 1).normalize()
+      const s = armScale
+      _pos.addScaledVector(_right, off.x * sign * HOLD_NUDGE.x * s)
+      _pos.addScaledVector(_up, off.y * HOLD_NUDGE.y * s)
+      _pos.addScaledVector(_fwd, off.z * HOLD_NUDGE.z * s)
+      _pos.y += (item.height || 0) * 0.5
+      const half = (item.height || 0.1) * 0.5
+      const floor = player.groundY ? player.groundY(_pos.x, _pos.z) : 0
+      if (_pos.y < floor + half + FLOOR_PAD) _pos.y = floor + half + FLOOR_PAD
+      item.object.position.lerp(_pos, k)
+    }
     if (item.vel) item.vel.set(0, 0, 0)
     if (item.type === 'plate' && item.plated) layoutPlate(item)
     else if (item.type === 'bun') layoutStack(item)
@@ -202,6 +251,11 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     }
     if (type === 'fire' && fireWatch) fireWatch.takeCopy(item)
     if (type === 'box' && prepareBox) prepareBox(item)
+    if (rec.display && !isTool(type)) {
+      rec.display.updateMatrixWorld(true)
+      rec.display.getWorldQuaternion(_q)
+      item.object.quaternion.copy(_q)
+    }
     grabItem(arm, item)
   }
 
@@ -490,6 +544,37 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     if (!rActive && right.holding) right.object.visible = true
   }
 
+  function grabLook(side = 'left', recOrSlug = null) {
+    const arm = side === 'right' ? right : left
+    let rec = recOrSlug
+    if (typeof recOrSlug === 'string') {
+      rec = exhibits.find(e => e.slug === recOrSlug || e.caption === recOrSlug || e.label === recOrSlug)
+    }
+    if (rec && rec.slug) {
+      spawnCopy(arm, rec)
+    } else {
+      const t = pickTarget()
+      if (!t) return { ok: false, reason: 'no target' }
+      if (t.kind === 'food' || t.kind === 'rat') grabItem(arm, t.item)
+      else if (t.kind === 'exhibit') spawnCopy(arm, t.rec)
+      else if (t.kind === 'swatchBin' && spawnSwatch) grabItem(arm, spawnSwatch(t.spec))
+      else if (t.kind === 'poster' && spawnPoster) grabItem(arm, spawnPoster(t.spec))
+      else return { ok: false, reason: t.kind }
+      rec = t.rec || rec
+    }
+    if (arm.holding) holdPose(arm, 10)
+    return {
+      ok: !!arm.holding,
+      side: arm.side,
+      type: arm.holding?.type || arm.holding?.kind || null,
+      slug: arm.holding?.slug || rec?.slug || null,
+    }
+  }
+
+  function dropArm(side = 'left') {
+    drop(side === 'right' ? right : left)
+  }
+
   function holdingLabel() {
     const a = left.holding?.type || (left.holding?.kind === 'rat' ? 'rat' : null)
     const b = right.holding?.type || (right.holding?.kind === 'rat' ? 'rat' : null)
@@ -514,6 +599,7 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
 
   return {
     left, right, update, pickTarget, holdingLabel, dumpSpray, setScale,
+    grabLook, dropArm,
     get armScale() { return armScale },
   }
 }
