@@ -30,6 +30,7 @@ const HELP = `dbg — time travel
   dbg.mouseMove(dx, dy)   pointer-lock delta (LMB-drag scales/moves when a gun is out)
   dbg.scales()            exhibit mul / longest-edge / badge pos dump
   dbg.panel(true|false)   show the on-screen panel
+  dbg.draws()             next frame: meshes grouped by name, highest count first
   dbg.help()
 
 pose — model studio (white bg, nothing else)
@@ -230,6 +231,12 @@ export function installHarness({
       if (!show) panel.classList.remove('open')
       return { panel: show }
     },
+    draws() {
+      const req = extraDbg && extraDbg.requestDrawCensus
+      if (!req) return Promise.reject(new Error('no draw census'))
+      return req()
+    },
+    get lastDraws() { return extraDbg && extraDbg.lastDrawCensus },
     help: () => HELP,
     get T() { return time.T },
     get frozen() { return time.frozen },

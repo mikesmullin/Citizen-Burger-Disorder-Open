@@ -3,7 +3,7 @@
 
 import * as THREE from 'three'
 import { POSTERS } from './posters.js'
-import { PEDESTAL_W, PEDESTAL_H } from './pedestals.js'
+import { PEDESTAL_W, PEDESTAL_H, makePedestalHit } from './pedestals.js'
 
 const CARD_W = 0.46
 const CARD_H = 0.58
@@ -162,6 +162,7 @@ export function createSwatches({
   object.updateMatrixWorld(true)
 
   if (pedestals) pedestals.place(x, z, facingY)
+  makePedestalHit(object)
   const half = PEDESTAL_W / 2 + 0.06
   player.addCollider(
     { x: x - half, z: z - half },
@@ -229,25 +230,25 @@ export function createSwatches({
     top.name = 'Swatch:' + spec.caption
     tagMat.map = labelTex(spec.caption)
     tagMat.needsUpdate = true
-    wrap.userData.swatchBin = spec
-    wrap.traverse(o => { o.userData.swatchBin = spec })
+    object.userData.swatchBin = spec
+    object.traverse(o => { o.userData.swatchBin = spec })
   }
   bind()
 
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2(0, 0)
 
-  function tryTurn() {
+  function tryTurn(dir = 1) {
     if (!player.locked) return false
     raycaster.setFromCamera(ndc, player.camera)
     const hits = raycaster.intersectObject(object, true)
     if (!hits.length || hits[0].distance > PRESS_RANGE) return false
-    cycle()
+    cycle(dir)
     return true
   }
 
-  function cycle() {
-    index = (index + 1) % n
+  function cycle(dir = 1) {
+    index = (index + (dir < 0 ? -1 : 1) + n) % n
     bind()
   }
 
@@ -287,7 +288,7 @@ export function createSwatches({
     raycaster.setFromCamera(ndc, player.camera)
     const hits = raycaster.intersectObject(object, true)
     if (!hits.length || hits[0].distance > PRESS_RANGE) return ''
-    return current().caption + '  ·  click to flip  ·  grab a copy'
+    return current().caption + '  ·  LMB / wheel↓ next  ·  RMB / wheel↑ prev  ·  grab a copy'
   }
 
   function viewSpot() {

@@ -5,6 +5,7 @@
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
+import { createBadgeField, BADGE_W, BADGE_H } from '../common/badgeField.js'
 
 export const PLAYER_SKINS = [
   { skin: null,    name: 'PLAYER' },
@@ -74,46 +75,13 @@ function alignDefaultFace(root) {
 // Burger PNGs under textures/badges/ are menu-item art for the kitchen
 // order board — they do not belong on the nametag. Front-facing plane only;
 // the Unity NameTag cube is kept as a transform host but not drawn.
-const BADGE_W = 0.96
-const BADGE_H = 0.60
-
-function makeNameBadge(username) {
-  const c = document.createElement('canvas')
-  c.width = 512
-  c.height = 320
-  const g = c.getContext('2d')
-  g.fillStyle = '#ffffff'
-  g.fillRect(0, 0, 512, 320)
-  g.fillStyle = '#c4122e'
-  g.fillRect(0, 0, 512, 108)
-  g.fillStyle = '#ffffff'
-  g.textAlign = 'center'
-  g.textBaseline = 'middle'
-  g.font = '700 52px ui-sans-serif, system-ui, sans-serif'
-  g.fillText('HELLO', 256, 42)
-  g.font = 'italic 28px Georgia, "Palatino Linotype", cursive'
-  g.fillText('my name is', 256, 84)
-  g.fillStyle = '#111111'
-  let size = 64
-  g.font = `700 ${size}px ui-sans-serif, system-ui, sans-serif`
-  while (g.measureText(username).width > 460 && size > 22) {
-    size -= 2
-    g.font = `700 ${size}px ui-sans-serif, system-ui, sans-serif`
-  }
-  g.fillText(username, 256, 214)
-  g.strokeStyle = '#1a1a1a'
-  g.lineWidth = 8
-  g.strokeRect(4, 4, 504, 312)
-  const map = new THREE.CanvasTexture(c)
-  map.colorSpace = THREE.SRGBColorSpace
-  map.anisotropy = 4
+function makeNameBadgeProxy() {
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(BADGE_W, BADGE_H),
-    new THREE.MeshBasicMaterial({
-      map, toneMapped: false, side: THREE.FrontSide,
-    }),
+    new THREE.MeshBasicMaterial({ visible: false }),
   )
   mesh.name = 'NameText'
+  mesh.castShadow = mesh.receiveShadow = false
   return mesh
 }
 
@@ -123,7 +91,7 @@ function makeNameBadge(username) {
 const BADGE_POS = [0.502, 0.372, -0.162]
 const BADGE_SCALE = [0.573, 0.238, 0.038]
 
-function seatNameTag(body, username) {
+function seatNameTag(body) {
   const tag = body.getObjectByName('NameTag')
   if (!tag) return null
   tag.position.set(...BADGE_POS)
@@ -138,7 +106,7 @@ function seatNameTag(body, username) {
       o.raycast = () => {}
     }
   })
-  const text = makeNameBadge(username)
+  const text = makeNameBadgeProxy()
   text.position.set(0, 0, -0.52)
   text.rotation.y = Math.PI
   tag.add(text)
@@ -204,6 +172,7 @@ export function createDemoPlayers({
   const list = []
   const pools = {}
   const n = PLAYER_SKINS.length
+  const badgeField = createBadgeField({ scene, max: n })
   const armVis = visualMesh(armProto)
   const sharedArmPool = armPool || (armVis ? createInstancePool({
     geometry: armVis.geometry,
@@ -229,7 +198,8 @@ export function createDemoPlayers({
       if (o.name === 'Hello' || o.name === 'Username') o.visible = false
     })
 
-    const badge = seatNameTag(body, spec.name)
+    const badge = seatNameTag(body)
+    const badgeFace = badge && badge.getObjectByName('NameText')
 
     const left = makeWorldArm(armProto, 'left', sharedArmPool)
     const right = makeWorldArm(armProto, 'right', sharedArmPool)
@@ -240,7 +210,8 @@ export function createDemoPlayers({
     const vis = visualMesh(body)
     const skinKey = spec.skin || 'default'
     const demo = {
-      spec, body, left, right, badge,
+      spec, body, left, right, badge, badgeFace,
+      badgeSlot: -1,
       inv,
       visual: vis,
       pool: null,
@@ -282,6 +253,10 @@ export function createDemoPlayers({
     }
     body.userData.demoPlayer = demo
     body.traverse(o => { o.userData.demoPlayer = demo })
+    if (badgeFace) {
+      demo.badgeSlot = badgeField.stamp(spec.name, { demo })
+      badgeField.setFromObject(demo.badgeSlot, badgeFace)
+    }
     player.addMover(demo)
     list.push(demo)
   })
@@ -344,6 +319,7 @@ export function createDemoPlayers({
         d.body.position.y = THREE.MathUtils.lerp(d.body.position.y, d.baseY, Math.min(1, 10 * dt))
       }
       if (d.pool && d.visual) d.pool.setFromObject(d.slot, d.visual)
+      if (d.badgeSlot >= 0 && d.badgeFace) badgeField.setFromObject(d.badgeSlot, d.badgeFace)
     }
   }
 
@@ -386,5 +362,5 @@ export function createDemoPlayers({
     })
   }
 
-  return { players: list, update, setScale, setBadgeScale, setBadgePos, badgeDump }
+  return { players: list, update, setScale, setBadgeScale, setBadgePos, badgeDump, badgeField }
 }

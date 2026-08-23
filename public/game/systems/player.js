@@ -49,6 +49,24 @@ export function createFirstPersonPlayer({
   yawObject.add(pitchObject)
   pitchObject.add(camera)
 
+  // Shadow-only stand-in for the first-person body. heroes/Player is the
+  // same Unity Capsule as the demo lineup (r=0.5,h=2 × prefab scale 2,3,2
+  // then sitPlayer to height 2 → xz radius 1/3). three.js' shadow pass
+  // tests the *view* camera's layers, so a shadow-only layer would also
+  // drop the caster. colorWrite/depthWrite hide it instead — the camera
+  // sits inside this capsule, and looking down would otherwise fill the
+  // view with the bottom cap.
+  const shadowRadius = 0.5 * 2 * (2 / 6)
+  const shadowMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(shadowRadius, height - 2 * shadowRadius, 8, 16),
+    new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
+  )
+  shadowMesh.name = 'PlayerShadow'
+  shadowMesh.castShadow = true
+  shadowMesh.receiveShadow = false
+  shadowMesh.raycast = () => {}
+  yawObject.add(shadowMesh)
+
   const wish = new THREE.Vector3()
   const fwd = new THREE.Vector3()
   const right = new THREE.Vector3()
@@ -58,6 +76,8 @@ export function createFirstPersonPlayer({
   const wasMouse = { 0: false, 2: false, 1: false }
   let fire1Down = false, fire1Up = false, fire1 = false
   let fire2Down = false, fire2Up = false, fire2 = false
+  let wheelAcc = 0
+  let wheelDir = 0
   let yaw = 0
   let pitch = 0
   let vy = 0
@@ -106,6 +126,11 @@ export function createFirstPersonPlayer({
   addEventListener('mouseup',   e => onMouseButton(e, false))
   document.addEventListener('mousedown', e => onMouseButton(e, true))
   document.addEventListener('mouseup',   e => onMouseButton(e, false))
+  addEventListener('wheel', e => {
+    if (!enabled || !locked) return
+    e.preventDefault()
+    wheelAcc += e.deltaY
+  }, { passive: false })
   addEventListener('contextmenu', e => { if (enabled) e.preventDefault() })
   document.addEventListener('pointerlockchange', onLockChange)
 
@@ -169,6 +194,8 @@ export function createFirstPersonPlayer({
     if (!enabled) {
       camera.fov += (fov - camera.fov) * Math.min(1, dt * 8)
       camera.updateProjectionMatrix()
+      wheelDir = 0
+      wheelAcc = 0
       return
     }
     dt = Math.min(dt, 0.1)
@@ -177,6 +204,8 @@ export function createFirstPersonPlayer({
     fire2 = !!mouse[2]; fire2Down = fire2 && !wasMouse[2]; fire2Up = !fire2 && wasMouse[2]
     wasMouse[0] = fire1
     wasMouse[2] = fire2
+    wheelDir = wheelAcc > 0 ? 1 : wheelAcc < 0 ? -1 : 0
+    wheelAcc = 0
 
     yawObject.rotation.y = THREE.MathUtils.degToRad(yaw)
     pitchObject.rotation.x = THREE.MathUtils.degToRad(pitch)
@@ -394,7 +423,7 @@ export function createFirstPersonPlayer({
   }
 
   return {
-    camera, object: yawObject,
+    camera, object: yawObject, shadowMesh,
     update, spawn, lookAt,
     requestLock, unlock,
     addCollider, setRoomBounds,
@@ -449,6 +478,7 @@ export function createFirstPersonPlayer({
     get fire2() { return fire2 },
     get fire2Down() { return fire2Down },
     get fire2Up() { return fire2Up },
+    get wheelDir() { return wheelDir },
     get leftHand() { return keys.has('KeyQ') },
     get rightHand() { return keys.has('KeyE') },
     pitchObject,

@@ -513,14 +513,10 @@ export async function createKitchen({
     }
     for (let i = 0; i < 3; i++) {
       const w = worldOf(basinX + (i - 1) * 0.55, basinFloorY + 0.22, sinkZ + (i % 2 ? 0.12 : -0.12))
-      const item = foodWorld.spawn({
+      foodWorld.spawn({
         proto: plateProto, type: 'plate', slug: 'items/Plate',
-        x: w.x, z: w.z, y: basinFloorY + 0.22, instanced: false,
+        x: w.x, z: w.z, y: basinFloorY + 0.22,
       })
-      item.dirty = true
-      item.instVariant = 'dirty'
-      applyCookLook(item.object, { mapUrl: './assets/textures/PlateDirty.png' })
-      foodWorld.watch(item)
     }
   }
 
@@ -634,7 +630,9 @@ export async function createKitchen({
         }
         if (item.dirty && item.soakTime >= WASH_TIME) {
           item.dirty = false
+          item.instVariant = ''
           applyCookLook(item.object, { mapUrl: './assets/textures/Plate.png' })
+          if (item.watchVisual) item.watchVisual(item)
         }
       } else {
         item.soakTime = 0

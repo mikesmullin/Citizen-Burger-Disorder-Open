@@ -127,6 +127,7 @@ away under the studio).
 | `dbg.equip(0\|1\|2)` | scale dump | 0 empty hands, 1 scale gun, 2 transform gun |
 | `dbg.axes('x'\|'y'\|'z')` | scale dump | toggle a transform-gun axis (all off by default) |
 | `dbg.panel(true)` | `{ panel }` | on-screen HUD. `?debug` in the URL does this |
+| `dbg.draws()` | Promise | next frame only: meshes grouped by name, highest count first. Also `dbg.lastDraws` |
 | `dbg.T` / `dbg.frozen` | number / bool | |
 | `dbg.help()` | string | |
 

@@ -129,12 +129,93 @@ export function foodLongest(type, slug) {
   return FOOD_SIZE[type]
 }
 
-// Food.cs: Color.Lerp(original, (cookedRed, cookedGreen, cookedBlue), cooked)
-// then toward (0.005, 0, 0) as overcooked. Bacon uses TextureBlend cooked PNGs.
+// Cooked-stage albedo (lerped from the item's original color). Kritz's
+// Food.cs defaulted every type to (0.2, 0, 0) — cheese went red, and a
+// one-shot burn lerp of 0.82 toward (0.005, 0, 0) left items dark-red
+// instead of charcoal. Per-type targets + a real black burn fix that.
 export const COOK_RGB = {
-  default: { r: 0.2, g: 0, b: 0 },
-  bun: { r: 0.5, g: 0.3, b: 0 },
-  topBun: { r: 0.5, g: 0.3, b: 0 },
+  patty: { r: 0.28, g: 0.11, b: 0.045 },
+  cheese: { r: 0.78, g: 0.42, b: 0.08 },
+  tomato: { r: 0.52, g: 0.13, b: 0.05 },
+  lettuce: { r: 0.36, g: 0.38, b: 0.11 },
+  lettuceHead: { r: 0.36, g: 0.38, b: 0.11 },
+  lettucePart: { r: 0.36, g: 0.38, b: 0.11 },
+  bun: { r: 0.50, g: 0.28, b: 0.08 },
+  topBun: { r: 0.50, g: 0.28, b: 0.08 },
+  bacon: { r: 0.42, g: 0.16, b: 0.08 },
+  rat: { r: 0.22, g: 0.08, b: 0.04 },
+  default: { r: 0.32, g: 0.14, b: 0.05 },
+}
+
+export const BURN_RGB = { r: 0.04, g: 0.035, b: 0.03 }
+
+// Raw item then its cook / dirty stages. Used by the food kiosk (and
+// formerly by one-pedestal-per-stage hall layout).
+export const COOK_FOLLOW = {
+  'items/Plate': [
+    { slug: 'items/PlateDirty', caption: 'Plate · dirty', state: 'dirty' },
+  ],
+  'items/Bacon': [
+    { slug: 'items/BaconCooked', caption: 'Bacon · cooked', state: 'baconCooked' },
+    { slug: 'items/BaconCooked2', caption: 'Bacon · cooked 2', state: 'baconCooked2' },
+    { slug: 'items/BaconBurned', caption: 'Bacon · burned', state: 'burned' },
+  ],
+  'items/Patty': [
+    { slug: 'items/PattyCooked', caption: 'Patty · cooked', state: 'cooked' },
+    { slug: 'items/PattyBurned', caption: 'Patty · burned', state: 'burned' },
+  ],
+  'items/Cheese': [
+    { slug: 'items/CheeseCooked', caption: 'Cheese · cooked', state: 'cooked' },
+    { slug: 'items/CheeseBurned', caption: 'Cheese · burned', state: 'burned' },
+  ],
+  'items/Tomato': [
+    { slug: 'items/TomatoCooked', caption: 'Tomato · cooked', state: 'cooked' },
+    { slug: 'items/TomatoBurned', caption: 'Tomato · burned', state: 'burned' },
+  ],
+  'items/Lettuce': [
+    { slug: 'items/LettuceCooked', caption: 'Lettuce · cooked', state: 'cooked' },
+    { slug: 'items/LettuceBurned', caption: 'Lettuce · burned', state: 'burned' },
+  ],
+  'items/LettuceHead': [
+    { slug: 'items/LettuceHeadCooked', caption: 'Lettuce Head · cooked', state: 'cooked' },
+    { slug: 'items/LettuceHeadBurned', caption: 'Lettuce Head · burned', state: 'burned' },
+  ],
+  'items/BunTop': [
+    { slug: 'items/BunTopCooked', caption: 'Bun Top · cooked', state: 'cooked' },
+    { slug: 'items/BunTopBurned', caption: 'Bun Top · burned', state: 'burned' },
+  ],
+  'items/BunBottom': [
+    { slug: 'items/BunBottomCooked', caption: 'Bun Bottom · cooked', state: 'cooked' },
+    { slug: 'items/BunBottomBurned', caption: 'Bun Bottom · burned', state: 'burned' },
+  ],
+}
+
+export function applyCookState(root, item) {
+  const type = inferFoodType(item.variantOf || item.slug)
+  const rgb = COOK_RGB[type] || COOK_RGB.default
+  if (item.cookState === 'dirty') {
+    applyCookLook(root, { mapUrl: './assets/textures/PlateDirty.png' })
+    return
+  }
+  if (item.cookState === 'baconCooked') {
+    applyCookLook(root, { cooked: 1, cookedRGB: rgb, mapUrl: './assets/textures/BaconCooked.png' })
+    return
+  }
+  if (item.cookState === 'baconCooked2') {
+    applyCookLook(root, { cooked: 1, cookedRGB: rgb, mapUrl: './assets/textures/BaconCooked2.png' })
+    return
+  }
+  if (item.cookState === 'cooked') {
+    applyCookLook(root, { cooked: 1, overcooked: 0, cookedRGB: rgb })
+    return
+  }
+  if (item.cookState === 'burned') {
+    const mapUrl = (item.variantOf || item.slug) === 'items/Bacon'
+      || item.slug === 'items/BaconBurned'
+      ? './assets/textures/BaconCooked.png'
+      : null
+    applyCookLook(root, { cooked: 1, overcooked: 1, cookedRGB: rgb, mapUrl })
+  }
 }
 
 const _cookMaps = {}
@@ -156,7 +237,7 @@ export function applyCookLook(root, {
 } = {}) {
   const map = mapUrl ? cookMap(mapUrl) : null
   const tgt = new THREE.Color(cookedRGB.r, cookedRGB.g, cookedRGB.b)
-  const burn = new THREE.Color(0.005, 0, 0)
+  const burn = new THREE.Color(BURN_RGB.r, BURN_RGB.g, BURN_RGB.b)
   root.traverse(o => {
     if (!o.isMesh || !o.material || o.userData.trigger) return
     if (!o.userData.cookOrig) {
@@ -171,7 +252,7 @@ export function applyCookLook(root, {
       if (cooked > 0) o.material.color.lerp(tgt, cooked)
     }
     if (overcooked > 0) {
-      o.material.color.lerp(burn, Math.min(1, overcooked * 0.82))
+      o.material.color.lerp(burn, Math.min(1, overcooked))
     }
     o.material.needsUpdate = true
   })
@@ -212,10 +293,10 @@ export function cookTick(item, dt) {
   }
   if (root && root.userData && root.userData.instSlots) {
     const tgt = new THREE.Color(rgb.r, rgb.g, rgb.b)
-    const burn = new THREE.Color(0.005, 0, 0)
+    const burn = new THREE.Color(BURN_RGB.r, BURN_RGB.g, BURN_RGB.b)
     const c = (item.cookOrig || new THREE.Color(1, 1, 1)).clone()
     if (item.cooked > 0) c.lerp(tgt, Math.min(1, item.cooked))
-    if (item.overcooked > 0) c.lerp(burn, Math.min(1, item.overcooked * 0.82))
+    if (item.overcooked > 0) c.lerp(burn, Math.min(1, item.overcooked))
     const slots = root.userData.instSlots
     for (const s of slots.slots) s.pool.setColor(s.i, c)
     return

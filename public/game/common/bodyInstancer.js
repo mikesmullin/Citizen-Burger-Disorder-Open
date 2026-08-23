@@ -42,7 +42,6 @@ export function createBodyInstancer({
     const i = pool.alloc(payload || { root })
     if (i < 0) return null
     hideVisuals(root)
-    vis.visible = false
     pool.setFromObject(i, vis)
     const rec = { root, vis, pool, i, skin: skin || 'default' }
     attached.push(rec)

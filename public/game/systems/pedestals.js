@@ -10,6 +10,20 @@ export const PEDESTAL_W = 1.25
 const CAP_H = 0.06
 const CAP_Y = PEDESTAL_H + CAP_H / 2
 
+// Invisible volume matching the mocha plinth so kiosk next/prev (click or
+// wheel) hits the stand, not only the display item on top.
+export function makePedestalHit(parent) {
+  const h = PEDESTAL_H + CAP_H
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(PEDESTAL_W + 0.12, h, PEDESTAL_W + 0.12),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  )
+  mesh.name = 'PedestalHit'
+  mesh.position.y = h / 2
+  parent.add(mesh)
+  return mesh
+}
+
 const _dummy = new THREE.Object3D()
 
 function makeGeometry() {

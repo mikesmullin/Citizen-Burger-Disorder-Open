@@ -16,6 +16,9 @@ export function createInstancePool({
   mesh.receiveShadow = receiveShadow
   mesh.frustumCulled = false
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3)
+  mesh.instanceColor.setUsage(THREE.DynamicDrawUsage)
+  for (let k = 0; k < max; k++) mesh.instanceColor.setXYZ(k, 1, 1, 1)
   const byInstance = []
   mesh.userData.byInstance = byInstance
   const free = []
@@ -67,13 +70,7 @@ export function createInstancePool({
   const _white = new THREE.Color(1, 1, 1)
   function setColor(i, color) {
     if (i == null || i < 0) return
-    const cap = mesh.instanceMatrix.count
-    if (!mesh.instanceColor) {
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3)
-      mesh.instanceColor.setUsage(THREE.DynamicDrawUsage)
-      for (let k = 0; k < cap; k++) mesh.setColorAt(k, _white)
-    }
-    mesh.setColorAt(i, color.isColor ? color : _white.set(color))
+    mesh.setColorAt(i, color && color.isColor ? color : _white.set(color || 0xffffff))
     mesh.instanceColor.needsUpdate = true
   }
 
@@ -96,7 +93,17 @@ export function hideVisuals(root) {
     if (!o.isMesh || o.isInstancedMesh) return
     if (/^(NameTag|NameTagTop|Hello|Username|NameText)$/.test(o.name || '')) return
     if (o.userData.ui) return
-    o.visible = false
+    // Hide the draw, not the Object3D — Player's capsule *is* the root, and
+    // object.visible = false would also drop chest nametags and other children.
+    // Clone first: proto.clone() shares materials with InstancedMesh pools.
+    const mats = Array.isArray(o.material) ? o.material : [o.material]
+    const hidden = mats.map(m => {
+      if (!m) return m
+      const c = m.clone()
+      c.visible = false
+      return c
+    })
+    o.material = Array.isArray(o.material) ? hidden : hidden[0]
   })
 }
 
@@ -162,8 +169,9 @@ export function createVisualInstancer({ scene, max = 64, prefix = 'Pick' } = {})
       if (i < 0) continue
       mesh.visible = false
       pool.setFromObject(i, mesh)
-      const tint = (mesh.material && mesh.material.map) ? _white : (mesh.userData.cookOrig || mesh.material.color)
-      pool.setColor(i, tint)
+      // Pool albedo stays white; cook/burn lives in instanceColor so the
+      // same geo+map InstancedMesh can show raw / cooked / burned.
+      pool.setColor(i, (mesh.material && mesh.material.color) || _white)
       slots.push({ pool, i, mesh })
     }
     const rec = { root, slots, payload, variant }

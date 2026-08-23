@@ -5,7 +5,7 @@
 import * as THREE from 'three'
 import { hideTriggers, boundsOf } from '../common/unityScene.js'
 import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
-import { isTool } from './food.js'
+import { isTool, applyCookState } from './food.js'
 import { grabStackWith, layoutStack, layoutPlate } from './stacking.js'
 import { createSpray } from './spray.js'
 
@@ -270,16 +270,21 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
       }
       return
     }
-    const proto = foodProtos[rec.slug]
+    const proto = foodProtos[rec.variantOf || rec.slug]
     if (!proto) return
     const type = rec.foodType || rec.pickup || 'other'
     const item = foodWorld.spawn({
-      proto, type, slug: rec.slug,
-      x, z, y, onFloor: false,
+      proto, type, slug: rec.variantOf || rec.slug,
+      x, z, y, onFloor: false, instanced: false,
     })
+    if (rec.cookState) applyCookState(item.object, rec)
     if (rec.slug === 'items/PlateDirty' || rec.cookState === 'dirty') {
       item.dirty = true
+      item.instVariant = 'dirty'
+    } else if (rec.cookState && String(rec.cookState).startsWith('bacon')) {
+      item.instVariant = rec.cookState
     }
+    if (foodWorld.watch) foodWorld.watch(item)
     if (type === 'fire' && fireWatch) fireWatch.takeCopy(item)
     if (type === 'box' && prepareBox) prepareBox(item)
     if (rec.display && !isTool(type)) {
@@ -484,7 +489,7 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
       const bin = h.object.userData.swatchBin
       if (bin) return { kind: 'swatchBin', spec: bin, dist: h.distance }
       const rec = h.object.userData.exhibit
-      if (rec && rec.pickup && foodProtos[rec.slug]) {
+      if (rec && rec.pickup && foodProtos[rec.variantOf || rec.slug]) {
         return { kind: 'exhibit', rec, dist: h.distance }
       }
     }
@@ -514,7 +519,7 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
     let bestEx = null
     bestD = GRAB_RANGE
     for (const rec of exhibits) {
-      if (!rec.pickup || !foodProtos[rec.slug]) continue
+      if (!rec.pickup || !foodProtos[rec.variantOf || rec.slug]) continue
       const dx = rec.x - _pos.x, dy = 1.1 - _pos.y, dz = rec.z - _pos.z
       const d = Math.hypot(dx, dy, dz)
       if (d > bestD || d < 0.4) continue

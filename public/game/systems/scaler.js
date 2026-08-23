@@ -232,10 +232,12 @@ export function createScaler({
         o = o.parent
       }
       if (o === scaleGun || o === xformGun || o === helper || o === axesHelper) continue
-      const rec = h.object.userData.exhibit
+      const inst = (h.object.userData.byInstance && h.instanceId != null)
+        ? h.object.userData.byInstance[h.instanceId] : null
+      const rec = h.object.userData.exhibit || (inst && inst.exhibit)
       if (rec && rec.display) {
-        if (rec.virtual) rec.display = h.object.userData.editRoot || h.object
-        const demo = h.object.userData.demoPlayer
+        if (rec.virtual) rec.display = (inst && inst.editRoot) || h.object.userData.editRoot || h.object
+        const demo = h.object.userData.demoPlayer || (inst && inst.demo)
         rec.hoverName = demo && rec.kind === 'badge' ? demo.spec.name : null
         return rec
       }

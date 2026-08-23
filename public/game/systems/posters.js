@@ -1,5 +1,5 @@
-// Circular poster kiosk: rolodex around a round rack. Click (no hands up)
-// to step through the stack; grab with Q/E to take a copy onto the floor.
+// Circular poster kiosk: rolodex around a round rack. LMB next / RMB prev
+// (no hands up); grab with Q/E to take a copy onto the floor.
 
 import * as THREE from 'three'
 import { atlasUvMaterial } from '../common/atlasUv.js'
@@ -156,7 +156,7 @@ export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
     g.fillText('POSTERS', w / 2, 70)
     g.fillStyle = '#c4a574'
     g.font = '24px ui-sans-serif, system-ui, sans-serif'
-    g.fillText('click to flip  ·  grab a copy', w / 2, 122)
+    g.fillText('click / scroll to flip  ·  grab a copy', w / 2, 122)
   })
   const sign = new THREE.Mesh(
     new THREE.PlaneGeometry(1.6, 0.34),
@@ -240,21 +240,22 @@ export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2(0, 0)
 
-  function tryTurn() {
+  function tryTurn(dir = 1) {
     if (!player.locked) return false
     raycaster.setFromCamera(ndc, player.camera)
     const hits = raycaster.intersectObject(object, true)
     if (!hits.length || hits[0].distance > PRESS_RANGE) return false
+    const step = dir < 0 ? -1 : 1
     const hit = hits[0]
     const spec = hit.object.userData.poster
       || (hit.object.userData.byInstance && hit.instanceId != null
         && hit.object.userData.byInstance[hit.instanceId]?.poster)
-    if (spec) {
+    if (spec && step > 0) {
       const i = POSTERS.findIndex(p => p.id === spec.id)
       if (i >= 0 && i !== index) index = i
       else index = (index + 1) % n
     } else {
-      index = (index + 1) % n
+      index = (index + step + n) % n
     }
     layout()
     return true
@@ -296,7 +297,7 @@ export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
     raycaster.setFromCamera(ndc, player.camera)
     const hits = raycaster.intersectObject(object, true)
     if (!hits.length || hits[0].distance > PRESS_RANGE) return ''
-    return current().caption + '  ·  click to flip  ·  grab a copy'
+    return current().caption + '  ·  LMB / wheel↓ next  ·  RMB / wheel↑ prev  ·  grab a copy'
   }
 
   function viewSpot() {

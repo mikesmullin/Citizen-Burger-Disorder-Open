@@ -7,7 +7,8 @@ import { createUnityLoader, fitOnFloor, fitLongest, fitOnFloorNative, fitLongest
 
 import { createFirstPersonPlayer } from '../systems/player.js'
 import { createCrowd } from '../systems/npc.js'
-import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG, applyCookLook, COOK_RGB } from '../systems/food.js'
+import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG } from '../systems/food.js'
+import { createFoodKiosk, FOOD_HALL_SKIP } from '../systems/foodKiosk.js'
 import { createHands } from '../systems/hands.js'
 import { createRatDen, RAT_SIZE } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
@@ -75,93 +76,6 @@ const CLUSTER_BANNER = {
   service: 'Service',
   storage: 'Storage',
   back: 'Back of house',
-}
-
-// Extra podiums seated next to the raw / clean item (Food.cs cook + dirty plate).
-const COOK_FOLLOW = {
-  'items/Plate': [
-    { slug: 'items/PlateDirty', caption: 'Plate · dirty', state: 'dirty' },
-  ],
-  'items/Bacon': [
-    { slug: 'items/BaconCooked', caption: 'Bacon · cooked', state: 'baconCooked' },
-    { slug: 'items/BaconCooked2', caption: 'Bacon · cooked 2', state: 'baconCooked2' },
-    { slug: 'items/BaconBurned', caption: 'Bacon · burned', state: 'burned' },
-  ],
-  'items/Patty': [
-    { slug: 'items/PattyCooked', caption: 'Patty · cooked', state: 'cooked' },
-    { slug: 'items/PattyBurned', caption: 'Patty · burned', state: 'burned' },
-  ],
-  'items/Cheese': [
-    { slug: 'items/CheeseCooked', caption: 'Cheese · cooked', state: 'cooked' },
-    { slug: 'items/CheeseBurned', caption: 'Cheese · burned', state: 'burned' },
-  ],
-  'items/Tomato': [
-    { slug: 'items/TomatoCooked', caption: 'Tomato · cooked', state: 'cooked' },
-    { slug: 'items/TomatoBurned', caption: 'Tomato · burned', state: 'burned' },
-  ],
-  'items/Lettuce': [
-    { slug: 'items/LettuceCooked', caption: 'Lettuce · cooked', state: 'cooked' },
-    { slug: 'items/LettuceBurned', caption: 'Lettuce · burned', state: 'burned' },
-  ],
-  'items/LettuceHead': [
-    { slug: 'items/LettuceHeadCooked', caption: 'Lettuce Head · cooked', state: 'cooked' },
-    { slug: 'items/LettuceHeadBurned', caption: 'Lettuce Head · burned', state: 'burned' },
-  ],
-  'items/BunTop': [
-    { slug: 'items/BunTopCooked', caption: 'Bun Top · cooked', state: 'cooked' },
-    { slug: 'items/BunTopBurned', caption: 'Bun Top · burned', state: 'burned' },
-  ],
-  'items/BunBottom': [
-    { slug: 'items/BunBottomCooked', caption: 'Bun Bottom · cooked', state: 'cooked' },
-    { slug: 'items/BunBottomBurned', caption: 'Bun Bottom · burned', state: 'burned' },
-  ],
-}
-
-function withCookVariants(items) {
-  const out = []
-  for (const item of items) {
-    out.push(item)
-    const extra = COOK_FOLLOW[item.slug]
-    if (!extra) continue
-    for (const v of extra) {
-      out.push({
-        ...item,
-        slug: v.slug,
-        label: v.caption,
-        caption: v.caption,
-        variantOf: item.slug,
-        cookState: v.state,
-      })
-    }
-  }
-  return out
-}
-
-function applyCookState(root, item) {
-  const type = inferFoodType(item.variantOf || item.slug)
-  const rgb = COOK_RGB[type] || COOK_RGB.default
-  if (item.cookState === 'dirty') {
-    applyCookLook(root, { mapUrl: './assets/textures/PlateDirty.png' })
-    return
-  }
-  if (item.cookState === 'baconCooked') {
-    applyCookLook(root, { cooked: 1, cookedRGB: rgb, mapUrl: './assets/textures/BaconCooked.png' })
-    return
-  }
-  if (item.cookState === 'baconCooked2') {
-    applyCookLook(root, { cooked: 1, cookedRGB: rgb, mapUrl: './assets/textures/BaconCooked2.png' })
-    return
-  }
-  if (item.cookState === 'cooked') {
-    applyCookLook(root, { cooked: 1, overcooked: 0, cookedRGB: rgb })
-    return
-  }
-  if (item.cookState === 'burned') {
-    const mapUrl = item.variantOf === 'items/Bacon'
-      ? './assets/textures/BaconCooked.png'
-      : null
-    applyCookLook(root, { cooked: 1, overcooked: 1, cookedRGB: rgb, mapUrl })
-  }
 }
 
 // Prefabs authored facing -Z (away from spawn). Turn them to face the aisle.
@@ -314,6 +228,7 @@ let delivery = null
 let swatches = null
 let pedestals = null
 let posters = null
+let foodKiosk = null
 let posKiosk = null
 let kitchen = null
 let front = null
@@ -761,7 +676,7 @@ async function boot() {
   setStatus('Reading manifest…')
   const manifest = await fetch('./assets/manifest.json').then(r => r.json())
   const featuredSlugs = FEATURED.map(f => f.slug)
-  const items = withCookVariants(manifest.filter(isExhibit).filter(i => i.slug !== 'items/Truck'))
+  const items = manifest.filter(isExhibit).filter(i => i.slug !== 'items/Truck' && !FOOD_HALL_SKIP.has(i.slug))
   // make sure featured slugs are present even if the filter missed them
   for (const s of featuredSlugs) {
     if (!items.some(i => i.slug === s)) {
@@ -856,7 +771,6 @@ async function boot() {
           }
         }
         if (loadSlug === 'items/Patty') restorePattyDisc(root)
-        if (item.cookState) applyCookState(root, item)
         if (inferPickup(item.slug, item.label)) {
           foodProtos[item.slug] = root.clone(true)
           if (loadSlug === 'items/Patty') restorePattyDisc(foodProtos[item.slug])
@@ -927,6 +841,24 @@ async function boot() {
     })
   } catch (err) {
     console.warn('[museum] posters skipped', err)
+  }
+
+  try {
+    setStatus('Loading food kiosk…')
+    const knife = exhibits.find(e => e.slug === 'items/Knife')
+    const yaw = knife ? knife.yaw : Math.PI / 4
+    const along = 3.3
+    const kx = knife ? knife.x + Math.cos(yaw) * along : -9.2
+    const kz = knife ? knife.z - Math.sin(yaw) * along : -6.5
+    foodKiosk = await createFoodKiosk({
+      scene, player, foodProtos, pedestals, loader,
+      nestLettuceHead: root => nestLettuceHead(root, loader),
+      x: kx, z: kz, yaw,
+    })
+    placeBannerAt('Food', kx, kz, yaw)
+    exhibits.push(foodKiosk.rec)
+  } catch (err) {
+    console.warn('[museum] food kiosk skipped', err)
   }
 
   const needFood = [
@@ -1212,6 +1144,15 @@ async function boot() {
             o.userData.demoPlayer = d
           })
         }
+        const field = demoPlayers.badgeField
+        if (field && field.mesh) {
+          field.mesh.userData.exhibit = badgeRec
+          for (const row of field.byInstance) {
+            if (!row) continue
+            row.exhibit = badgeRec
+            row.editRoot = row.demo && row.demo.badge
+          }
+        }
       }
     }
   } catch (err) {
@@ -1264,7 +1205,7 @@ async function boot() {
   window.__museum = {
     scene, camera: player.camera, renderer, player, exhibits, crowd, skybox,
     foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler, swatches,
-    posters, posKiosk, kitchen, front, world, fires, fpsOverlay,
+    posters, foodKiosk, posKiosk, kitchen, front, world, fires, fpsOverlay,
     teleport, enter, pause, flags,
     dbg: harness.dbg,
     pose: harness.pose,
@@ -1319,6 +1260,16 @@ function teleport(slug) {
     player.spawn(v.stand.x, 0, v.stand.z, 0)
     player.lookAt(v.look.x, v.look.y, v.look.z)
     return 'Posters'
+  }
+  if (foodKiosk) {
+    const q = String(slug)
+    const picked = foodKiosk.select(q)
+    if (picked || /^(Food|Ingredients|items\/FoodKiosk)$/i.test(q)) {
+      const v = foodKiosk.viewSpot()
+      player.spawn(v.stand.x, 0, v.stand.z, 0)
+      player.lookAt(v.look.x, v.look.y, v.look.z)
+      return foodKiosk.current().caption
+    }
   }
   if (posKiosk && /^(POS|Pos|Order computer|ui\/POS)$/i.test(slug)) {
     const v = posKiosk.viewSpot()
@@ -1395,18 +1346,26 @@ const harness = installHarness({
   getExhibits: () => exhibits,
   teleport,
   dumpExtras,
-  extraDbg: { scaler },
+  extraDbg: { scaler, requestDrawCensus, get lastDrawCensus() { return lastDrawCensus } },
   hudSelectors: ['#hud', '#fpsHud', '#look', '#cross', '#help', '#loader', '#dbgPanel', '#dbgToggle'],
 })
 
+function pageKiosks(dir) {
+  if (posters) posters.tryTurn(dir)
+  if (swatches && swatches.tryTurn) swatches.tryTurn(dir)
+  if (foodKiosk && foodKiosk.tryTurn) foodKiosk.tryTurn(dir)
+}
+
 function tick(dt) {
   player.update(dt)
+  const handsUp = player.leftHand || player.rightHand
+  if (scaler.tool === 'hand' && !handsUp) {
+    const dir = player.fire2Down ? -1 : player.fire1Down ? 1 : (player.wheelDir || 0)
+    if (dir) pageKiosks(dir)
+  }
   if (soundboard) {
     soundboard.update(dt)
     if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
-      const handsUp = player.leftHand || player.rightHand
-      if (!handsUp && posters) posters.tryTurn()
-      if (!handsUp && swatches && swatches.tryTurn) swatches.tryTurn()
       soundboard.tryPress()
       if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
       if (front && !front.overlayOpen) front.tryPress()
@@ -1414,9 +1373,6 @@ function tick(dt) {
       if (exhibitSwitches) exhibitSwitches.tryPress()
     }
   } else if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
-    const handsUp = player.leftHand || player.rightHand
-    if (!handsUp && posters) posters.tryTurn()
-    if (!handsUp && swatches && swatches.tryTurn) swatches.tryTurn()
     if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
     if (front && !front.overlayOpen) front.tryPress()
     if (kitchen) kitchen.tryPress()
@@ -1450,10 +1406,79 @@ function applySize() {
   return true
 }
 
+const _drawFrustum = new THREE.Frustum()
+const _drawProj = new THREE.Matrix4()
+let drawCensusWanted = false
+let drawCensusResolve = null
+let lastDrawCensus = null
+
+function meshDrawLabel(o) {
+  if (o.name) return o.name
+  let p = o.parent
+  while (p && p !== scene) {
+    if (p.name) return p.name + '/' + o.type
+    p = p.parent
+  }
+  return (o.geometry && o.geometry.type) || o.type || '(unnamed)'
+}
+
+function censusDrawn(root, camera, useFrustum) {
+  if (useFrustum && camera) {
+    _drawProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    _drawFrustum.setFromProjectionMatrix(_drawProj)
+  }
+  const byName = new Map()
+  function add(o) {
+    const name = meshDrawLabel(o)
+    let g = byName.get(name)
+    if (!g) {
+      g = { name, count: 0, instances: 0, type: o.type }
+      byName.set(name, g)
+    }
+    g.count++
+    g.instances += o.isInstancedMesh ? (o.count | 0) : 1
+  }
+  function walk(o, vis) {
+    const on = vis && o.visible !== false
+    if (!on) return
+    if (o.isMesh || o.isInstancedMesh || o.isSprite || o.isLine || o.isPoints) {
+      const drawn = !useFrustum || o.frustumCulled === false || _drawFrustum.intersectsObject(o)
+      if (drawn) add(o)
+    }
+    const kids = o.children
+    for (let i = 0; i < kids.length; i++) walk(kids[i], on)
+  }
+  walk(root, true)
+  const groups = [...byName.values()].sort((a, b) =>
+    b.count - a.count || b.instances - a.instances || a.name.localeCompare(b.name))
+  const info = renderer.info.render
+  return {
+    calls: info.calls,
+    triangles: info.triangles,
+    meshes: groups.reduce((n, g) => n + g.count, 0),
+    groups,
+  }
+}
+
+function requestDrawCensus() {
+  drawCensusWanted = true
+  return new Promise(resolve => { drawCensusResolve = resolve })
+}
+
 function render() {
   applyFlags(scene)
   if (harness.poser.active) harness.poser.render()
   else renderer.render(scene, player.camera)
+  if (!drawCensusWanted) return
+  drawCensusWanted = false
+  const posing = !!(harness.poser && harness.poser.active)
+  lastDrawCensus = censusDrawn(scene, player.camera, !posing)
+  console.table(lastDrawCensus.groups)
+  console.log('[dbg.draws]', lastDrawCensus.calls, 'calls ·', lastDrawCensus.meshes, 'meshes')
+  if (drawCensusResolve) {
+    drawCensusResolve(lastDrawCensus)
+    drawCensusResolve = null
+  }
 }
 
 harness.bind({ tick, render })
@@ -1467,6 +1492,8 @@ function currentLook() {
   if (posterLook) return posterLook
   const swatchLook = swatches?.lookLabel()
   if (swatchLook) return swatchLook
+  const foodLook = foodKiosk?.lookLabel()
+  if (foodLook) return foodLook
   const posLook = posKiosk?.lookLabel()
   if (posLook) return posLook
   const kitchenLook = kitchen?.lookLabel()
