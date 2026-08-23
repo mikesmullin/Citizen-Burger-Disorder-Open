@@ -42,5 +42,29 @@
    "opacity": 1.0,
    "tex": "textures/Cheese.png"
   }
- ]
+ ],
+ "nativeBounds": {
+  "min": [
+   -0.5,
+   -0.025,
+   -0.5
+  ],
+  "max": [
+   0.5,
+   0.025,
+   0.5
+  ],
+  "size": [
+   1.0,
+   0.05,
+   1.0
+  ],
+  "center": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "longest": 1.0,
+  "bottom": -0.025
+ }
 }

@@ -224,6 +224,21 @@ function sitOnFloor(root) {
   return { size, native: size }
 }
 
+function sitOnFloorNative(root, data) {
+  const nb = data && data.nativeBounds
+  if (!nb) return sitOnFloor(root)
+  const center = new THREE.Vector3(nb.center[0], nb.center[1], nb.center[2])
+  const s = root.scale.x || 1
+  // root is scaled uniformly; native center was computed before scaling
+  root.position.x -= center.x * s
+  root.position.z -= center.z * s
+  root.position.y -= nb.bottom * s
+  root.updateMatrixWorld(true)
+  const size = new THREE.Vector3(nb.size[0]*s, nb.size[1]*s, nb.size[2]*s)
+  // after sit, size is scaled
+  return { size, native: new THREE.Vector3(nb.size[0], nb.size[1], nb.size[2]) }
+}
+
 /** Scale `root` so its longest side equals `target`, then sit its bottom on y=0. */
 export function fitOnFloor(root, { maxSize = 2.2, minSize = 0.35 } = {}) {
   const box = boundsOf(root)
@@ -238,6 +253,18 @@ export function fitOnFloor(root, { maxSize = 2.2, minSize = 0.35 } = {}) {
   return { size: fitted.size, scale: s, native: size }
 }
 
+export function fitOnFloorNative(root, data, { maxSize = 2.2, minSize = 0.35 } = {}) {
+  const nb = data && data.nativeBounds
+  if (!nb) return fitOnFloor(root, { maxSize, minSize })
+  const longest = nb.longest
+  let s = 1
+  if (longest > maxSize) s = maxSize / longest
+  else if (longest < minSize && longest > 1e-4) s = minSize / longest
+  root.scale.multiplyScalar(s)
+  const fitted = sitOnFloorNative(root, data)
+  return { size: fitted.size, scale: s, native: new THREE.Vector3(nb.size[0], nb.size[1], nb.size[2]) }
+}
+
 /** Scale longest edge to exactly `target` meters and sit on y=0. */
 export function fitLongest(root, target) {
   const box = boundsOf(root)
@@ -248,6 +275,16 @@ export function fitLongest(root, target) {
   root.scale.multiplyScalar(s)
   const fitted = sitOnFloor(root)
   return { size: fitted.size, scale: s, native: size }
+}
+
+export function fitLongestNative(root, data, target) {
+  const nb = data && data.nativeBounds
+  if (!nb) return fitLongest(root, target)
+  const longest = nb.longest || 1e-4
+  const s = target / longest
+  root.scale.multiplyScalar(s)
+  const fitted = sitOnFloorNative(root, data)
+  return { size: fitted.size, scale: s, native: new THREE.Vector3(nb.size[0], nb.size[1], nb.size[2]) }
 }
 
 /**

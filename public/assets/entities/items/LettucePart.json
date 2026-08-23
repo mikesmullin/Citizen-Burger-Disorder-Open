@@ -43,5 +43,29 @@
    "opacity": 1.0,
    "tex": "textures/LettuceHead.png"
   }
- ]
+ ],
+ "nativeBounds": {
+  "min": [
+   -0.980785,
+   -1.0,
+   -1.0
+  ],
+  "max": [
+   0.0,
+   1.0,
+   1.0
+  ],
+  "size": [
+   0.980785,
+   2.0,
+   2.0
+  ],
+  "center": [
+   -0.490393,
+   0.0,
+   0.0
+  ],
+  "longest": 2.0,
+  "bottom": -1.0
+ }
 }

@@ -3,7 +3,7 @@
 // standing in the space. Grab, cooking, and netcode come in later scenes.
 
 import * as THREE from 'three'
-import { createUnityLoader, fitOnFloor, fitLongest, restorePattyDisc, hideTriggers, boundsOf } from '../common/unityScene.js'
+import { createUnityLoader, fitOnFloor, fitLongest, fitOnFloorNative, fitLongestNative, restorePattyDisc, hideTriggers, boundsOf } from '../common/unityScene.js'
 import { createFirstPersonPlayer } from '../systems/player.js'
 import { createCrowd } from '../systems/npc.js'
 import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG, applyCookLook, COOK_RGB } from '../systems/food.js'
@@ -212,6 +212,7 @@ const EXHIBIT_LONGEST = {
   'items/BunTopBurned': FOOD_SIZE.topBun,
   'items/BunBottomCooked': FOOD_SIZE.bun,
   'items/BunBottomBurned': FOOD_SIZE.bun,
+  'heroes/Arm': 0.674,
   'ui/SpeechBubble': 1.238,
   'ui/NpcSpeechBubble': 1.048,
   'ui/StaffMenu': 0.937,
@@ -242,6 +243,7 @@ scene.fog = new THREE.Fog(0x2a261f, 60, 150)
 const loader = createUnityLoader({ base: './assets' })
 const player = createFirstPersonPlayer()
 scene.add(player.object)
+player.spawn(0, 0, 11, 0)
 
 const exhibits = []
 const foodProtos = {}
@@ -587,16 +589,17 @@ function clusterSlots(n, cx, cz, yaw, { cols, spacing = 3.5, rowZ = 3.6 } = {}) 
   return slots
 }
 
-function placeOnPedestal(asset, x, z, meta, yaw = 0) {
+function placeOnPedestal(asset, x, z, meta, yaw = 0, data = null) {
   hideTriggers(asset)
   // Rotate before centering — FACE_AISLE around a non-centered pivot
   // walked the Cupboard off the back of its podium.
   if (FACE_AISLE.has(meta.slug)) asset.rotation.y += Math.PI
   if (meta.slug === 'items/Patty' || meta.variantOf === 'items/Patty') restorePattyDisc(asset)
   const target = EXHIBIT_LONGEST[meta.slug] ?? EXHIBIT_LONGEST[meta.variantOf]
+  const useNative = !!(data && data.nativeBounds)
   const { size, scale, native } = target != null
-    ? fitLongest(asset, target)
-    : fitOnFloor(asset, { maxSize: 2.35, minSize: 0.4 })
+    ? (useNative ? fitLongestNative(asset, data, target) : fitLongest(asset, target))
+    : (useNative ? fitOnFloorNative(asset, data, { maxSize: 2.35, minSize: 0.4 }) : fitOnFloor(asset, { maxSize: 2.35, minSize: 0.4 }))
   if (meta.slug === 'items/Cupboard') {
     // Sit the aisle-facing face at the front of the plinth, not AABB-centered
     // (the cabinet body is deeper than the podium).
@@ -633,7 +636,7 @@ function placeOnPedestal(asset, x, z, meta, yaw = 0) {
 
   const rec = {
     ...meta, object: wrap, display: asset, x, z, yaw, size, scale, caption,
-    editMul: 1,
+    editMul: meta.slug === 'heroes/Arm' ? ARM_SCALE : 1,
     native: native ? { x: native.x, y: native.y, z: native.z } : null,
   }
   const pickup = inferPickup(meta.slug, meta.label)
@@ -801,7 +804,7 @@ async function boot() {
       setStatus(`Loading ${++loaded} / ${total}  —  ${item.label}`)
       try {
         const loadSlug = item.variantOf || item.slug
-        const { root } = await loader.load(loadSlug)
+        const { root, data: loaderData } = await loader.load(loadSlug)
         const box = boundsOf(root)
         if (box.isEmpty()) continue
         let display = root
@@ -843,7 +846,7 @@ async function boot() {
           foodProtos[item.slug] = root.clone(true)
           if (loadSlug === 'items/Patty') restorePattyDisc(foodProtos[item.slug])
         }
-        const rec = placeOnPedestal(display, slot.x, slot.z, item, slot.yaw)
+        const rec = placeOnPedestal(display, slot.x, slot.z, item, slot.yaw, loaderData)
         if (loadSlug === 'items/Fire') setupFireSprite(display)
         if (FACE_PLAYER.has(loadSlug)) facePlayer.push(display)
       } catch (err) {
@@ -1208,7 +1211,7 @@ async function boot() {
   }
 
   const armRec = exhibits.find(e => e.slug === 'heroes/Arm')
-  if (armRec) scaler.setMul(armRec, ARM_SCALE, { silent: true })
+  if (armRec) armRec.editMul = ARM_SCALE
 
   try {
     const rat = await loader.load('mobs/Rat')

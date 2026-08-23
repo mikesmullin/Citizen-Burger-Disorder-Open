@@ -60,8 +60,17 @@ for obj in objs:
     for arr in (P, N, T):
         buf += struct.pack(f'<{len(arr)}f', *arr)
     open(os.path.join(outdir, base + '.bin'), 'wb').write(buf)
+    xs = P[0::3]; ys = P[1::3]; zs = P[2::3]
+    minx, maxx = min(xs), max(xs)
+    miny, maxy = min(ys), max(ys)
+    minz, maxz = min(zs), max(zs)
+    sx, sy, sz = maxx-minx, maxy-miny, maxz-minz
     entries.append({'fileId': file_id, 'name': obj.name, 'bin': f'models/{base}.bin',
                     'verts': len(P) // 3, 'tris': len(P) // 9,
-                    'hasNormals': True, 'hasUvs': uv_layer is not None})
+                    'hasNormals': True, 'hasUvs': uv_layer is not None,
+                    'bounds': {'min': [minx, miny, minz], 'max': [maxx, maxy, maxz]},
+                    'size': [sx, sy, sz],
+                    'longest': max(sx, sy, sz),
+                    'center': [(minx+maxx)/2, (miny+maxy)/2, (minz+maxz)/2]})
 
 print('ENTRIES:' + json.dumps(entries))

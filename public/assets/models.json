@@ -7,7 +7,30 @@
   "tris": 366,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Rat/rat.fbx"
+  "source": "Assets/Models/Rat/rat.fbx",
+  "bounds": {
+   "min": [
+    -1.312584,
+    -1.530074,
+    -3.225718
+   ],
+   "max": [
+    -0.072629,
+    1.406637,
+    5.631253
+   ]
+  },
+  "size": [
+   1.239955,
+   2.936711,
+   8.856971
+  ],
+  "longest": 8.856971,
+  "center": [
+   -0.692607,
+   -0.061719,
+   1.202767
+  ]
  },
  "0f221aa95d701d343b450718af1c91fd:4300000": {
   "fileId": 4300000,
@@ -17,7 +40,30 @@
   "tris": 250,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Food/LettuceHead/lettuce-head.blend"
+  "source": "Assets/Models/Food/LettuceHead/lettuce-head.blend",
+  "bounds": {
+   "min": [
+    -0.980785,
+    -1.0,
+    -1.0
+   ],
+   "max": [
+    0.0,
+    1.0,
+    1.0
+   ]
+  },
+  "size": [
+   0.980786,
+   2.000001,
+   2.0
+  ],
+  "longest": 2.000001,
+  "center": [
+   -0.490392,
+   -0.0,
+   0.0
+  ]
  },
  "2d6096594e0a02a4d8dd493867096e80:4300000": {
   "fileId": 4300000,
@@ -27,7 +73,30 @@
   "tris": 24,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Food/box2.blend"
+  "source": "Assets/Models/Food/box2.blend",
+  "bounds": {
+   "min": [
+    -1.0,
+    -1.000001,
+    -1.0
+   ],
+   "max": [
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "size": [
+   2.0,
+   2.000001,
+   2.0
+  ],
+  "longest": 2.000001,
+  "center": [
+   0.0,
+   -0.0,
+   0.0
+  ]
  },
  "301672509e4206c44ba1644bbc9f1af8:4300000": {
   "fileId": 4300000,
@@ -37,7 +106,30 @@
   "tris": 220,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Food/LettuceHead/lettuce-head-full.blend"
+  "source": "Assets/Models/Food/LettuceHead/lettuce-head-full.blend",
+  "bounds": {
+   "min": [
+    -0.980785,
+    -1.0,
+    -1.0
+   ],
+   "max": [
+    0.0,
+    1.0,
+    1.0
+   ]
+  },
+  "size": [
+   0.980786,
+   2.000001,
+   2.0
+  ],
+  "longest": 2.000001,
+  "center": [
+   -0.490392,
+   -0.0,
+   0.0
+  ]
  },
  "575617890e051c24295d96e45a5a1476:4300000": {
   "fileId": 4300000,
@@ -47,7 +139,30 @@
   "tris": 2115,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Food/tomato.fbx"
+  "source": "Assets/Models/Food/tomato.fbx",
+  "bounds": {
+   "min": [
+    -0.997007,
+    -0.08477,
+    -12.003537
+   ],
+   "max": [
+    1.002993,
+    0.08477,
+    12.008747
+   ]
+  },
+  "size": [
+   2.0,
+   0.16954,
+   24.012284
+  ],
+  "longest": 24.012284,
+  "center": [
+   0.002993,
+   0.0,
+   0.002605
+  ]
  },
  "7f6347bd1e5703c4fa90332e3065d523:4300000": {
   "fileId": 4300000,
@@ -57,7 +172,30 @@
   "tris": 218,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/FireExtinguisher/fire-extinguisher.blend"
+  "source": "Assets/Models/FireExtinguisher/fire-extinguisher.blend",
+  "bounds": {
+   "min": [
+    -1.083787,
+    -4.208444,
+    -1.469298
+   ],
+   "max": [
+    1.184833,
+    5.115926,
+    1.617222
+   ]
+  },
+  "size": [
+   2.26862,
+   9.324369,
+   3.086521
+  ],
+  "longest": 9.324369,
+  "center": [
+   0.050523,
+   0.453741,
+   0.073962
+  ]
  },
  "87e0fa6a7c76c5d41a0e4461f50ced7b:4300000": {
   "fileId": 4300000,
@@ -67,7 +205,30 @@
   "tris": 808,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Food/lettuce.fbx"
+  "source": "Assets/Models/Food/lettuce.fbx",
+  "bounds": {
+   "min": [
+    -1.363618,
+    -0.104852,
+    -1.256711
+   ],
+   "max": [
+    1.253903,
+    0.06783,
+    1.289749
+   ]
+  },
+  "size": [
+   2.617521,
+   0.172682,
+   2.54646
+  ],
+  "longest": 2.617521,
+  "center": [
+   -0.054857,
+   -0.018511,
+   0.016519
+  ]
  },
  "ac391c3a2ab4b2b4792a6d89af45acb5:4300000": {
   "fileId": 4300000,
@@ -77,7 +238,30 @@
   "tris": 380,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/FBX Models/bun-bottom.fbx"
+  "source": "Assets/Models/FBX Models/bun-bottom.fbx",
+  "bounds": {
+   "min": [
+    -1.0,
+    -0.143123,
+    -1.0
+   ],
+   "max": [
+    1.0,
+    0.211346,
+    1.0
+   ]
+  },
+  "size": [
+   2.0,
+   0.354469,
+   2.0
+  ],
+  "longest": 2.0,
+  "center": [
+   0.0,
+   0.034111,
+   0.0
+  ]
  },
  "acefb94b60d91c544a273f608307a2b4:4300000": {
   "fileId": 4300000,
@@ -87,7 +271,30 @@
   "tris": 36,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Menus/StaffMenu.fbx"
+  "source": "Assets/Models/Menus/StaffMenu.fbx",
+  "bounds": {
+   "min": [
+    -1.5,
+    -1.000001,
+    -0.1
+   ],
+   "max": [
+    1.500001,
+    1.0,
+    0.1
+   ]
+  },
+  "size": [
+   3.000001,
+   2.000001,
+   0.2
+  ],
+  "longest": 3.000001,
+  "center": [
+   0.0,
+   -0.0,
+   0.0
+  ]
  },
  "af5496e49acc4a543bb6f52b44f85521:4300000": {
   "fileId": 4300000,
@@ -97,7 +304,30 @@
   "tris": 1292,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Plate/plate3.fbx"
+  "source": "Assets/Models/Plate/plate3.fbx",
+  "bounds": {
+   "min": [
+    -1.0,
+    -0.117826,
+    -0.993916
+   ],
+   "max": [
+    1.0,
+    0.106084,
+    1.006085
+   ]
+  },
+  "size": [
+   2.0,
+   0.22391,
+   2.000001
+  ],
+  "longest": 2.000001,
+  "center": [
+   0.0,
+   -0.005871,
+   0.006085
+  ]
  },
  "b17914db665ce08418dca00014c57681:4300000": {
   "fileId": 4300000,
@@ -107,7 +337,30 @@
   "tris": 348,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Food/bacon.fbx"
+  "source": "Assets/Models/Food/bacon.fbx",
+  "bounds": {
+   "min": [
+    -0.247556,
+    -0.046467,
+    -1.031766
+   ],
+   "max": [
+    0.211522,
+    0.03909,
+    1.016887
+   ]
+  },
+  "size": [
+   0.459078,
+   0.085557,
+   2.048653
+  ],
+  "longest": 2.048653,
+  "center": [
+   -0.018017,
+   -0.003688,
+   -0.00744
+  ]
  },
  "b2ba08e7dae3cc642852a305a3209c83:4300000": {
   "fileId": 4300000,
@@ -117,7 +370,30 @@
   "tris": 60,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Speech/speechBubble.fbx"
+  "source": "Assets/Models/Speech/speechBubble.fbx",
+  "bounds": {
+   "min": [
+    -1.5,
+    -1.5,
+    -0.01
+   ],
+   "max": [
+    1.1,
+    1.1,
+    0.01
+   ]
+  },
+  "size": [
+   2.6,
+   2.6,
+   0.02
+  ],
+  "longest": 2.6,
+  "center": [
+   -0.2,
+   -0.2,
+   0.0
+  ]
  },
  "b61233be8ca644d4699f353ec999f4bb:4300002": {
   "fileId": 4300002,
@@ -127,7 +403,30 @@
   "tris": 1920,
   "hasNormals": true,
   "hasUvs": false,
-  "source": "Assets/Models/Food/patty001.blend"
+  "source": "Assets/Models/Food/patty001.blend",
+  "bounds": {
+   "min": [
+    -0.5,
+    -0.10828,
+    -0.501714
+   ],
+   "max": [
+    0.504728,
+    0.110007,
+    0.50141
+   ]
+  },
+  "size": [
+   1.004728,
+   0.218288,
+   1.003124
+  ],
+  "longest": 1.004728,
+  "center": [
+   0.002364,
+   0.000863,
+   -0.000152
+  ]
  },
  "d957210ab5910f04aa1e9df4077a27fa:4300000": {
   "fileId": 4300000,
@@ -137,7 +436,30 @@
   "tris": 766,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/FBX Models/bun-top2.fbx"
+  "source": "Assets/Models/FBX Models/bun-top2.fbx",
+  "bounds": {
+   "min": [
+    -1.0,
+    -0.186391,
+    -1.286397
+   ],
+   "max": [
+    1.000001,
+    0.777365,
+    1.286397
+   ]
+  },
+  "size": [
+   2.000001,
+   0.963756,
+   2.572794
+  ],
+  "longest": 2.572794,
+  "center": [
+   0.0,
+   0.295487,
+   0.0
+  ]
  },
  "f939bda6a5fc24745ac9856f11c42111:4300000": {
   "fileId": 4300000,
@@ -147,7 +469,30 @@
   "tris": 454,
   "hasNormals": true,
   "hasUvs": true,
-  "source": "Assets/Models/Food/truck.blend"
+  "source": "Assets/Models/Food/truck.blend",
+  "bounds": {
+   "min": [
+    -1.064803,
+    -4.586735,
+    -3.488044
+   ],
+   "max": [
+    1.0,
+    0.904306,
+    -0.975906
+   ]
+  },
+  "size": [
+   2.064803,
+   5.491041,
+   2.512138
+  ],
+  "longest": 5.491041,
+  "center": [
+   -0.032401,
+   -1.841215,
+   -2.231975
+  ]
  },
  "f939bda6a5fc24745ac9856f11c42111:4300002": {
   "fileId": 4300002,
@@ -157,7 +502,30 @@
   "tris": 124,
   "hasNormals": true,
   "hasUvs": false,
-  "source": "Assets/Models/Food/truck.blend"
+  "source": "Assets/Models/Food/truck.blend",
+  "bounds": {
+   "min": [
+    -0.990258,
+    -3.821703,
+    -1.418206
+   ],
+   "max": [
+    -0.753069,
+    -2.968511,
+    -0.590938
+   ]
+  },
+  "size": [
+   0.237189,
+   0.853192,
+   0.827268
+  ],
+  "longest": 0.853192,
+  "center": [
+   -0.871663,
+   -3.395107,
+   -1.004572
+  ]
  },
  "f939bda6a5fc24745ac9856f11c42111:4300004": {
   "fileId": 4300004,
@@ -167,7 +535,30 @@
   "tris": 124,
   "hasNormals": true,
   "hasUvs": false,
-  "source": "Assets/Models/Food/truck.blend"
+  "source": "Assets/Models/Food/truck.blend",
+  "bounds": {
+   "min": [
+    0.687739,
+    -3.821703,
+    -1.418206
+   ],
+   "max": [
+    0.924928,
+    -2.968511,
+    -0.590938
+   ]
+  },
+  "size": [
+   0.237189,
+   0.853192,
+   0.827268
+  ],
+  "longest": 0.853192,
+  "center": [
+   0.806333,
+   -3.395107,
+   -1.004572
+  ]
  },
  "f939bda6a5fc24745ac9856f11c42111:4300006": {
   "fileId": 4300006,
@@ -177,7 +568,30 @@
   "tris": 124,
   "hasNormals": true,
   "hasUvs": false,
-  "source": "Assets/Models/Food/truck.blend"
+  "source": "Assets/Models/Food/truck.blend",
+  "bounds": {
+   "min": [
+    0.687739,
+    -0.92696,
+    -1.418206
+   ],
+   "max": [
+    0.924928,
+    -0.073768,
+    -0.590938
+   ]
+  },
+  "size": [
+   0.237189,
+   0.853193,
+   0.827268
+  ],
+  "longest": 0.853193,
+  "center": [
+   0.806333,
+   -0.500364,
+   -1.004572
+  ]
  },
  "f939bda6a5fc24745ac9856f11c42111:4300008": {
   "fileId": 4300008,
@@ -187,7 +601,30 @@
   "tris": 124,
   "hasNormals": true,
   "hasUvs": false,
-  "source": "Assets/Models/Food/truck.blend"
+  "source": "Assets/Models/Food/truck.blend",
+  "bounds": {
+   "min": [
+    -0.990258,
+    -0.92696,
+    -1.418206
+   ],
+   "max": [
+    -0.753069,
+    -0.073768,
+    -0.590938
+   ]
+  },
+  "size": [
+   0.237189,
+   0.853193,
+   0.827268
+  ],
+  "longest": 0.853193,
+  "center": [
+   -0.871663,
+   -0.500364,
+   -1.004572
+  ]
  },
  "f939bda6a5fc24745ac9856f11c42111:4300010": {
   "fileId": 4300010,
@@ -197,6 +634,29 @@
   "tris": 124,
   "hasNormals": true,
   "hasUvs": false,
-  "source": "Assets/Models/Food/truck.blend"
+  "source": "Assets/Models/Food/truck.blend",
+  "bounds": {
+   "min": [
+    0.425303,
+    -0.92696,
+    -1.418206
+   ],
+   "max": [
+    0.662492,
+    -0.073768,
+    -0.590938
+   ]
+  },
+  "size": [
+   0.237189,
+   0.853193,
+   0.827268
+  ],
+  "longest": 0.853193,
+  "center": [
+   0.543898,
+   -0.500364,
+   -1.004572
+  ]
  }
 }
