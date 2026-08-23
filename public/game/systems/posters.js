@@ -118,23 +118,34 @@ export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
   const _e = new THREE.Euler()
 
   function layout() {
-    const fan = Math.min(5, n)
+    // Carousel: current poster front and center facing the aisle; the rest in
+    // equidistant slots around the spine, one per 2π/n.
+    const step = (Math.PI * 2) / n
+    const ringScale = 0.78
+    const ringOff = (PW / 2) * ringScale // left edge on the spine circle
+    // Farthest any ring poster's outer corner reaches toward the aisle is the
+    // hypotenuse of the spine radius and the ring width (at ~49° around).
+    // Park the display past that, plus a visible gap, so nothing clips.
+    const ringReach = Math.sqrt(RADIUS * RADIUS + (PW * ringScale) ** 2)
+    const displayZ = ringReach + 0.12
     for (let i = 0; i < n; i++) {
       const k = (i - index + n) % n
       const sheet = sheets[i]
       sheet.visible = true
-      if (k < fan) {
-        // Accordion / rolodex at the aisle face — one full poster, the rest stacked.
-        const a = 0.15 * k
-        sheet.position.set(Math.sin(a) * 0.2, 1.15, RADIUS + 0.22 - k * 0.034)
-        sheet.rotation.set(0, a * 0.42, 0)
-        sheet.scale.setScalar(1 - k * 0.035)
+      if (k === 0) {
+        sheet.position.set(0, 1.15, displayZ)
+        sheet.rotation.set(0, 0, 0)
+        sheet.scale.setScalar(1)
       } else {
-        // Remainder around the pole so walking the kiosk still shows posters.
-        const around = k - fan
-        const remain = Math.max(1, n - fan)
-        const a = 0.7 + (around / remain) * (Math.PI * 2 - 1.25)
-        sheet.position.set(Math.sin(a) * RADIUS, 1.15, Math.cos(a) * RADIUS)
+        const a = k * step
+        // The sheet's origin is its center; shift out from the spine by half
+        // its width along local +X so the left long edge sits on the circle.
+        const off = (PW / 2) * 0.78
+        sheet.position.set(
+          Math.sin(a) * RADIUS + Math.cos(a) * off,
+          1.15,
+          Math.cos(a) * RADIUS - Math.sin(a) * off,
+        )
         sheet.rotation.set(0, a, 0)
         sheet.scale.setScalar(0.78)
       }
