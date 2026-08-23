@@ -69,6 +69,39 @@ export function createFireWatch({
   let playerFire = null
   let nextId = 1
 
+  let listener = player?.camera?.children?.find(c => c.type === 'AudioListener') || null
+  if (!listener && player?.camera) {
+    listener = new THREE.AudioListener()
+    player.camera.add(listener)
+  }
+  let pattyBuf = null
+  new THREE.AudioLoader().load('./assets/audio/sfx/Patty.mp3', buf => {
+    pattyBuf = buf
+    for (const f of fires) startSizzle(f)
+  }, undefined, err => console.warn('[fire] patty sfx', err))
+
+  function startSizzle(f) {
+    if (!f || f.out || f.sizzle || !pattyBuf || !f.root || !listener) return
+    const a = new THREE.PositionalAudio(listener)
+    a.setBuffer(pattyBuf)
+    a.setLoop(true)
+    a.setRefDistance(f.large ? 3.6 : 2.4)
+    a.setMaxDistance(f.large ? 24 : 16)
+    a.setRolloffFactor(1)
+    a.setVolume(f.large ? 1.0 : 0.85)
+    if (pattyBuf.duration) a.offset = Math.random() * pattyBuf.duration
+    f.root.add(a)
+    f.sizzle = a
+    try { a.play() } catch (_) { /* autoplay */ }
+  }
+
+  function stopSizzle(f) {
+    if (!f?.sizzle) return
+    try { if (f.sizzle.isPlaying) f.sizzle.stop() } catch (_) { /* ignore */ }
+    if (f.sizzle.parent) f.sizzle.parent.remove(f.sizzle)
+    f.sizzle = null
+  }
+
   function setProto(p) {
     proto = p || proto
     if (proto) styleFire(proto)
@@ -110,6 +143,7 @@ export function createFireWatch({
     f.putOut = () => extinguish(f)
     if (!copy && root.parent !== scene) scene.add(root)
     fires.push(f)
+    startSizzle(f)
     return f
   }
 
@@ -187,6 +221,7 @@ export function createFireWatch({
   function extinguish(f) {
     if (!f || f.out) return
     f.out = true
+    stopSizzle(f)
     const item = f.item
     if (item) {
       item.onFire = false
@@ -409,6 +444,9 @@ export function createFireWatch({
         f.root.position.set(pp.x, pp.y + 1.15, pp.z)
       }
       if (f.root && f.root.visible !== false) faceYaw(f.root, _cam)
+      if (f.sizzle && pattyBuf && !f.sizzle.isPlaying) {
+        try { f.sizzle.play() } catch (_) { /* autoplay */ }
+      }
       spreadFrom(f, dt)
       if (!f.onPlayer && !hasFuel(f) && !(f.copy && f.item && f.item.held)) {
         f.orphanTime = (f.orphanTime || 0) + dt

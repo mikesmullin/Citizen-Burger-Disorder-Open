@@ -719,7 +719,7 @@ async function boot() {
     ingredients: { x: 12, z: 8, yaw: -Math.PI / 4, cols: 6, spacing: 3.8, rowZ: 3.8 },
     chaos: { x: -17, z: -26, yaw: Math.PI / 4, cols: 2, spacing: 3.8 },
     service: { x: 4, z: -29, yaw: 0, cols: 3, spacing: 4.0, rowZ: 4.2 },
-    storage: { x: -12, z: -34, yaw: Math.PI / 5, cols: 2, spacing: 4.0 },
+    storage: { x: -12, z: -34, yaw: Math.PI / 5, cols: 2, spacing: 5.4 },
     back: { x: 16, z: -31, yaw: 0, cols: 2, spacing: 4.5, rowZ: 4.6 },
   }
   const BOOTHS = {
@@ -1228,7 +1228,7 @@ async function boot() {
   console.log('[museum] ready', exhibits.length, 'exhibits — dbg.help() / pose.help()')
 }
 
-let frames = 0, lastFps = performance.now()
+let frames = 0
 let lastRaf = 0
 let playing = false
 let lookName = ''
@@ -1478,9 +1478,6 @@ renderer.setAnimationLoop(() => {
 
   render()
   if (++frames >= 20) {
-    const now = performance.now()
-    $('s-fps').textContent = String(Math.round(frames * 1000 / (now - lastFps)))
-    lastFps = now
     frames = 0
     harness.refreshPanel()
   }

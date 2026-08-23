@@ -622,12 +622,8 @@ export async function createKitchen({
       const hot = onCooktop(item)
         || (item.stack || []).some(f => onCooktop(f))
         || (item.plated && onCooktop(item.plated))
-      if (hot) {
-        cookTree(item, dt)
-        setGrillSound(item, true)
-      } else {
-        setGrillSound(item, false)
-      }
+      if (hot) cookTree(item, dt)
+      setGrillSound(item, hot && !item.onFire)
     }
     for (const item of foodWorld.items) consider(item)
     for (const rat of den ? den.rats : []) consider(rat)
