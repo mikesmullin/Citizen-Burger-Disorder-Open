@@ -47,6 +47,7 @@ export function inferPickup(slug = '', label = '') {
 
 export function ratWillSteal(type) {
   return type === 'cheese' || type === 'patty' || type === 'bacon' || type === 'tomato'
+    || type === 'tip'
 }
 
 // Longest-edge in meters — same numbers as the museum pedestals (scale-gun pass).

@@ -63,7 +63,7 @@ above it) into the agent chat and ask it to bake the values into the
 prefab / `seatNameTag` / `EXHIBIT_LONGEST`.
 
 Food exhibits clone into the hand; the pedestal stays. Dropped cheese /
-patty / bacon / tomato can be stolen by rats. NPCs wander and look at you
+patty / bacon / tomato / tip can be stolen by rats. NPCs wander and look at you
 when you get close. The delivery truck is a walk-in bay (not a pedestal):
 climb the ramp, grab a closed box, set it down to unpack.
 

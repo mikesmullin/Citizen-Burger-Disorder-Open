@@ -291,7 +291,7 @@ dbg.step(1)                  // fire1Up while holding → drop
 
 Do **not** try to hold Q across agent turns with a real KeyboardEvent;
 inject with `dbg.key`. Pedestal exhibits clone; floor food is stolen by
-rats if it is cheese / patty / bacon / tomato.
+rats if it is cheese / patty / bacon / tomato / tip.
 
 ### 4. Rats steal floor food
 
