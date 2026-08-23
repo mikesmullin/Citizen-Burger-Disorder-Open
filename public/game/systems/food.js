@@ -100,12 +100,16 @@ export function applyCookLook(root, {
   const burn = new THREE.Color(0.005, 0, 0)
   root.traverse(o => {
     if (!o.isMesh || !o.material || o.userData.trigger) return
-    o.material = o.material.clone()
+    if (!o.userData.cookOrig) {
+      o.material = o.material.clone()
+      o.userData.cookOrig = o.material.color.clone()
+    }
     if (map) {
       o.material.map = map
       o.material.color.setRGB(1, 1, 1)
-    } else if (cooked > 0) {
-      o.material.color.lerp(tgt, cooked)
+    } else {
+      o.material.color.copy(o.userData.cookOrig)
+      if (cooked > 0) o.material.color.lerp(tgt, cooked)
     }
     if (overcooked > 0) {
       o.material.color.lerp(burn, Math.min(1, overcooked * 0.82))
@@ -216,14 +220,18 @@ export function createFoodWorld({ scene, player }) {
         if (item.vel.lengthSq() < 0.04) item.vel.set(0, 0, 0)
         const wasAir = !item.onFloor
         item.onFloor = true
-        item.foodBeenOnFloor = true
+        // Only the museum floor counts as "the floor" for rats. Food on a
+        // counter, grill, or trailer bed is resting, not dropped.
+        if (gy <= 0.08) item.foodBeenOnFloor = true
         if (wasAir && item.dropped && item.onLand) landed.push(item)
       } else {
         item.onFloor = false
       }
       // Parked cargo on the trailer bed must not get shoved out by wall AABBs
-      // (that dropped a box under the chassis).
-      if (!(item.kind === 'box' && item.onFloor && !item.dropped)) {
+      // (that dropped a box under the chassis). Same for food sitting on a
+      // raised kitchen surface — the station collider would shove it off.
+      const onRaised = gy > 0.12
+      if (!(item.kind === 'box' && item.onFloor && !item.dropped) && !onRaised) {
         const hit = player.resolveXZ(item.object.position.x, item.object.position.z, item.radius, null)
         item.object.position.x = hit.x
         item.object.position.z = hit.z

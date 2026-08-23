@@ -90,12 +90,12 @@ export const SWATCHES = [
   entry('Skins', 'Kritz', './assets/textures/skins/Kritz.png'),
   entry('Skins', 'Jorji', './assets/textures/skins/Jorji.png'),
   entry('Skins', 'CookServe', './assets/textures/skins/CookServe.png'),
-  entry('Badges', 'Boss', './assets/textures/badges/Boss.png'),
-  entry('Badges', 'Citizen', './assets/textures/badges/Citizen.png'),
-  entry('Badges', 'Family', './assets/textures/badges/Family.png'),
-  entry('Badges', 'Mayor', './assets/textures/badges/Mayor.png'),
-  entry('Badges', 'President', './assets/textures/badges/President.png'),
-  entry('Badges', 'Worker', './assets/textures/badges/Worker.png'),
+  entry('Menu', 'Boss', './assets/textures/badges/Boss.png'),
+  entry('Menu', 'Citizen', './assets/textures/badges/Citizen.png'),
+  entry('Menu', 'Family', './assets/textures/badges/Family.png'),
+  entry('Menu', 'Mayor', './assets/textures/badges/Mayor.png'),
+  entry('Menu', 'President', './assets/textures/badges/President.png'),
+  entry('Menu', 'Worker', './assets/textures/badges/Worker.png'),
   ...POSTERS.map(p => entry('Posters', p.id, p.file)),
 ]
 

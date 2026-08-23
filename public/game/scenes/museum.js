@@ -16,6 +16,7 @@ import { createScaler } from '../systems/scaler.js'
 import { createSwatches, BOOTH_D as TEXTURE_BOOTH_D, BOOTH_W as TEXTURE_BOOTH_W } from '../systems/swatches.js'
 import { createPosters } from '../systems/posters.js'
 import { createPosKiosk } from '../systems/posKiosk.js'
+import { createKitchen } from '../systems/kitchen.js'
 import { installHarness } from '../common/harness.js'
 
 const FEATURED = [
@@ -45,7 +46,17 @@ const EXHIBIT_CAPTION = {
   'items/Whiteboard': 'Wainscoting',
 }
 
-const GROUP_ORDER = ['heroes', 'mobs', 'items', 'ui']
+// Show-floor clusters — grouped by how systems work together, not by asset folder.
+const CLUSTER_ORDER = ['people', 'line', 'ingredients', 'chaos', 'service', 'storage', 'back']
+const CLUSTER_BANNER = {
+  people: 'People',
+  line: 'On the line',
+  ingredients: 'Ingredients',
+  chaos: 'Chaos',
+  service: 'Service',
+  storage: 'Storage',
+  back: 'Back of house',
+}
 
 // Extra podiums seated next to the raw / clean item (Food.cs cook + dirty plate).
 const COOK_FOLLOW = {
@@ -236,6 +247,7 @@ let delivery = null
 let swatches = null
 let posters = null
 let posKiosk = null
+let kitchen = null
 const fireSprites = []
 const facePlayer = []
 const scaler = createScaler({
@@ -330,11 +342,11 @@ function makeTitleWall() {
     g.fillText('SCENE 01', w / 2, 220)
     g.fillStyle = '#1c1610'
     g.font = '700 120px ui-sans-serif, system-ui, sans-serif'
-    g.fillText('PLAYER & NPCS', w / 2, 380)
+    g.fillText('THE SHOW FLOOR', w / 2, 380)
     g.fillStyle = '#6b5a45'
     g.font = '36px ui-sans-serif, system-ui, sans-serif'
-    g.fillText('Walk the hall. Every converted prefab is on a pedestal.', w / 2, 500)
-    g.fillText('WASD  ·  Shift run  ·  Ctrl walk  ·  mouse look', w / 2, 570)
+    g.fillText('Kitchen, prep, and every converted prefab — grouped by how they work.', w / 2, 500)
+    g.fillText('WASD  ·  Shift run  ·  Ctrl walk  ·  mouse look  ·  Q/E hands', w / 2, 570)
   })
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(14, 5.25),
@@ -406,21 +418,24 @@ function buildRoom(minx, maxx, minz, maxz, height) {
   player.setRoomBounds(minx, maxx, minz, maxz, 0)
 }
 
-function addLights() {
+function addLights(minx, maxx, minz, maxz) {
   scene.add(new THREE.HemisphereLight(0xfff3e0, 0x3a3228, 1.05))
   const key = new THREE.DirectionalLight(0xfff4e6, 1.9)
   key.position.set(10, 24, 18)
   key.castShadow = true
   key.shadow.mapSize.set(2048, 2048)
-  Object.assign(key.shadow.camera, { left: -50, right: 50, top: 50, bottom: -50, near: 1, far: 90 })
+  Object.assign(key.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 120 })
   scene.add(key)
   const fill = new THREE.DirectionalLight(0xb9d4ff, 0.45)
   fill.position.set(-12, 10, -8)
   scene.add(fill)
-  for (let z = 8; z >= -48; z -= 16) {
-    const p = new THREE.PointLight(0xffe6c4, 18, 22, 2)
-    p.position.set(0, 6.5, z)
-    scene.add(p)
+  const xs = [minx * 0.55, 0, maxx * 0.55]
+  for (let z = maxz - 8; z >= minz + 8; z -= 16) {
+    for (const x of xs) {
+      const p = new THREE.PointLight(0xffe6c4, 16, 20, 2)
+      p.position.set(x, 6.5, z)
+      scene.add(p)
+    }
   }
 }
 
@@ -503,28 +518,57 @@ function addStaffMenuWhiteBack(root) {
   mesh.add(back)
 }
 
-function layoutRows(items, featuredSlugs) {
-  const used = new Set(featuredSlugs)
-  const rows = [{ name: 'People', items: items.filter(i => featuredSlugs.includes(i.slug)) }]
-  rows[0].items.sort((a, b) => featuredSlugs.indexOf(a.slug) - featuredSlugs.indexOf(b.slug))
-
-  const rest = items.filter(i => !used.has(i.slug))
-  const byGroup = new Map()
-  for (const i of rest) {
-    if (!byGroup.has(i.group)) byGroup.set(i.group, [])
-    byGroup.get(i.group).push(i)
-  }
-  for (const g of GROUP_ORDER) {
-    if (byGroup.has(g)) {
-      rows.push({ name: g, items: byGroup.get(g) })
-      byGroup.delete(g)
-    }
-  }
-  for (const [g, list] of byGroup) rows.push({ name: g, items: list })
-  return rows.filter(r => r.items.length)
+function clusterOf(item) {
+  const s = item.variantOf || item.slug
+  if (s === 'heroes/Player' || s === 'heroes/Arm' || s === 'mobs/Rat') return 'people'
+  if (s === 'items/Spatula' || s === 'items/Knife' || s === 'items/Plate' || s === 'items/Cupboard') return 'line'
+  const food = inferFoodType(s, item.label)
+  if (food !== 'other') return 'ingredients'
+  if (s === 'items/Fire' || s === 'items/FireExtinguisher') return 'chaos'
+  if (
+    s === 'items/NumberStand' || s === 'items/Tip'
+    || s === 'ui/SpeechBubble' || s === 'ui/NpcSpeechBubble' || s === 'ui/StaffMenu'
+  ) return 'service'
+  if (s === 'items/Box' || s === 'items/BoxOpen') return 'storage'
+  return 'back'
 }
 
-function placeOnPedestal(asset, x, z, meta) {
+function layoutClusters(items, featuredSlugs) {
+  const by = new Map()
+  for (const id of CLUSTER_ORDER) by.set(id, [])
+  for (const item of items) {
+    const id = clusterOf(item)
+    if (!by.has(id)) by.set(id, [])
+    by.get(id).push(item)
+  }
+  const people = by.get('people') || []
+  people.sort((a, b) => featuredSlugs.indexOf(a.slug) - featuredSlugs.indexOf(b.slug))
+  return CLUSTER_ORDER
+    .map(id => ({ id, name: CLUSTER_BANNER[id] || id, items: by.get(id) || [] }))
+    .filter(c => c.items.length)
+}
+
+function clusterSlots(n, cx, cz, yaw, { cols, spacing = 3.5, rowZ = 3.6 } = {}) {
+  const c = cols || n
+  const slots = []
+  const cos = Math.cos(yaw)
+  const sin = Math.sin(yaw)
+  for (let i = 0; i < n; i++) {
+    const col = i % c
+    const row = (i / c) | 0
+    const nThis = Math.min(c, n - row * c)
+    const lx = (col - (nThis - 1) / 2) * spacing
+    const lz = -row * rowZ
+    slots.push({
+      x: cx + lx * cos + lz * sin,
+      z: cz - lx * sin + lz * cos,
+      yaw,
+    })
+  }
+  return slots
+}
+
+function placeOnPedestal(asset, x, z, meta, yaw = 0) {
   hideTriggers(asset)
   // Rotate before centering — FACE_AISLE around a non-centered pivot
   // walked the Cupboard off the back of its podium.
@@ -555,17 +599,21 @@ function placeOnPedestal(asset, x, z, meta) {
 
   const wrap = new THREE.Group()
   wrap.position.set(x, 0, z)
+  wrap.rotation.y = yaw
   wrap.add(makePedestal())
   wrap.add(asset)
   wrap.add(plaque)
   scene.add(wrap)
 
-  const hw = Math.max(PEDESTAL_W / 2, size.x * 0.4)
-  const hd = Math.max(PEDESTAL_W / 2, size.z * 0.4)
+  const c = Math.abs(Math.cos(yaw))
+  const s = Math.abs(Math.sin(yaw))
+  const half = Math.max(PEDESTAL_W / 2, (size.x || 0) * 0.4, (size.z || 0) * 0.4)
+  const hw = half * (c + s)
+  const hd = half * (s + c)
   player.addCollider({ x: x - hw, z: z - hd }, { x: x + hw, z: z + hd })
 
   const rec = {
-    ...meta, object: wrap, display: asset, x, z, size, scale, caption,
+    ...meta, object: wrap, display: asset, x, z, yaw, size, scale, caption,
     editMul: 1,
     native: native ? { x: native.x, y: native.y, z: native.z } : null,
   }
@@ -617,8 +665,19 @@ function updateFireSprites(dt) {
 
 function setStatus(msg) { $('load-msg').textContent = msg }
 
+function placeBannerAt(text, x, z, yaw = 0, dist = 1.7) {
+  const banner = makeBanner(text)
+  banner.position.set(
+    x + Math.sin(yaw) * dist,
+    4.4,
+    z + Math.cos(yaw) * dist,
+  )
+  banner.rotation.y = yaw
+  scene.add(banner)
+  return banner
+}
+
 async function boot() {
-  addLights()
   setStatus('Reading manifest…')
   const manifest = await fetch('./assets/manifest.json').then(r => r.json())
   const featuredSlugs = FEATURED.map(f => f.slug)
@@ -630,62 +689,49 @@ async function boot() {
       if (m) items.unshift(m)
     }
   }
-  const rows = layoutRows(items, featuredSlugs)
+  const clusters = layoutClusters(items, featuredSlugs)
 
-  const nCols = Math.max(...rows.map(r => r.items.length), 1)
-  const hallW = Math.max((nCols - 1) * SPACING_X + 10, TEXTURE_BOOTH_W + 8, 24)
-  let z = 0
-  const positions = []
-  let audioZ = -SPACING_Z
-  let texturesZ = -SPACING_Z * 2
-  let postersZ = -SPACING_Z * 3
-  let posZ = -SPACING_Z * 4
-  let deliveryZ = -SPACING_Z * 5
-
-  for (const row of rows) {
-    const n = row.items.length
-    const rowW = (n - 1) * SPACING_X
-    const x0 = -rowW / 2
-    positions.push({ row, z, x0 })
-    z -= SPACING_Z
-    if (row.name === 'People') {
-      audioZ = z
-      z -= SPACING_Z + TEXTURE_BOOTH_D / 2
-      texturesZ = z
-      z -= TEXTURE_BOOTH_D / 2 + 4
-      postersZ = z
-      z -= SPACING_Z + 1.4
-      posZ = z
-      z -= SPACING_Z
-      deliveryZ = z - 16
-      z -= 32
-    }
+  const FLOOR = {
+    people: { x: 0, z: 2.8, yaw: 0, cols: 3, spacing: 4.2 },
+    line: { x: -12.2, z: -3.8, yaw: Math.PI / 4, cols: 6, spacing: 3.3 },
+    ingredients: { x: 14.5, z: -7, yaw: -Math.PI / 4, cols: 6, spacing: 2.95, rowZ: 3.3 },
+    chaos: { x: -17, z: -26, yaw: Math.PI / 4, cols: 2, spacing: 3.8 },
+    service: { x: 16.5, z: -26, yaw: -Math.PI / 4, cols: 5, spacing: 3.35 },
+    storage: { x: -12, z: -34, yaw: Math.PI / 5, cols: 2, spacing: 4.0 },
+    back: { x: 13, z: -34, yaw: -Math.PI / 6, cols: 4, spacing: 3.5 },
+  }
+  const BOOTHS = {
+    kitchen: { x: 0, z: -13 },
+    textures: { x: -23, z: -14 },
+    audio: { x: -16, z: -40 },
+    posters: { x: 16, z: -40 },
+    pos: { x: 7, z: -40 },
+    delivery: { x: 0, z: -52 },
   }
 
-  const minz = z - 6
+  const minx = -Math.max(34, TEXTURE_BOOTH_W / 2 + 24)
+  const maxx = 28
+  const minz = -64
   const maxz = 16
-  const minx = -hallW / 2
-  const maxx = hallW / 2
   buildRoom(minx, maxx, minz, maxz, 9.5)
+  addLights(minx, maxx, minz, maxz)
 
   try {
     setStatus('Loading soundboard…')
     soundboard = await createSoundboard({
       scene, player,
-      x: 0,
-      z: audioZ,
-      facingY: 0,
+      x: BOOTHS.audio.x,
+      z: BOOTHS.audio.z,
+      facingY: Math.PI / 5,
     })
-    const banner = makeBanner('Audio')
-    banner.position.set(0, 4.4, audioZ + 1.6)
-    scene.add(banner)
+    placeBannerAt('Audio', BOOTHS.audio.x, BOOTHS.audio.z, Math.PI / 5)
     exhibits.push({
       slug: 'audio/Soundboard',
       label: 'Soundboard',
       caption: 'Soundboard',
       group: 'audio',
-      x: 0,
-      z: audioZ,
+      x: BOOTHS.audio.x,
+      z: BOOTHS.audio.z,
       size: { x: soundboard.width, y: soundboard.height, z: soundboard.depth },
     })
   } catch (err) {
@@ -693,15 +739,16 @@ async function boot() {
   }
 
   let loaded = 0
-  const total = rows.reduce((n, r) => n + r.items.length, 0)
+  const total = clusters.reduce((n, c) => n + c.items.length, 0)
 
-  for (const { row, z: rz, x0 } of positions) {
-    const banner = makeBanner(row.name)
-    banner.position.set(0, 4.4, rz + 1.6)
-    scene.add(banner)
+  for (const cluster of clusters) {
+    const plan = FLOOR[cluster.id] || { x: 0, z: 0, yaw: 0, cols: cluster.items.length, spacing: SPACING_X }
+    const slots = clusterSlots(cluster.items.length, plan.x, plan.z, plan.yaw, plan)
+    placeBannerAt(cluster.name, plan.x, plan.z, plan.yaw)
 
-    for (let i = 0; i < row.items.length; i++) {
-      const item = row.items[i]
+    for (let i = 0; i < cluster.items.length; i++) {
+      const item = cluster.items[i]
+      const slot = slots[i]
       setStatus(`Loading ${++loaded} / ${total}  —  ${item.label}`)
       try {
         const loadSlug = item.variantOf || item.slug
@@ -747,7 +794,7 @@ async function boot() {
           foodProtos[item.slug] = root.clone(true)
           if (loadSlug === 'items/Patty') restorePattyDisc(foodProtos[item.slug])
         }
-        const rec = placeOnPedestal(display, x0 + i * SPACING_X, rz, item)
+        const rec = placeOnPedestal(display, slot.x, slot.z, item, slot.yaw)
         if (loadSlug === 'items/Fire') setupFireSprite(display)
         if (FACE_PLAYER.has(loadSlug)) facePlayer.push(display)
       } catch (err) {
@@ -768,20 +815,18 @@ async function boot() {
 
   try {
     setStatus('Loading texture samples…')
-    const banner = makeBanner('Textures')
-    banner.position.set(0, 4.4, texturesZ + TEXTURE_BOOTH_D / 2 + 1.6)
-    scene.add(banner)
+    placeBannerAt('Textures', BOOTHS.textures.x, BOOTHS.textures.z, 0, TEXTURE_BOOTH_D / 2 + 1.6)
     swatches = createSwatches({
       scene, player, foodWorld,
-      x: 0, z: texturesZ, facingY: 0,
+      x: BOOTHS.textures.x, z: BOOTHS.textures.z, facingY: 0,
     })
     exhibits.push({
       slug: 'textures/Swatches',
       label: 'Textures',
       caption: 'Textures',
       group: 'textures',
-      x: 0,
-      z: texturesZ,
+      x: BOOTHS.textures.x,
+      z: BOOTHS.textures.z,
       size: { x: swatches.width, y: swatches.height, z: swatches.depth },
     })
   } catch (err) {
@@ -790,20 +835,18 @@ async function boot() {
 
   try {
     setStatus('Loading poster kiosk…')
-    const banner = makeBanner('Posters')
-    banner.position.set(0, 4.4, postersZ + 2.4)
-    scene.add(banner)
+    placeBannerAt('Posters', BOOTHS.posters.x, BOOTHS.posters.z, -Math.PI / 6)
     posters = createPosters({
       scene, player, foodWorld,
-      x: 0, z: postersZ,
+      x: BOOTHS.posters.x, z: BOOTHS.posters.z,
     })
     exhibits.push({
       slug: 'ui/Posters',
       label: 'Posters',
       caption: 'Posters',
       group: 'ui',
-      x: 0,
-      z: postersZ,
+      x: BOOTHS.posters.x,
+      z: BOOTHS.posters.z,
       size: { x: posters.width, y: posters.height, z: posters.depth },
     })
   } catch (err) {
@@ -812,12 +855,10 @@ async function boot() {
 
   try {
     setStatus('Loading order computer…')
-    const banner = makeBanner('POS')
-    banner.position.set(0, 4.4, posZ + 1.8)
-    scene.add(banner)
+    placeBannerAt('POS', BOOTHS.pos.x, BOOTHS.pos.z, Math.PI / 8)
     posKiosk = createPosKiosk({
       scene, player,
-      x: 0, z: posZ,
+      x: BOOTHS.pos.x, z: BOOTHS.pos.z,
       onOpen: () => { player.unlock() },
       onClose: () => {},
     })
@@ -826,8 +867,8 @@ async function boot() {
       label: 'POS',
       caption: 'POS',
       group: 'ui',
-      x: 0,
-      z: posZ,
+      x: BOOTHS.pos.x,
+      z: BOOTHS.pos.z,
       size: { x: posKiosk.width, y: posKiosk.height, z: posKiosk.depth },
     })
   } catch (err) {
@@ -845,18 +886,18 @@ async function boot() {
     }
   }
   if (cheeseProto) {
-    const b = player.bounds
-    const zs = []
-    for (let z = 6; z > b.minz + 8; z -= 16) zs.push(z)
-    zs.slice(0, 6).forEach((z, i) => {
-      const x = (i % 2 === 0 ? -1 : 1) * (2.1 + (i % 3) * 0.4)
-      foodWorld.addSpawner(x, z, cheeseProto)
-    })
+    const spots = [
+      { x: 4.2, z: 8.4 }, { x: -4.4, z: 5.6 },
+      { x: 6.5, z: -22 }, { x: -6.2, z: -22.5 },
+      { x: 4.0, z: -38 }, { x: -8.5, z: -31 },
+    ]
+    for (const s of spots) foodWorld.addSpawner(s.x, s.z, cheeseProto)
   }
 
   const needFood = [
     'items/Patty', 'items/Bacon', 'items/BunTop', 'items/BunBottom',
-    'items/LettuceHead', 'items/Cheese', 'items/Tomato',
+    'items/LettuceHead', 'items/Lettuce', 'items/Cheese', 'items/Tomato',
+    'items/Plate',
   ]
   for (const slug of needFood) {
     if (foodProtos[slug]) continue
@@ -873,21 +914,52 @@ async function boot() {
   }
 
   try {
+    setStatus('Loading kitchen…')
+    kitchen = await createKitchen({
+      scene, player, foodWorld, foodProtos,
+      x: BOOTHS.kitchen.x, z: BOOTHS.kitchen.z, facingY: 0,
+    })
+    exhibits.push({
+      slug: 'kitchen/Kitchen',
+      label: 'Kitchen',
+      caption: 'Kitchen',
+      group: 'kitchen',
+      x: BOOTHS.kitchen.x,
+      z: BOOTHS.kitchen.z,
+      size: { x: kitchen.width, y: kitchen.height, z: kitchen.depth },
+    })
+    const kitchenSpots = [
+      ['kitchen/Range', 'Range'],
+      ['kitchen/Sink', 'Sink'],
+      ['kitchen/Counter', 'Counter'],
+      ['kitchen/Orders', 'Orders'],
+    ]
+    for (const [slug, caption] of kitchenSpots) {
+      const v = kitchen.viewSpot(caption)
+      exhibits.push({
+        slug, label: caption, caption, group: 'kitchen',
+        x: v.look.x, z: v.look.z,
+        size: { x: 2, y: 2, z: 2 },
+      })
+    }
+  } catch (err) {
+    console.warn('[museum] kitchen skipped', err)
+  }
+
+  try {
     setStatus('Loading delivery truck…')
-    const banner = makeBanner('Delivery')
-    banner.position.set(0, 4.4, deliveryZ + 8.5)
-    scene.add(banner)
+    placeBannerAt('Delivery', BOOTHS.delivery.x, BOOTHS.delivery.z, 0, 8.5)
     delivery = await createDelivery({
       scene, player, loader, foodWorld, foodProtos,
-      x: 0, z: deliveryZ,
+      x: BOOTHS.delivery.x, z: BOOTHS.delivery.z,
     })
     const rec = {
       slug: 'items/Truck',
       label: 'Truck',
       caption: 'Truck',
       group: 'items',
-      x: 0,
-      z: deliveryZ,
+      x: BOOTHS.delivery.x,
+      z: BOOTHS.delivery.z,
       size: delivery.size,
     }
     exhibits.push(rec)
@@ -930,6 +1002,7 @@ async function boot() {
     if (armRoot) {
       demoPlayers = createDemoPlayers({
         scene, player, playerProto: pl.root, armProto: armRoot,
+        x: 0, z: 7.5, yaw: -Math.PI / 2,
       })
       demoPlayers.setScale(DEMO_ARM_SCALE)
       const demoArmsRec = {
@@ -984,7 +1057,7 @@ async function boot() {
   window.__museum = {
     scene, camera: player.camera, renderer, player, exhibits, crowd,
     foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler, swatches,
-    posters, posKiosk,
+    posters, posKiosk, kitchen,
     teleport, enter, pause,
     dbg: harness.dbg,
     pose: harness.pose,
@@ -1029,11 +1102,19 @@ function teleport(slug) {
     player.lookAt(v.look.x, v.look.y, v.look.z)
     return 'POS'
   }
+  if (kitchen && /^(Kitchen|Range|Grill|Cooktop|Sink|Dish|Counter|Prep|Orders|Board|kitchen\/)/i.test(slug)) {
+    const name = String(slug).split('/').pop()
+    const v = kitchen.viewSpot(name)
+    player.spawn(v.stand.x, 0, v.stand.z, 0)
+    player.lookAt(v.look.x, v.look.y, v.look.z)
+    return v.label
+  }
   const e = exhibits.find(x => x.slug === slug || x.label === slug || x.caption === slug)
   if (!e) return null
   const longest = Math.max(e.size?.x || 0, e.size?.y || 0, e.size?.z || 0, 0.4)
   const back = Math.min(4.2, Math.max(1.55, longest * 1.7 + 1.15))
-  player.spawn(e.x, 0, e.z + back, 0)
+  const yaw = e.yaw || 0
+  player.spawn(e.x + Math.sin(yaw) * back, 0, e.z + Math.cos(yaw) * back, 0)
   player.lookAt(e.x, PEDESTAL_H + Math.min((e.size?.y || 2) * 0.45, 1.5), e.z)
   return e.caption || e.label
 }
@@ -1091,6 +1172,7 @@ function tick(dt) {
   if (rats) rats.update(dt, harness.time.T)
   if (crowd) crowd.update(dt, harness.time.T)
   if (demoPlayers) demoPlayers.update(dt)
+  if (kitchen) kitchen.update(dt)
   if (fireSprites.length || facePlayer.length) updateFireSprites(dt)
 }
 

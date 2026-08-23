@@ -204,7 +204,7 @@ Set at the end of boot.
 {
   scene, camera, renderer, player,
   exhibits, crowd, foodWorld, hands, rats, demoPlayers, soundboard, delivery,
-  teleport, enter, pause,
+  kitchen, teleport, enter, pause,
   dbg, pose,
 }
 ```
@@ -213,6 +213,7 @@ Set at the end of boot.
 |---|---|
 | `__museum.teleport('Spatula')` | stand in front of that pedestal and look at it |
 | `__museum.teleport('Truck')` | stand on the aisle in front of the delivery ramp |
+| `__museum.teleport('Kitchen')` | stand in the galley entrance. Also `'Range'`, `'Sink'`, `'Counter'`, `'Orders'` |
 | `__museum.enter()` | hide loader, enable player, request pointer lock |
 | `__museum.pause()` | release pointer lock only — sim keeps running |
 
@@ -328,7 +329,42 @@ dbg.state().food.filter(f => f.type !== 'box')
 
 The ramp is a platform: `player.groundY(x,z)` rises from 0 to `delivery.bedY`.
 
-### 6. Screenshot a gameplay moment
+### 6. Kitchen stations
+
+The kitchen is a walk-in booth (DiningFloor, prep counter, range, hanging
+order board, dish pit). Food on the counter is live; the range cooks
+whatever lands on the dark cooktop (`Grill.cs`, ~10 s to cooked).
+
+```js
+dbg.freeze()
+dbg.teleport('Kitchen')
+dbg.state().exhibits.filter(s => s.startsWith('kitchen/'))
+dbg.teleport('Orders')     // look up at the ticket TV
+dbg.teleport('Range')
+dbg.teleport('Sink')
+dbg.teleport('Counter')
+```
+
+Drop food on the grill:
+
+```js
+dbg.freeze()
+dbg.teleport('Counter')
+__museum.enter()
+dbg.key('KeyQ', true)
+dbg.step(20)
+dbg.mouse(0, true)
+dbg.step(1)
+dbg.state().holding          // a prep-line food type
+dbg.teleport('Range')
+dbg.mouse(0, false)
+dbg.step(2)                  // drop onto the cooktop
+dbg.step(600)                // 10 s — cooked
+```
+
+Demo-player nametags are a white "HELLO my name is" card, not a burger sprite.
+
+### 7. Screenshot a gameplay moment
 
 ```js
 dbg.freeze()
@@ -341,7 +377,7 @@ dbg.unfreeze()
 Eval returns JSON immediately; the screenshot tool is a second round
 trip. Freeze covers that gap.
 
-### 6. After a code change
+### 8. After a code change
 
 Reload the tab (`museum.html`), wait for `__museum`, emulate viewport,
 then re-run the same `state()` / `pose.view()` pair. Do not keep a
