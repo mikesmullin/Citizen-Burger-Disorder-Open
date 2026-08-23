@@ -39,6 +39,7 @@ const SKIP_EXHIBITS = new Set([
   'items/LettucePart',   // nested inside LettuceHead
   'items/MonitorPickup', // same slab as Monitor, pickup-sized
   'items/NumberStand',   // live on the front checkout, next to the order computer
+  'ui/StaffMenu',        // glued to the front counter wall, below the POS
   'ui/BunBottom',
   'ui/BunTop',
   'ui/Cheese',
@@ -931,7 +932,7 @@ async function boot() {
     'items/LettuceHead', 'items/Lettuce', 'items/LettucePart',
     'items/Cheese', 'items/Tomato', 'items/Plate',
     'items/Knife', 'items/Spatula', 'items/FireExtinguisher', 'items/Fire',
-    'items/Tip', 'items/NumberStand',
+    'items/Tip', 'items/NumberStand', 'ui/StaffMenu',
   ]
   let switchProto = null
   try {
@@ -970,6 +971,11 @@ async function boot() {
       if (slug === 'items/LettuceHead') {
         try { await nestLettuceHead(extra.root, loader) }
         catch (err) { console.warn('[museum] LettucePart nest skipped', err) }
+      }
+      if (slug === 'ui/StaffMenu') {
+        // Same prep the pedestal pass did: the menu was authored mirrored.
+        flipStaffMenuUVs(extra.root)
+        addStaffMenuWhiteBack(extra.root)
       }
       foodProtos[slug] = extra.root
     } catch (err) {
@@ -1021,6 +1027,7 @@ async function boot() {
     front = await createFront({
       scene, player, foodWorld, foodProtos,
       npcProto, world, kitchen, switchProto,
+      getHands: () => hands,
       onPosOpen: () => { player.unlock() },
       x: BOOTHS.front.x, z: BOOTHS.front.z, facingY: 0,
     })
@@ -1040,6 +1047,7 @@ async function boot() {
       ['front/Queue', 'Queue'],
       ['front/POS', 'Checkout'],
       ['front/Register', 'Register'],
+      ['front/StaffMenu', 'StaffMenu'],
       ['front/NumberStand', 'NumberStand'],
       ['front/Staff', 'Staff'],
       ['front/Lights', 'Lights'],

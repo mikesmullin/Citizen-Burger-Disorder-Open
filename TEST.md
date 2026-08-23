@@ -399,7 +399,8 @@ dbg.step(2)
 dbg.state().front.npcs        // want: 'eat'
 dbg.state().front.tips        // > 0
 dbg.teleport('Register')
-// grab a tip, drop on the till — or wait if one lands close
+// grab a tip: the till takes it on contact — no need to drop it out of the hand
+// (wait a moment so the held dollar is inside the till zone)
 dbg.step(30)
 dbg.state().front.register.money
 ```

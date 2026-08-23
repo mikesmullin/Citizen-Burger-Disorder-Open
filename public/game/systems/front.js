@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { C } from '../common/ecs.js'
 import { spawnPrefab } from '../gamedata/prefabs.js'
 import { ITEM_NAMES } from '../gamedata/menu.js'
-import { addToBurger, plateBurger, layoutStack, layoutPlate } from './stacking.js'
+import { addToBurger, plateBurger, layoutStack, layoutPlate, grabStackWith } from './stacking.js'
 import { applyCookLook, COOK_RGB } from './food.js'
 import * as SpawnCustomer from './spawnCustomer.js'
 import * as Locomotion from './locomotion.js'
@@ -22,6 +22,7 @@ import * as Register from './register.js'
 import * as Speech from './speech.js'
 import * as View from './view.js'
 import { createPosKiosk } from './posKiosk.js'
+import { boundsOf } from '../common/unityScene.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
 
 export const BOOTH_W = 12
@@ -152,7 +153,7 @@ function ensureLiveOverlay() {
 
 export async function createFront({
   scene, player, foodWorld, foodProtos,
-  npcProto, world, kitchen, onPosOpen, switchProto,
+  npcProto, world, kitchen, onPosOpen, switchProto, getHands,
   x = 0, z = 0, facingY = 0,
 } = {}) {
   const object = new THREE.Group()
@@ -429,6 +430,22 @@ export async function createFront({
   object.add(regLabel)
 
   const compX = 0.15
+
+  // Staff menu glued to the counter's staff face, below the order
+  // computer: look down past the POS screen and it is right there —
+  // a quick reference while checking out. (Used to sit on a pedestal.)
+  if (foodProtos && foodProtos['ui/StaffMenu']) {
+    const menu = foodProtos['ui/StaffMenu'].clone(true)
+    menu.updateMatrixWorld(true)
+    const mb = boundsOf(menu)
+    if (!mb.isEmpty()) {
+      const ms = mb.getSize(new THREE.Vector3())
+      menu.scale.multiplyScalar(0.95 / Math.max(ms.x, ms.y, ms.z, 1e-4))
+    }
+    menu.position.set(compX, 0.53, cZ - cD / 2 - 0.185)
+    menu.rotation.set(0.42, Math.PI, 0)  // face staff, tilt up toward the standing employee
+    object.add(menu)
+  }
   const posKiosk = createPosKiosk({
     scene, player,
     parent: object,
@@ -489,6 +506,36 @@ export async function createFront({
     makeTable({ tableId: 3, capacity: 2, x: -3.85, z: 1.05, w: 1.35, d: 0.78 }),
     makeTable({ tableId: 4, capacity: 4, x: 3.85, z: 1.0, w: 1.85, d: 1.15 }),
   ]
+
+  // Wall art: the original's "Promo" shots, mounted like framed posters on the
+  // two long side walls of the dining area, one above each table, facing into
+  // the room. The wainscot rail ends at WAINSCOT, so the bottoms float free.
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.8 })
+  function mountPoster(id, px, pz, yaw, w) {
+    const map = new THREE.TextureLoader().load(`./assets/textures/posters/${id}.png`)
+    map.colorSpace = THREE.SRGBColorSpace
+    map.anisotropy = 4
+    const h = w * 0.75
+    const faceMat = new THREE.MeshStandardMaterial({
+      map, color: 0xffffff, roughness: 0.72, metalness: 0.02,
+    })
+    // +Z is the picture face; -Z gets the frame, the rest is plain frame.
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, 0.035),
+      [frameMat, frameMat, frameMat, frameMat, faceMat, frameMat],
+    )
+    box.castShadow = true
+    const g = new THREE.Group()
+    g.add(box)
+    g.position.set(px, 2.0, pz)
+    g.rotation.y = yaw
+    object.add(g)
+  }
+  // West wall (x=-hx) faces +X into the room; east wall (x=+hx) faces -X.
+  mountPoster('jTZL8p0', -hx + WALL_T + 0.04, 3.2,  Math.PI / 2, 1.8)  // above table 1
+  mountPoster('n0kvMQ6', -hx + WALL_T + 0.04, 1.05,  Math.PI / 2, 1.8)  // above table 3
+  mountPoster('BLCkYpI',  hx - WALL_T - 0.04, 3.2, -Math.PI / 2, 1.8)  // above table 2
+  mountPoster('VF9IcfX',  hx - WALL_T - 0.04, 1.0,  -Math.PI / 2, 1.8)  // above table 4
 
   const lamp = new THREE.PointLight(0xfff1d0, 16, 20, 2)
   lamp.position.set(0, 3.05, 0.6)
@@ -874,6 +921,11 @@ export async function createFront({
         label: 'NumberStand',
       }
     }
+    if (/^StaffMenu$/i.test(key)) {
+      const stand = worldOf((staffX0 + staffX1) / 2, 0, staffZ - 0.55)
+      const look = worldOf(compX, 0.55, cZ - cD / 2 - 0.185)
+      return { stand, look, label: 'StaffMenu' }
+    }
     if (/^Register$/i.test(key)) {
       const stand = worldOf(regX, 0, staffZ)
       const look = worldOf(regX, COUNTER_Y + 0.35, cZ - cD / 2)
@@ -947,6 +999,7 @@ export async function createFront({
       playerPos: player.position,
       foodWorld,
       tipProto: foodProtos && foodProtos['items/Tip'],
+      hands: getHands ? getHands() : null,
       indoorNodes,
       groundY: (gx, gz) => player.groundY(gx, gz),
       resolveXZ: (gx, gz, r, skip) => player.resolveXZ(gx, gz, r, skip),
