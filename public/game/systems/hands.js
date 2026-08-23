@@ -23,7 +23,7 @@ const CAM_Y = -0.48
 const CAM_Z = -0.68
 const CAM_PITCH = 18
 
-export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, getFires, onDrop, spawnSwatch, spawnPoster } = {}) {
+export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, getFires, fireWatch, onDrop, spawnSwatch, spawnPoster } = {}) {
   hideTriggers(armProto)
 
   function makeArm(side) {
@@ -47,8 +47,10 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
   const left = makeArm('left')
   const right = makeArm('right')
   const spray = createSpray({ scene, camera: player.camera })
-  const _sprayOrigin = new THREE.Vector3()
-  const _sprayDir = new THREE.Vector3()
+  const sprayNozzle = {
+    left: { origin: new THREE.Vector3(), dir: new THREE.Vector3() },
+    right: { origin: new THREE.Vector3(), dir: new THREE.Vector3() },
+  }
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2(0, 0)
   const _pos = new THREE.Vector3()
@@ -152,6 +154,7 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
 
   function grabItem(arm, item) {
     if (!item || item.held || item.opened) return
+    if (item.planted || (item.type === 'fire' && item.dropped && !item.held)) return
     // Food a rat is carrying is stolen; the rat itself uses .stolen as its morsel.
     if (item.kind !== 'rat' && item.stolen) return
     const bunch = grabStackWith(item)
@@ -193,6 +196,7 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     if (rec.slug === 'items/PlateDirty' || rec.cookState === 'dirty') {
       item.dirty = true
     }
+    if (type === 'fire' && fireWatch) fireWatch.takeCopy(item)
     grabItem(arm, item)
   }
 
@@ -330,16 +334,13 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     }
   }
 
-  function extinguisherNozzle(item) {
-    player.camera.getWorldPosition(_sprayOrigin)
-    player.camera.getWorldDirection(_sprayDir)
-    _sprayOrigin.addScaledVector(_sprayDir, 0.55)
-    _sprayOrigin.y -= 0.08
-    if (item && item.object) {
-      item.object.getWorldPosition(_world)
-      _sprayOrigin.lerp(_world, 0.2)
-      _sprayOrigin.y += 0.32
-    }
+  function extinguisherNozzle(arm, nozzle) {
+    player.camera.getWorldDirection(nozzle.dir)
+    if (arm.hand) arm.hand.getWorldPosition(nozzle.origin)
+    else if (arm.holding?.object) arm.holding.object.getWorldPosition(nozzle.origin)
+    else player.camera.getWorldPosition(nozzle.origin)
+    nozzle.origin.addScaledVector(nozzle.dir, 0.35)
+    nozzle.origin.y += 0.18
   }
 
   function toolUse(arm, dt) {
@@ -350,7 +351,7 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     if (item.type === 'fireExtinguisher') {
       const sprayBtn = arm.side === 'left' ? player.fire2 : player.fire1
       item.spraying = !!sprayBtn
-      if (item.spraying) extinguisherNozzle(item)
+      if (item.spraying) extinguisherNozzle(arm, sprayNozzle[arm.side])
     }
     if (item.type === 'bun') layoutStack(item)
     if (item.type === 'plate' && item.plated) layoutPlate(item)
@@ -375,7 +376,8 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
         const root = food.onPlate || food.stackedOn
         return { kind: 'food', item: root.onPlate || root, dist: h.distance }
       }
-      if (food && !food.held && !food.opened && !food.stolen && !food.inFood) {
+      if (food && !food.held && !food.opened && !food.stolen && !food.inFood
+        && !food.planted && food.type !== 'fire') {
         return { kind: 'food', item: food, dist: h.distance }
       }
       const poster = h.object.userData.poster
@@ -394,7 +396,8 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     player.camera.getWorldDirection(_fwd)
     let best = null, bestD = GRAB_RANGE, bestKind = 'food'
     const consider = (item, kind, minD = 0.2) => {
-      if (!item || item.held || item.opened || item.inFood) return
+      if (!item || item.held || item.opened || item.inFood || item.planted) return
+      if (item.type === 'fire') return
       if (kind !== 'rat' && item.stolen) return
       const dx = item.position.x - _pos.x
       const dy = item.position.y - _pos.y
@@ -466,13 +469,16 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       toolUse(right, dt)
     }
 
-    const ext = (left.holding && left.holding.type === 'fireExtinguisher' && left.holding)
-      || (right.holding && right.holding.type === 'fireExtinguisher' && right.holding)
+    const emitters = []
+    if (left.holding?.type === 'fireExtinguisher' && left.holding.spraying) {
+      emitters.push(sprayNozzle.left)
+    }
+    if (right.holding?.type === 'fireExtinguisher' && right.holding.spraying) {
+      emitters.push(sprayNozzle.right)
+    }
     spray.update(dt, {
-      emitting: !!(ext && ext.spraying),
-      origin: _sprayOrigin,
-      dir: _sprayDir,
-      fires: getFires ? getFires() : [],
+      emitters,
+      fires: fireWatch ? fireWatch.list() : (getFires ? getFires() : []),
     })
 
     if (!lActive && left.holding) { /* keep showing arm while holding */ }
@@ -487,8 +493,23 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     return a || b || ''
   }
 
+  function dumpSpray() {
+    const r = v => ({ x: +v.x.toFixed(2), y: +v.y.toFixed(2), z: +v.z.toFixed(2) })
+    const leftOn = !!(left.holding && left.holding.type === 'fireExtinguisher' && left.holding.spraying)
+    const rightOn = !!(right.holding && right.holding.type === 'fireExtinguisher' && right.holding.spraying)
+    return {
+      ...spray.dump(),
+      left: leftOn,
+      right: rightOn,
+      origins: {
+        left: leftOn ? r(sprayNozzle.left.origin) : null,
+        right: rightOn ? r(sprayNozzle.right.origin) : null,
+      },
+    }
+  }
+
   return {
-    left, right, update, pickTarget, holdingLabel, setScale,
+    left, right, update, pickTarget, holdingLabel, dumpSpray, setScale,
     get armScale() { return armScale },
   }
 }

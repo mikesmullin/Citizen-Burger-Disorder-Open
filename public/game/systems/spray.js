@@ -4,7 +4,7 @@
 
 import * as THREE from 'three'
 
-const MAX = 160
+const MAX = 240
 const RATE = 72
 const HIT_R = 0.55
 
@@ -54,6 +54,10 @@ export function createSpray({ scene, camera }) {
 
   function putOut(fire) {
     if (!fire || fire.out) return
+    if (typeof fire.putOut === 'function') {
+      fire.putOut()
+      return
+    }
     fire.out = true
     const root = fire.root
     if (!root) return
@@ -69,23 +73,31 @@ export function createSpray({ scene, camera }) {
       for (const f of fires) {
         if (!f || f.out || !f.root || !f.root.visible) continue
         f.root.getWorldPosition(_firePos)
+        const r = (f.hitR || HIT_R) + p.size
         const dx = p.x - _firePos.x, dy = p.y - _firePos.y, dz = p.z - _firePos.z
-        if (dx * dx + dy * dy + dz * dz < (p.size + HIT_R) * (p.size + HIT_R)) {
+        if (dx * dx + dy * dy + dz * dz < r * r) {
           putOut(f)
         }
       }
     }
   }
 
-  function update(dt, { emitting, origin, dir, fires } = {}) {
+  function update(dt, { emitting, origin, dir, emitters, fires } = {}) {
     dt = Math.min(dt, 0.08)
-    if (emitting && origin && dir) {
+    const list = Array.isArray(emitters)
+      ? emitters.filter(e => e && e.origin && e.dir)
+      : (emitting && origin && dir ? [{ origin, dir }] : [])
+    if (list.length) {
       emitAcc += dt
       const interval = 1 / RATE
       while (emitAcc >= interval && particles.length < MAX) {
         emitAcc -= interval
-        add(origin, dir)
+        for (const e of list) {
+          if (particles.length >= MAX) break
+          add(e.origin, e.dir)
+        }
       }
+      if (particles.length >= MAX) emitAcc = 0
     } else {
       emitAcc = 0
     }
@@ -128,5 +140,18 @@ export function createSpray({ scene, camera }) {
     for (const s of sprites) s.visible = false
   }
 
-  return { update, clear, get count() { return particles.length } }
+  function dump() {
+    let xMin = Infinity, xMax = -Infinity
+    for (const p of particles) {
+      if (p.x < xMin) xMin = p.x
+      if (p.x > xMax) xMax = p.x
+    }
+    return {
+      count: particles.length,
+      xMin: particles.length ? +xMin.toFixed(2) : null,
+      xMax: particles.length ? +xMax.toFixed(2) : null,
+    }
+  }
+
+  return { update, clear, dump, get count() { return particles.length } }
 }

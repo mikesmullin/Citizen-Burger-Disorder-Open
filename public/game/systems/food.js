@@ -25,7 +25,8 @@ export function isTool(type) {
 }
 
 export function isFood(type) {
-  return type && type !== 'other' && type !== 'plate' && type !== 'tip' && type !== 'box' && !isTool(type)
+  return type && type !== 'other' && type !== 'plate' && type !== 'tip' && type !== 'box'
+    && type !== 'fire' && !isTool(type)
 }
 
 // Pedestal copies you can grab. Plate / tip / box are items, not edible food.
@@ -34,6 +35,7 @@ export function inferPickup(slug = '', label = '') {
   if (s.includes('fireextinguisher') || s.includes('extinguisher')) return 'fireExtinguisher'
   if (s.includes('spatula')) return 'spatula'
   if (s.includes('knife')) return 'knife'
+  if (/\bfire\b/.test(s) || s.endsWith('/fire') || s === 'fire') return 'fire'
   const food = inferFoodType(slug, label)
   if (food !== 'other') return food
   if (s.includes('plate')) return 'plate'
@@ -64,6 +66,7 @@ export const FOOD_SIZE_BY_SLUG = {
   'items/Knife': 0.888,
   'items/Spatula': 1.021,
   'items/FireExtinguisher': 0.771,
+  'items/Fire': 0.828,
   'items/LettucePart': 0.32,
 }
 
@@ -83,6 +86,7 @@ export const FOOD_SIZE = {
   knife: FOOD_SIZE_BY_SLUG['items/Knife'],
   spatula: FOOD_SIZE_BY_SLUG['items/Spatula'],
   fireExtinguisher: FOOD_SIZE_BY_SLUG['items/FireExtinguisher'],
+  fire: FOOD_SIZE_BY_SLUG['items/Fire'],
 }
 
 export function foodLongest(type, slug) {
@@ -207,7 +211,7 @@ export function createFoodWorld({ scene, player }) {
     scene.add(object)
     const item = {
       object, type, slug: slug || null,
-      kind: isTool(type) ? 'tool' : (type === 'plate' ? 'plate' : 'food'),
+      kind: isTool(type) ? 'tool' : (type === 'plate' ? 'plate' : (type === 'fire' ? 'fire' : 'food')),
       position: object.position,
       radius: Math.max(0.22, (size?.x || height) * 0.45),
       height,
@@ -261,7 +265,7 @@ export function createFoodWorld({ scene, player }) {
 
     const landed = []
     for (const item of items) {
-      if (item.held || item.stolen || item.inFood) continue
+      if (item.held || item.stolen || item.inFood || item.planted) continue
       item.vel.y -= 9.81 * dt
       item.object.position.addScaledVector(item.vel, dt)
       const half = item.height * 0.5

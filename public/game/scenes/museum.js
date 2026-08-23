@@ -17,6 +17,7 @@ import { createSwatches, BOOTH_D as TEXTURE_BOOTH_D, BOOTH_W as TEXTURE_BOOTH_W 
 import { createPosters } from '../systems/posters.js'
 import { createPosKiosk } from '../systems/posKiosk.js'
 import { createKitchen } from '../systems/kitchen.js'
+import { createFireWatch } from '../systems/fire.js'
 import { installHarness } from '../common/harness.js'
 
 const FEATURED = [
@@ -249,6 +250,7 @@ let swatches = null
 let posters = null
 let posKiosk = null
 let kitchen = null
+let fires = null
 const fireSprites = []
 const facePlayer = []
 const scaler = createScaler({
@@ -900,7 +902,7 @@ async function boot() {
     'items/Patty', 'items/Bacon', 'items/BunTop', 'items/BunBottom',
     'items/LettuceHead', 'items/Lettuce', 'items/LettucePart',
     'items/Cheese', 'items/Tomato', 'items/Plate',
-    'items/Knife', 'items/Spatula', 'items/FireExtinguisher',
+    'items/Knife', 'items/Spatula', 'items/FireExtinguisher', 'items/Fire',
   ]
   for (const slug of needFood) {
     if (foodProtos[slug]) continue
@@ -921,6 +923,7 @@ async function boot() {
     kitchen = await createKitchen({
       scene, player, foodWorld, foodProtos,
       getRats: () => rats,
+      getFireWatch: () => fires,
       x: BOOTHS.kitchen.x, z: BOOTHS.kitchen.z, facingY: 0,
     })
     exhibits.push({
@@ -985,6 +988,13 @@ async function boot() {
     console.warn('[museum] delivery truck skipped', err)
   }
 
+  fires = createFireWatch({
+    scene, player, foodWorld,
+    getRats: () => rats,
+    getHands: () => hands,
+    fireProto: foodProtos['items/Fire'] || null,
+  })
+
   let armRoot = null
   try {
     const arm = await loader.load('heroes/Arm')
@@ -992,7 +1002,7 @@ async function boot() {
     hands = createHands({
       scene, player, armProto: armRoot, foodWorld, exhibits, foodProtos,
       getRats: () => rats,
-      getFires: () => fireSprites,
+      fireWatch: fires,
       spawnSwatch: spec => swatches && swatches.take(spec),
       spawnPoster: spec => posters && posters.take(spec),
     })
@@ -1062,7 +1072,7 @@ async function boot() {
   window.__museum = {
     scene, camera: player.camera, renderer, player, exhibits, crowd,
     foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler, swatches,
-    posters, posKiosk, kitchen,
+    posters, posKiosk, kitchen, fires,
     teleport, enter, pause,
     dbg: harness.dbg,
     pose: harness.pose,
@@ -1128,10 +1138,16 @@ function dumpExtras() {
   return {
     playing,
     holding: hands?.holdingLabel() || '',
+    spray: hands?.dumpSpray?.() || null,
+    fires: fires?.dump?.() || [],
+    playerOnFire: !!fires?.playerOnFire,
     food: (foodWorld?.items || []).map(i => ({
       type: i.type, kind: i.kind || 'food', contents: i.contents || null, opened: !!i.opened,
       pos: { x: +i.position.x.toFixed(2), y: +i.position.y.toFixed(2), z: +i.position.z.toFixed(2) },
       held: !!i.held, onFloor: !!i.onFloor, stolen: !!i.stolen,
+      onFire: !!i.onFire, planted: !!i.planted,
+      overcooked: +(i.overcooked || 0).toFixed(2),
+      ashTime: +(i.ashTime || 0).toFixed(2),
     })),
     rats: (rats?.rats || []).map(r => ({
       pos: { x: +r.position.x.toFixed(2), y: +r.position.y.toFixed(2), z: +r.position.z.toFixed(2) },
@@ -1178,6 +1194,7 @@ function tick(dt) {
   if (crowd) crowd.update(dt, harness.time.T)
   if (demoPlayers) demoPlayers.update(dt)
   if (kitchen) kitchen.update(dt)
+  if (fires) fires.update(dt)
   if (fireSprites.length || facePlayer.length) updateFireSprites(dt)
 }
 

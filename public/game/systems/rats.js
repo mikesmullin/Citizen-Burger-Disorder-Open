@@ -275,5 +275,5 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     return rat
   }
 
-  return { rats, holes, update, spawnAt, get count() { return currentRats } } // pickup + mouth follow
+  return { rats, holes, update, spawnAt, remove: despawn, get count() { return currentRats } } // pickup + mouth follow
 }

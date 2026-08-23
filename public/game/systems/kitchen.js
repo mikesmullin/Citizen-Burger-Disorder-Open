@@ -163,7 +163,7 @@ async function makeOrderScreen() {
 
 export async function createKitchen({
   scene, player, foodWorld, foodProtos,
-  getRats,
+  getRats, getFireWatch,
   x = 0, z = 0, facingY = 0,
 } = {}) {
   const object = new THREE.Group()
@@ -535,8 +535,8 @@ export async function createKitchen({
   }
 
   function cookTree(item, dt) {
-    cookTick(item, dt)
-    for (const f of item.stack || []) cookTick(f, dt)
+    if (!item.onFire) cookTick(item, dt)
+    for (const f of item.stack || []) if (!f.onFire) cookTick(f, dt)
     if (item.plated) cookTree(item.plated, dt)
   }
 
@@ -606,6 +606,10 @@ export async function createKitchen({
       const p = item.object.position
       if (inBasin(p)) {
         item.soakTime = (item.soakTime || 0) + step
+        if (item.onFire) {
+          const fw = getFireWatch && getFireWatch()
+          if (fw) fw.putOutItem(item)
+        }
         if (item.dirty && item.soakTime >= WASH_TIME) {
           item.dirty = false
           applyCookLook(item.object, { mapUrl: './assets/textures/Plate.png' })
