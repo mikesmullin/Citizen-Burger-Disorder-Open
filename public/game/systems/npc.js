@@ -186,6 +186,10 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
       turnMul: 0.85 + Math.random() * 0.3,
       bubble,
       footY,
+      blockedTime: 0,
+      maneuverUntil: 0,
+      maneuverDir: null,
+      maneuverRepickUntil: 0,
     }
     object.userData.npc = npc
     object.traverse(o => { o.userData.npc = npc })
@@ -301,10 +305,26 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
     return out.set(1, 0, 0).applyQuaternion(npc.object.quaternion).setY(0).normalize()
   }
 
+  // Short dodge direction: roughly perpendicular to the course, on a random
+  // side, with jitter so it does not read as a scripted shuffle. Used to
+  // escape a collider the NPC has been stuck against for over a second.
+  function dodgeDir(npc, cx, cz) {
+    const side = Math.random() < 0.5 ? 1 : -1
+    const px = -cz * side
+    const pz = cx * side
+    const a = Math.atan2(pz, px) + (Math.random() - 0.5) * 1.2
+    npc.maneuverDir = { x: Math.cos(a), z: Math.sin(a) }
+  }
+
   function pickGoal(npc) {
     const leader = npc.group.members[0]
     const near = (leader !== npc && leader.goal) ? leader.goal : npc.position
     npc.goal = randomGoal(near)
+    // Fresh goal: clear any in-flight dodge so we head straight for the spot.
+    npc.blockedTime = 0
+    npc.maneuverUntil = 0
+    npc.maneuverDir = null
+    npc.maneuverRepickUntil = 0
   }
 
   function update(dt, time) {
@@ -367,10 +387,17 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
         if (move.lengthSq() > 1e-6) {
           move.y = 0
           move.normalize()
-          const nx = npc.position.x + move.x * npc.speed * dt
-          const nz = npc.position.z + move.z * npc.speed * dt
+          // Steer along the computed course, unless we are in the middle of
+          // dodging a collision we have been stuck against for a while.
+          let mx = move.x, mz = move.z
+          const maneuvering = npc.maneuverUntil > time
+          if (maneuvering) { mx = npc.maneuverDir.x; mz = npc.maneuverDir.z }
+          const ox = npc.position.x, oz = npc.position.z
+          const want = npc.speed * dt
+          const nx = ox + mx * want
+          const nz = oz + mz * want
           const hit = player.slideXZ
-            ? player.slideXZ(npc.position.x, npc.position.z, nx, nz, RADIUS, npc)
+            ? player.slideXZ(ox, oz, nx, nz, RADIUS, npc)
             : player.resolveXZ(nx, nz, RADIUS, npc)
           // player circle (player is not a mover)
           let hx = hit.x, hz = hit.z
@@ -382,10 +409,30 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
             hx += dx * f
             hz += dz * f
           }
+          const moved = Math.hypot(hx - ox, hz - oz)
           npc.position.x = hx
           npc.position.z = hz
-          moving = Math.hypot(move.x, move.z) > 0.05
-          _steer.copy(move)
+          moving = Math.hypot(mx, mz) > 0.05
+          _steer.set(mx, 0, mz)
+
+          // Wanted to move but barely did: pressed against a collider. Track
+          // how long that persists; after 1 s dodge sideways for a moment,
+          // then resume the course.
+          const blocked = want > 1e-4 && moved < want * 0.3
+          if (blocked) {
+            npc.blockedTime += dt
+            if (maneuvering && npc.maneuverRepickUntil <= time) {
+              dodgeDir(npc, move.x, move.z)
+              npc.maneuverRepickUntil = time + 0.3
+            } else if (!maneuvering && npc.blockedTime > 1.0) {
+              npc.maneuverUntil = time + 0.6 + Math.random() * 0.6
+              dodgeDir(npc, move.x, move.z)
+              npc.maneuverRepickUntil = time
+              npc.blockedTime = 0
+            }
+          } else {
+            npc.blockedTime = 0
+          }
         }
       }
 

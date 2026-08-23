@@ -104,6 +104,10 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
       onFloor: true,
       dropped: false,
       vel: new THREE.Vector3(),
+      blockedTime: 0,
+      maneuverUntil: 0,
+      maneuverDir: null,
+      maneuverRepickUntil: 0,
     }
     object.userData.rat = rat
     object.traverse(o => { o.userData.rat = rat })
@@ -139,17 +143,56 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     rat.object.rotation.set(0, Math.atan2(dx, dz) + Math.PI, 0)
   }
 
-  function goTo(rat, x, z, dt) {
+  // Short dodge direction: roughly perpendicular to the course, on a random
+  // side, with jitter so it does not read as a scripted shuffle. Used to
+  // escape a collision the rat has been stuck against for over a second.
+  function ratDodge(rat, cx, cz) {
+    const side = Math.random() < 0.5 ? 1 : -1
+    const px = -cz * side
+    const pz = cx * side
+    const a = Math.atan2(pz, px) + (Math.random() - 0.5) * 1.2
+    rat.maneuverDir = { x: Math.cos(a), z: Math.sin(a) }
+  }
+
+  function goTo(rat, x, z, dt, time) {
     const dx = x - rat.position.x
     const dz = z - rat.position.z
     const dist = Math.hypot(dx, dz)
     if (dist < 0.15) return dist
-    const ux = dx / dist, uz = dz / dist
-    const nx = rat.position.x + ux * rat.speed * dt
-    const nz = rat.position.z + uz * rat.speed * dt
+
+    // Course is toward (x, z); while dodging we steer a random direction.
+    const cx = dx / dist, cz = dz / dist
+    let ux = cx, uz = cz
+    const maneuvering = rat.maneuverUntil > time
+    if (maneuvering) { ux = rat.maneuverDir.x; uz = rat.maneuverDir.z }
+
+    const sx = rat.position.x, sz = rat.position.z
+    const want = rat.speed * dt
+    const nx = sx + ux * want
+    const nz = sz + uz * want
     const hit = player.resolveXZ(nx, nz, rat.radius, rat)
     rat.position.x = hit.x
     rat.position.z = hit.z
+    const moved = Math.hypot(hit.x - sx, hit.z - sz)
+
+    // Wanted to move but barely did: pressed against a collider. Track how
+    // long that persists; after 1 s dodge sideways for a moment, then resume.
+    const blocked = want > 1e-4 && moved < want * 0.3
+    if (blocked) {
+      rat.blockedTime += dt
+      if (maneuvering && rat.maneuverRepickUntil <= time) {
+        ratDodge(rat, cx, cz)
+        rat.maneuverRepickUntil = time + 0.25
+      } else if (!maneuvering && rat.blockedTime > 1.0) {
+        rat.maneuverUntil = time + 0.5 + Math.random() * 0.5
+        ratDodge(rat, cx, cz)
+        rat.maneuverRepickUntil = time
+        rat.blockedTime = 0
+      }
+    } else {
+      rat.blockedTime = 0
+    }
+
     faceMove(rat, ux, uz)
     return dist
   }
@@ -234,7 +277,7 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
 
       if (rat.stolen) {
         placeStolen(rat)
-        const d = goTo(rat, rat.hole.x, rat.hole.z, dt)
+        const d = goTo(rat, rat.hole.x, rat.hole.z, dt, time)
         if (d < HOME_DIST && rat.born > 0.4) despawn(rat)
         continue
       }
@@ -252,12 +295,12 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
 
       if (rat.targetFood && !rat.targetFood.held && !rat.targetFood.stolen) {
         const f = rat.targetFood
-        const d = goTo(rat, f.position.x, f.position.z, dt)
+        const d = goTo(rat, f.position.x, f.position.z, dt, time)
         if (d < STEAL_DIST) steal(rat, f)
       } else if (!rat.goingHome && rat.target) {
-        goTo(rat, rat.target.x, rat.target.z, dt)
+        goTo(rat, rat.target.x, rat.target.z, dt, time)
       } else {
-        const d = goTo(rat, rat.hole.x, rat.hole.z, dt)
+        const d = goTo(rat, rat.hole.x, rat.hole.z, dt, time)
         if (d < HOME_DIST && rat.born > 0.4) despawn(rat)
       }
     }

@@ -288,7 +288,9 @@ export function createFoodWorld({ scene, player }) {
         // counter, grill, or trailer bed is resting, not dropped.
         if (gy <= 0.08) item.foodBeenOnFloor = true
         if (wasAir && item.dropped) landed.push(item)
-        if (wasAir) tryLandStack(item, items)
+        // Only player-dropped items assemble burgers on landing. Box-spilled
+        // food (no `dropped` flag) just rests on the floor.
+        if (wasAir && item.dropped) tryLandStack(item, items)
       } else {
         item.onFloor = false
       }
