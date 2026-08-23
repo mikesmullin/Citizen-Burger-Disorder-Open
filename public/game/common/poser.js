@@ -83,7 +83,7 @@ export function createPoser({
   renderer,
   loader,
   getExhibits = () => [],
-  hudSelectors = ['#hud', '#look', '#cross', '#help', '#loader', '#dbgPanel', '#dbgToggle'],
+  hudSelectors = ['#hud', '#fpsHud', '#look', '#cross', '#help', '#loader', '#dbgPanel', '#dbgToggle'],
 } = {}) {
   const persp = new THREE.PerspectiveCamera(FOV, 1, 0.02, 800)
   const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.02, 800)

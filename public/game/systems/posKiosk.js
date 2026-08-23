@@ -100,80 +100,138 @@ function ensureOverlay() {
   document.body.appendChild(wrap)
 }
 
-export function createPosKiosk({ scene, player, x = 0, z = 0, onOpen, onClose } = {}) {
+export function createPosKiosk({
+  scene, player,
+  x = 0, y = 0, z = 0, yaw = 0,
+  parent = null, countertop = false, skipCollider = false,
+  onOpen, onClose,
+} = {}) {
   const object = new THREE.Group()
   object.name = 'PosKiosk'
-  object.position.set(x, 0, z)
-  scene.add(object)
+  object.position.set(x, y, z)
+  object.rotation.y = yaw
+  if (parent) parent.add(object)
+  else scene.add(object)
 
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.55, metalness: 0.2 })
   const trimMat = new THREE.MeshStandardMaterial({ color: 0x6b5a45, roughness: 0.4, metalness: 0.25 })
+  const btnMat = new THREE.MeshStandardMaterial({ color: 0x1c1814, roughness: 0.6 })
 
-  const pedestal = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.05, 0.7), bodyMat)
-  pedestal.position.y = 0.52
-  pedestal.castShadow = pedestal.receiveShadow = true
-  object.add(pedestal)
-  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.35, 0.16), bodyMat)
-  neck.position.set(0, 1.22, -0.08)
-  object.add(neck)
-  const bezel = new THREE.Mesh(new THREE.BoxGeometry(SCREEN_W + 0.1, SCREEN_H + 0.1, 0.08), trimMat)
-  bezel.position.set(0, 1.72, 0.18)
-  bezel.rotation.x = -0.18
-  object.add(bezel)
-
+  const sw = countertop ? 0.72 : SCREEN_W
+  const sh = countertop ? 0.46 : SCREEN_H
+  const tilt = countertop ? -0.22 : -0.18
   const screens = {}
-  for (const s of SCREENS) {
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(SCREEN_W, SCREEN_H),
-      new THREE.MeshBasicMaterial({ map: loadMap(s.bg) }),
+
+  if (countertop) {
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.05, 0.50), bodyMat)
+    pad.position.set(0, 0.03, 0)
+    pad.castShadow = pad.receiveShadow = true
+    object.add(pad)
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(sw + 0.08, sh + 0.08, 0.06), trimMat)
+    bezel.position.set(0, 0.38, 0.02)
+    bezel.rotation.x = tilt
+    object.add(bezel)
+    for (const s of SCREENS) {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(sw, sh),
+        new THREE.MeshBasicMaterial({ map: loadMap(s.bg) }),
+      )
+      mesh.position.set(0, 0.38, 0.055)
+      mesh.rotation.x = tilt
+      mesh.visible = s.id === 'home'
+      mesh.userData.posScreen = s.id
+      object.add(mesh)
+      screens[s.id] = mesh
+    }
+    const titleMap = canvasTexture(512, 64, (g, w, h) => {
+      g.fillStyle = '#14110e'
+      g.fillRect(0, 0, w, h)
+      g.fillStyle = '#f0e6d4'
+      g.font = '700 36px ui-sans-serif, system-ui, sans-serif'
+      g.textAlign = 'center'
+      g.textBaseline = 'middle'
+      g.fillText('ORDER COMPUTER', w / 2, h / 2 + 2)
+    })
+    const title = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.72, 0.09),
+      new THREE.MeshBasicMaterial({ map: titleMap }),
     )
-    mesh.position.set(0, 1.72, 0.23)
-    mesh.rotation.x = -0.18
-    mesh.visible = s.id === 'home'
-    mesh.userData.posScreen = s.id
-    object.add(mesh)
-    screens[s.id] = mesh
+    title.position.set(0, 0.66, 0.01)
+    object.add(title)
+    BUTTONS.forEach((b, i) => {
+      const bx = -0.32 + i * 0.16
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.13, 0.13),
+        new THREE.MeshBasicMaterial({ map: loadMap(b.file), transparent: true }),
+      )
+      mesh.position.set(bx, 0.09, 0.20)
+      mesh.userData.posButton = b
+      object.add(mesh)
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.03), btnMat)
+      plate.position.set(bx, 0.085, 0.175)
+      plate.userData.posButton = b
+      object.add(plate)
+    })
+  } else {
+    const pedestal = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.05, 0.7), bodyMat)
+    pedestal.position.y = 0.52
+    pedestal.castShadow = pedestal.receiveShadow = true
+    object.add(pedestal)
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.35, 0.16), bodyMat)
+    neck.position.set(0, 1.22, -0.08)
+    object.add(neck)
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(sw + 0.1, sh + 0.1, 0.08), trimMat)
+    bezel.position.set(0, 1.72, 0.18)
+    bezel.rotation.x = tilt
+    object.add(bezel)
+    for (const s of SCREENS) {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(sw, sh),
+        new THREE.MeshBasicMaterial({ map: loadMap(s.bg) }),
+      )
+      mesh.position.set(0, 1.72, 0.23)
+      mesh.rotation.x = tilt
+      mesh.visible = s.id === 'home'
+      mesh.userData.posScreen = s.id
+      object.add(mesh)
+      screens[s.id] = mesh
+    }
+    const titleMap = canvasTexture(768, 96, (g, w, h) => {
+      g.fillStyle = '#14110e'
+      g.fillRect(0, 0, w, h)
+      g.fillStyle = '#f0e6d4'
+      g.font = '700 44px ui-sans-serif, system-ui, sans-serif'
+      g.textAlign = 'center'
+      g.fillText('ORDER COMPUTER', w / 2, 62)
+    })
+    const title = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.4, 0.18),
+      new THREE.MeshBasicMaterial({ map: titleMap }),
+    )
+    title.position.set(0, 2.28, 0.12)
+    object.add(title)
+    BUTTONS.forEach((b, i) => {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.22, 0.22),
+        new THREE.MeshBasicMaterial({ map: loadMap(b.file), transparent: true }),
+      )
+      mesh.position.set(-0.48 + i * 0.24, 1.18, 0.38)
+      mesh.userData.posButton = b
+      object.add(mesh)
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.04), btnMat)
+      plate.position.copy(mesh.position)
+      plate.position.z -= 0.025
+      plate.userData.posButton = b
+      object.add(plate)
+    })
   }
 
-  const titleMap = canvasTexture(768, 96, (g, w, h) => {
-    g.fillStyle = '#14110e'
-    g.fillRect(0, 0, w, h)
-    g.fillStyle = '#f0e6d4'
-    g.font = '700 44px ui-sans-serif, system-ui, sans-serif'
-    g.textAlign = 'center'
-    g.fillText('ORDER COMPUTER', w / 2, 62)
-  })
-  const title = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.4, 0.18),
-    new THREE.MeshBasicMaterial({ map: titleMap }),
-  )
-  title.position.set(0, 2.28, 0.12)
-  object.add(title)
-
-  const btns = []
-  BUTTONS.forEach((b, i) => {
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.22, 0.22),
-      new THREE.MeshBasicMaterial({ map: loadMap(b.file), transparent: true }),
+  if (!skipCollider) {
+    player.addCollider(
+      { x: x - 0.7, z: z - 0.5 },
+      { x: x + 0.7, z: z + 0.5 },
     )
-    mesh.position.set(-0.48 + i * 0.24, 1.18, 0.38)
-    mesh.userData.posButton = b
-    object.add(mesh)
-    const plate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.24, 0.24, 0.04),
-      new THREE.MeshStandardMaterial({ color: 0x1c1814, roughness: 0.6 }),
-    )
-    plate.position.copy(mesh.position)
-    plate.position.z -= 0.025
-    plate.userData.posButton = b
-    object.add(plate)
-    btns.push({ spec: b, mesh, plate })
-  })
-
-  player.addCollider(
-    { x: x - 0.7, z: z - 0.5 },
-    { x: x + 0.7, z: z + 0.5 },
-  )
+  }
 
   let screen = 'home'
   let open = false
@@ -270,10 +328,16 @@ export function createPosKiosk({ scene, player, x = 0, z = 0, onOpen, onClose } 
   }
 
   function viewSpot() {
-    return {
-      stand: { x, z: z + 2.2 },
-      look: { x, y: 1.55, z },
-    }
+    object.updateMatrixWorld(true)
+    const look = new THREE.Vector3()
+    object.getWorldPosition(look)
+    look.y += countertop ? 0.42 : 1.55
+    const stand = look.clone()
+    const off = new THREE.Vector3(0, 0, countertop ? 1.35 : 2.2)
+    off.applyQuaternion(object.getWorldQuaternion(new THREE.Quaternion()))
+    stand.add(off)
+    stand.y = 0
+    return { stand, look }
   }
 
   addEventListener('keydown', e => {
@@ -283,6 +347,8 @@ export function createPosKiosk({ scene, player, x = 0, z = 0, onOpen, onClose } 
   return {
     object, tryPress, lookLabel, viewSpot, show, open: openTerminal, close,
     get isOpen() { return open },
-    width: 1.4, depth: 1.1, height: 2.3,
+    width: countertop ? 0.9 : 1.4,
+    depth: countertop ? 0.55 : 1.1,
+    height: countertop ? 0.7 : 2.3,
   }
 }

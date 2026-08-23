@@ -40,7 +40,7 @@ does not.
 !!window.__museum && document.getElementById('loader')?.dataset?.ready === '1'
 ```
 
-Then dismiss the click overlay if you are not a human with a mouse:
+Then enable the player if you are not a human with a mouse:
 
 ```js
 __museum.enter()   // pointer lock may fail without a user gesture; WASD still works
@@ -206,7 +206,7 @@ Set at the end of boot.
 {
   scene, camera, renderer, player,
   exhibits, crowd, foodWorld, hands, rats, demoPlayers, soundboard, delivery,
-  kitchen, teleport, enter, pause,
+  kitchen, front, world, teleport, enter, pause,
   dbg, pose,
 }
 ```
@@ -216,7 +216,8 @@ Set at the end of boot.
 | `__museum.teleport('Spatula')` | stand in front of that pedestal and look at it |
 | `__museum.teleport('Truck')` | stand on the aisle in front of the delivery ramp |
 | `__museum.teleport('Kitchen')` | stand in the galley entrance. Also `'Range'`, `'Sink'`, `'Counter'`, `'Orders'` |
-| `__museum.enter()` | hide loader, enable player, request pointer lock |
+| `__museum.teleport('Front')` | stand on the road looking at the double door. Also `'Street'`, `'Door'`, `'Queue'`, `'Checkout'`, `'Staff'`, `'Register'`, `'Window'`, `'Pass'`, `'Back'`, `'Seat1'`…`'Seat4'` |
+| `__museum.enter()` | enable player, request pointer lock (click on the canvas does this too) |
 | `__museum.pause()` | release pointer lock only — sim keeps running |
 
 Useful live objects (not JSON-serializable — don't return them from
@@ -370,7 +371,47 @@ side or back). Scale gun (Digit1) and transform gun (Digit2) both pick the
 badge; transform-gun X/Y/Z lock parent-local axes, then LMB-drag moves it
 and `console.log`s `tag.position.set(...)` / `tag.scale.set(...)`.
 
-### 7. Screenshot a gameplay moment
+### 7. Front of house (customers, orders, serve, tips)
+
+The booth is ECS. Hall NPCs in `dbg.state().npcs` are the wander crowd;
+diners are `dbg.state().front`.
+
+```js
+dbg.freeze()
+dbg.teleport('Front')
+dbg.state().front
+// { npcs: [{ eid, want, anger, desiredFood, groupId, pos }],
+//   orders, register: { money }, tips: n, queue }
+
+dbg.teleport('Street')
+if (!dbg.state().front.npcs.length) __museum.front.spawnNow(2)
+dbg.step(180)                 // leader should approach door / queue
+
+dbg.teleport('Queue')
+__museum.front.confirm(['Citizen', 'Citizen'])
+dbg.step(120)
+dbg.state().front.npcs        // want: 'waitFood', seats assigned
+dbg.state().front.orders      // hanging Citizen ticket
+
+dbg.teleport('Seat1')
+__museum.front.dropPlated('Seat1', 'Citizen')
+dbg.step(2)
+dbg.state().front.npcs        // want: 'eat'
+dbg.state().front.tips        // > 0
+dbg.teleport('Register')
+// grab a tip, drop on the till — or wait if one lands close
+dbg.step(30)
+dbg.state().front.register.money
+```
+
+`__museum.front.confirm(items)` is the POS shortcut (skips the number-stand
+throw). `__museum.front.dropPlated('Seat1', 'Citizen')` builds a complete
+plated burger on that mat so the serve path is dbg-drivable.
+
+Wait without food: `dbg.step(60 * 90)` — anger hits 100, they `leave`.
+After a serve, chew is ~4 s (`dbg.step(240)`), then they walk out.
+
+### 8. Screenshot a gameplay moment
 
 ```js
 dbg.freeze()
@@ -383,7 +424,7 @@ dbg.unfreeze()
 Eval returns JSON immediately; the screenshot tool is a second round
 trip. Freeze covers that gap.
 
-### 8. After a code change
+### 9. After a code change
 
 Reload the tab (`museum.html`), wait for `__museum`, emulate viewport,
 then re-run the same `state()` / `pose.view()` pair. Do not keep a

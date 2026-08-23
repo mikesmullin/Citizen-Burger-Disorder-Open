@@ -151,6 +151,7 @@ export function createFirstPersonPlayer({
     }
     for (const m of movers) {
       if (m === skip || m.held) continue
+      if (skip && (m.position === skip.position || (skip.eid && m.eid === skip.eid))) continue
       const mx = m.position.x, mz = m.position.z
       const minR = r + m.radius
       let dx = px - mx, dz = pz - mz

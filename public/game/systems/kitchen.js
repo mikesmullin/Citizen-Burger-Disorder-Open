@@ -101,7 +101,15 @@ async function makeOrderScreen() {
   }))
   const W = 1024
   const H = 640
-  const map = canvasTexture(W, H, (g) => {
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const map = new THREE.CanvasTexture(canvas)
+  map.colorSpace = THREE.SRGBColorSpace
+  map.anisotropy = 4
+
+  function paint(columns) {
+    const g = canvas.getContext('2d')
     g.fillStyle = '#111111'
     g.fillRect(0, 0, W, H)
     g.fillStyle = '#f7f7f4'
@@ -129,7 +137,7 @@ async function makeOrderScreen() {
       g.textBaseline = 'middle'
       g.fillText(String(c + 1), x + colW / 2, 10 + headerH / 2)
 
-      const tickets = SAMPLE_TICKETS[c] || []
+      const tickets = columns[c] || []
       const slots = c === 3 ? 4 : 2
       const slotH = bodyH / slots
       tickets.forEach((name, i) => {
@@ -157,8 +165,11 @@ async function makeOrderScreen() {
     g.textBaseline = 'middle'
     g.fillText('ORDERS', 10 + half / 2, H - 10 - footerH / 2)
     g.fillText('DELIVERY', 10 + half + half / 2, H - 10 - footerH / 2)
-  })
-  return map
+    map.needsUpdate = true
+  }
+
+  paint(SAMPLE_TICKETS)
+  return { map, paint }
 }
 
 export async function createKitchen({
@@ -296,7 +307,8 @@ export async function createKitchen({
   object.add(rangeLabel)
 
   // —— Order board: top-left corner, 45° yaw, pitched down so you look up at it ——
-  const orderMap = await makeOrderScreen()
+  const orderBoard = await makeOrderScreen()
+  const orderMap = orderBoard.map
   const order = new THREE.Group()
   order.name = 'OrderBoard'
   // Pulled toward the aisle (+Z / +X) so the 45° corners clear the left wall and partition.
@@ -651,8 +663,12 @@ export async function createKitchen({
     return ''
   }
 
+  function setTickets(columns) {
+    orderBoard.paint(columns)
+  }
+
   return {
-    object, update, viewSpot, lookLabel, stations,
+    object, update, viewSpot, lookLabel, stations, setTickets,
     width: BOOTH_W, depth: BOOTH_D, height: BOOTH_H,
     counterY: COUNTER_Y, rangeY: RANGE_Y,
     grillPlat, counterPlat, dryPlat, basinPlat, boardPlat,

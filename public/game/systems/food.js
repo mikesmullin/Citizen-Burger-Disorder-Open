@@ -26,7 +26,7 @@ export function isTool(type) {
 
 export function isFood(type) {
   return type && type !== 'other' && type !== 'plate' && type !== 'tip' && type !== 'box'
-    && type !== 'fire' && !isTool(type)
+    && type !== 'fire' && type !== 'numberStand' && !isTool(type)
 }
 
 // Pedestal copies you can grab. Plate / tip / box are items, not edible food.
@@ -40,6 +40,9 @@ export function inferPickup(slug = '', label = '') {
   if (food !== 'other') return food
   if (s.includes('plate')) return 'plate'
   if (s.includes('tip')) return 'tip'
+  if (s.includes('numberstand') || s.includes('number-stand') || s.includes('number stand')) {
+    return 'numberStand'
+  }
   if (s.includes('boxopen')) return null
   if (s.includes('box')) return 'box'
   return null
@@ -64,6 +67,7 @@ export const FOOD_SIZE_BY_SLUG = {
   'items/Plate': 0.714,
   'items/PlateDirty': 0.714,
   'items/Tip': 0.511,
+  'items/NumberStand': 1.011,
   'items/Knife': 0.888,
   'items/Spatula': 1.021,
   'items/FireExtinguisher': 0.771,

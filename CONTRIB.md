@@ -146,8 +146,11 @@ public/
     common/timeTravel.js   freeze / step clock
     common/poser.js        white-studio model views
     common/harness.js      window.dbg + window.pose
+    common/ecs.js          bitmask world (Game9-shaped, no archetypes)
     entities/              spawned stand-ins (demoPlayers)
-    behaviors/  components/  gamedata/  net/  shaders/   reserved
+    components/            Cmp* factories (data only)
+    gamedata/              prefabs, menu recipes, brains
+    behaviors/  net/  shaders/   reserved
   assets/
     entities/              prefab JSON, grouped by kind (see below)
       heroes/  mobs/  items/  tiles/  ui/
@@ -308,7 +311,12 @@ Do not introduce a bundler or a Unity WebGL build to get there.
   no-op until `X`/`Y`/`Z` has been tapped.
 - **Pages:** `public/` is the site root. Keep asset URLs relative
   (`./assets/…`, `./game/…`). `public/.nojekyll` must stay.
-- **Scope:** grab/throw feel, cooking, orders, fire, and netcode are the
+- **Front booth:** `public/game/systems/front.js` is the walk-in
+  street / door / queue / POS / dining exhibit. New diners go through
+  `spawnPrefab` into `common/ecs.js`; hall `createCrowd` stays. Confirm
+  an order with `__museum.front.confirm(['Citizen'])`. Do not grow
+  `npc.js` into the restaurant loop.
+- **Scope:** grab/throw feel, cooking, fire, and netcode are the
   remaining hard systems. Village flocking, VR/Oculus, drawing/notepad,
   day/night are optional and not load-bearing.
 

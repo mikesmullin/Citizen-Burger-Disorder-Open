@@ -15,10 +15,12 @@ import { createDelivery, makeOpenNet, BOX_SIZE, prepareClosedBox } from '../syst
 import { createScaler } from '../systems/scaler.js'
 import { createSwatches, BOOTH_D as TEXTURE_BOOTH_D, BOOTH_W as TEXTURE_BOOTH_W } from '../systems/swatches.js'
 import { createPosters } from '../systems/posters.js'
-import { createPosKiosk } from '../systems/posKiosk.js'
 import { createKitchen } from '../systems/kitchen.js'
+import { createFront } from '../systems/front.js'
+import { createWorld } from '../common/ecs.js'
 import { createFireWatch } from '../systems/fire.js'
 import { installHarness } from '../common/harness.js'
+import { createFpsOverlay } from '../common/fpsOverlay.js'
 
 const FEATURED = [
   { slug: 'mobs/Rat', caption: 'Rat' },
@@ -35,6 +37,7 @@ const SKIP_EXHIBITS = new Set([
   'items/PointLight',
   'items/LettucePart',   // nested inside LettuceHead
   'items/MonitorPickup', // same slab as Monitor, pickup-sized
+  'items/NumberStand',   // live on the front checkout, next to the order computer
   'ui/BunBottom',
   'ui/BunTop',
   'ui/Cheese',
@@ -228,6 +231,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 1.2
 document.body.appendChild(renderer.domElement)
+const fpsOverlay = createFpsOverlay()
 
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x2a261f)
@@ -250,6 +254,9 @@ let swatches = null
 let posters = null
 let posKiosk = null
 let kitchen = null
+let front = null
+let world = null
+let npcProto = null
 let fires = null
 const fireSprites = []
 const facePlayer = []
@@ -698,23 +705,26 @@ async function boot() {
   const FLOOR = {
     people: { x: 0, z: 2.8, yaw: 0, cols: 3, spacing: 4.2 },
     line: { x: -12.2, z: -3.8, yaw: Math.PI / 4, cols: 6, spacing: 3.3 },
-    ingredients: { x: 14.5, z: -7, yaw: -Math.PI / 4, cols: 6, spacing: 2.95, rowZ: 3.3 },
+    ingredients: { x: 12, z: 8, yaw: -Math.PI / 4, cols: 6, spacing: 3.8, rowZ: 3.8 },
     chaos: { x: -17, z: -26, yaw: Math.PI / 4, cols: 2, spacing: 3.8 },
-    service: { x: 16.5, z: -26, yaw: -Math.PI / 4, cols: 5, spacing: 3.35 },
+    service: { x: 4, z: -29, yaw: 0, cols: 3, spacing: 4.0, rowZ: 4.2 },
     storage: { x: -12, z: -34, yaw: Math.PI / 5, cols: 2, spacing: 4.0 },
-    back: { x: 13, z: -34, yaw: -Math.PI / 6, cols: 4, spacing: 3.5 },
+    back: { x: 16, z: -31, yaw: 0, cols: 2, spacing: 4.5, rowZ: 4.6 },
   }
   const BOOTHS = {
     kitchen: { x: 0, z: -13 },
+    front: { x: 22, z: -13 },
     textures: { x: -23, z: -14 },
     audio: { x: -16, z: -40 },
-    posters: { x: 16, z: -40 },
-    pos: { x: 7, z: -40 },
+    posters: {
+      x: -23,
+      z: -14 + TEXTURE_BOOTH_D / 2 + 2.4,
+    },
     delivery: { x: 0, z: -52 },
   }
 
   const minx = -Math.max(34, TEXTURE_BOOTH_W / 2 + 24)
-  const maxx = 28
+  const maxx = 34
   const minz = -64
   const maxz = 16
   buildRoom(minx, maxx, minz, maxz, 9.5)
@@ -810,6 +820,7 @@ async function boot() {
   try {
     const npc = await loader.load('mobs/Npc')
     hideTriggers(npc.root)
+    npcProto = npc.root
     crowd = createCrowd({ scene, player, proto: npc.root, exhibits, count: 12 })
   } catch (err) {
     console.warn('[museum] NPC crowd skipped', err)
@@ -839,7 +850,6 @@ async function boot() {
 
   try {
     setStatus('Loading poster kiosk…')
-    placeBannerAt('Posters', BOOTHS.posters.x, BOOTHS.posters.z, -Math.PI / 6)
     posters = createPosters({
       scene, player, foodWorld,
       x: BOOTHS.posters.x, z: BOOTHS.posters.z,
@@ -848,35 +858,13 @@ async function boot() {
       slug: 'ui/Posters',
       label: 'Posters',
       caption: 'Posters',
-      group: 'ui',
+      group: 'textures',
       x: BOOTHS.posters.x,
       z: BOOTHS.posters.z,
       size: { x: posters.width, y: posters.height, z: posters.depth },
     })
   } catch (err) {
     console.warn('[museum] posters skipped', err)
-  }
-
-  try {
-    setStatus('Loading order computer…')
-    placeBannerAt('POS', BOOTHS.pos.x, BOOTHS.pos.z, Math.PI / 8)
-    posKiosk = createPosKiosk({
-      scene, player,
-      x: BOOTHS.pos.x, z: BOOTHS.pos.z,
-      onOpen: () => { player.unlock() },
-      onClose: () => {},
-    })
-    exhibits.push({
-      slug: 'ui/POS',
-      label: 'POS',
-      caption: 'POS',
-      group: 'ui',
-      x: BOOTHS.pos.x,
-      z: BOOTHS.pos.z,
-      size: { x: posKiosk.width, y: posKiosk.height, z: posKiosk.depth },
-    })
-  } catch (err) {
-    console.warn('[museum] POS kiosk skipped', err)
   }
 
   let cheeseProto = foodProtos['items/Cheese']
@@ -903,6 +891,7 @@ async function boot() {
     'items/LettuceHead', 'items/Lettuce', 'items/LettucePart',
     'items/Cheese', 'items/Tomato', 'items/Plate',
     'items/Knife', 'items/Spatula', 'items/FireExtinguisher', 'items/Fire',
+    'items/Tip', 'items/NumberStand',
   ]
   for (const slug of needFood) {
     if (foodProtos[slug]) continue
@@ -951,6 +940,53 @@ async function boot() {
     }
   } catch (err) {
     console.warn('[museum] kitchen skipped', err)
+  }
+
+  try {
+    setStatus('Loading front of house…')
+    world = createWorld()
+    front = await createFront({
+      scene, player, foodWorld, foodProtos,
+      npcProto, world, kitchen,
+      onPosOpen: () => { player.unlock() },
+      x: BOOTHS.front.x, z: BOOTHS.front.z, facingY: 0,
+    })
+    posKiosk = front.posKiosk || null
+    exhibits.push({
+      slug: 'front/Front',
+      label: 'Front',
+      caption: 'Front',
+      group: 'front',
+      x: BOOTHS.front.x,
+      z: BOOTHS.front.z,
+      size: { x: front.width, y: front.height, z: front.depth },
+    })
+    const frontSpots = [
+      ['front/Street', 'Street'],
+      ['front/Door', 'Door'],
+      ['front/Queue', 'Queue'],
+      ['front/POS', 'Checkout'],
+      ['front/Register', 'Register'],
+      ['front/NumberStand', 'NumberStand'],
+      ['front/Staff', 'Staff'],
+      ['front/Window', 'Window'],
+      ['front/Pass', 'Pass'],
+      ['front/Back', 'Back'],
+      ['front/Seat1', 'Seat1'],
+      ['front/Seat2', 'Seat2'],
+      ['front/Seat3', 'Seat3'],
+      ['front/Seat4', 'Seat4'],
+    ]
+    for (const [slug, caption] of frontSpots) {
+      const v = front.viewSpot(caption)
+      exhibits.push({
+        slug, label: caption, caption, group: 'front',
+        x: v.look.x, z: v.look.z,
+        size: { x: 2, y: 2, z: 2 },
+      })
+    }
+  } catch (err) {
+    console.warn('[museum] front of house skipped', err)
   }
 
   try {
@@ -1101,19 +1137,14 @@ async function boot() {
   }
 
   player.spawn(0, 0, 11, 0)
-  $('s-exhibits').textContent = String(exhibits.length)
-  $('s-visitors').textContent = String(crowd ? crowd.npcs.length : 0)
   setStatus('')
   $('loader').dataset.ready = '1'
-  $('loader').querySelector('h1').textContent = 'Asset museum'
-  $('loader').querySelector('.sub').textContent =
-    `${exhibits.length} exhibits  ·  click to walk`
-  $('hint').textContent = 'click to capture mouse'
+  $('loader').style.display = 'none'
 
   window.__museum = {
     scene, camera: player.camera, renderer, player, exhibits, crowd,
     foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler, swatches,
-    posters, posKiosk, kitchen, fires,
+    posters, posKiosk, kitchen, front, world, fires, fpsOverlay,
     teleport, enter, pause,
     dbg: harness.dbg,
     pose: harness.pose,
@@ -1124,6 +1155,7 @@ async function boot() {
 }
 
 let frames = 0, lastFps = performance.now()
+let lastRaf = 0
 let playing = false
 let lookName = ''
 
@@ -1161,6 +1193,13 @@ function teleport(slug) {
   if (kitchen && /^(Kitchen|Range|Grill|Cooktop|Sink|Dish|Counter|Prep|Orders|Board|kitchen\/)/i.test(slug)) {
     const name = String(slug).split('/').pop()
     const v = kitchen.viewSpot(name)
+    player.spawn(v.stand.x, 0, v.stand.z, 0)
+    player.lookAt(v.look.x, v.look.y, v.look.z)
+    return v.label
+  }
+  if (front && /^(Front|Street|Door|Queue|Register|Checkout|Staff|Window|Pass|Back|NumberStand|Seat\d|Table\d|front\/)/i.test(slug)) {
+    const name = String(slug).split('/').pop()
+    const v = front.viewSpot(name)
     player.spawn(v.stand.x, 0, v.stand.z, 0)
     player.lookAt(v.look.x, v.look.y, v.look.z)
     return v.label
@@ -1205,6 +1244,7 @@ function dumpExtras() {
     scales: scaler.dump(),
     badges: demoPlayers?.badgeDump?.() || [],
     armScale: hands?.armScale ?? 1,
+    front: front?.dump() || null,
   }
 }
 
@@ -1214,6 +1254,7 @@ const harness = installHarness({
   teleport,
   dumpExtras,
   extraDbg: { scaler },
+  hudSelectors: ['#hud', '#fpsHud', '#look', '#cross', '#help', '#loader', '#dbgPanel', '#dbgToggle'],
 })
 
 function tick(dt) {
@@ -1225,18 +1266,23 @@ function tick(dt) {
       if (!handsUp && posters) posters.tryTurn()
       soundboard.tryPress()
       if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
+      if (front && !front.overlayOpen) front.tryPress()
     }
   } else if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
     const handsUp = player.leftHand || player.rightHand
     if (!handsUp && posters) posters.tryTurn()
     if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
+    if (front && !front.overlayOpen) front.tryPress()
   }
-  if (hands && !posKiosk?.isOpen) hands.update(dt, { grab: scaler.tool === 'hand', right: scaler.tool === 'hand' })
+  if (hands && !posKiosk?.isOpen && !front?.overlayOpen) {
+    hands.update(dt, { grab: scaler.tool === 'hand', right: scaler.tool === 'hand' })
+  }
   if (foodWorld) foodWorld.update(dt, harness.time.T)
   if (rats) rats.update(dt, harness.time.T)
   if (crowd) crowd.update(dt, harness.time.T)
   if (demoPlayers) demoPlayers.update(dt)
   if (kitchen) kitchen.update(dt)
+  if (front) front.update(dt, harness.time.T)
   if (fires) fires.update(dt)
   if (fireSprites.length || facePlayer.length) updateFireSprites(dt)
 }
@@ -1271,11 +1317,16 @@ function currentLook() {
   if (posterLook) return posterLook
   const posLook = posKiosk?.lookLabel()
   if (posLook) return posLook
+  const frontLook = front?.lookLabel()
+  if (frontLook) return frontLook
   raycaster.setFromCamera(ndc, player.camera)
   const hits = raycaster.intersectObjects(scene.children, true)
   for (const h of hits) {
     const npc = h.object.userData.npc
     if (npc) return npc.notice ? `${npc.skin} · looking at you` : `${npc.skin} · ${npc.want}`
+    if (h.object.userData.frontNpc) {
+      return (h.object.userData.want || 'customer')
+    }
     if (h.object.userData.demoPlayer) {
       const d = h.object.userData.demoPlayer
       return d.spec.skin ? d.spec.name + ' · ' + d.spec.skin : d.spec.name
@@ -1300,6 +1351,11 @@ function currentLook() {
 }
 
 renderer.setAnimationLoop(() => {
+  const now = performance.now()
+  const dtMs = lastRaf ? now - lastRaf : 16.7
+  lastRaf = now
+  fpsOverlay.sample(Math.max(1, dtMs))
+
   if (!harness.poser.active) {
     const dt = harness.time.advance()
     if (dt > 0) tick(dt)
@@ -1319,7 +1375,6 @@ renderer.setAnimationLoop(() => {
   $('s-speed').textContent = (k.has('ShiftLeft') || k.has('ShiftRight'))
     ? 'run' : ((k.has('ControlLeft') || k.has('ControlRight')) ? 'walk' : 'move')
   if ($('s-hold')) $('s-hold').textContent = hands?.holdingLabel() || '—'
-  if ($('s-rats')) $('s-rats').textContent = String(rats ? rats.count : 0)
   if ($('s-tool')) {
     $('s-tool').textContent = scaler.tool === 'scale'
       ? 'scale gun'
@@ -1349,6 +1404,7 @@ function enter() {
   player.enabled = true
   $('loader').style.display = 'none'
   $('hud').style.display = 'block'
+  $('fpsHud').style.display = 'flex'
   $('cross').style.display = 'block'
   $('look').style.display = 'block'
   player.requestLock(renderer.domElement)
@@ -1361,9 +1417,10 @@ function pause() {
   player.unlock()
 }
 
-$('loader').addEventListener('click', enter)
 renderer.domElement.addEventListener('click', () => {
-  if (playing && !player.locked) player.requestLock(renderer.domElement)
+  if ($('loader').dataset.ready !== '1') return
+  if (!playing) enter()
+  else if (!player.locked) player.requestLock(renderer.domElement)
 })
 addEventListener('keydown', e => {
   if (e.target && e.target.closest('input, textarea, [contenteditable]')) return

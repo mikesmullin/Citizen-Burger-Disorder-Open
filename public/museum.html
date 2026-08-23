@@ -6,7 +6,7 @@
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { height:100%; overflow:hidden; background:#1a1714; }
   body { font:13px/1.5 ui-sans-serif, system-ui, sans-serif; color:#e8dcc8; }
-  canvas { display:block; position:fixed; inset:0; z-index:0; }
+  body > canvas { display:block; position:fixed; inset:0; z-index:0; }
   #hud {
     display:none; position:fixed; z-index:2; top:14px; left:14px;
     background:#14110ee6; border:1px solid #3a322c; border-radius:8px;
@@ -16,6 +16,12 @@
             color:#9a8f80; margin-bottom:8px; font-weight:600; }
   #hud .r { display:flex; justify-content:space-between; gap:18px; }
   #hud b { color:#f0e6d4; font-weight:600; }
+  #fpsHud {
+    display:none; position:fixed; z-index:2; top:14px; right:14px;
+    align-items:center; gap:8px; pointer-events:none;
+  }
+  #fpsHud canvas { display:block; position:static; width:120px; height:20px; }
+  #fpsHud b { color:#f0e6d4; font-weight:600; }
   #look {
     display:none; position:fixed; z-index:2; left:50%; bottom:48px;
     transform:translateX(-50%); pointer-events:none;
@@ -37,32 +43,28 @@
   }
   #help a { color:#c4a574; pointer-events:auto; }
   #loader {
-    position:fixed; inset:0; z-index:5; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; gap:10px;
-    background:#1a1714f2; cursor:pointer;
+    position:fixed; left:50%; top:46%; transform:translate(-50%,-50%);
+    z-index:5; pointer-events:none; background:none; text-align:center;
   }
-  #loader h1 { font-size:28px; font-weight:700; letter-spacing:.04em; }
-  #loader .sub { color:#9a8f80; }
-  #load-msg { color:#6b5a45; min-height:1.4em; font-variant-numeric:tabular-nums; }
-  #hint { margin-top:18px; color:#c4a574; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
+  #load-msg { color:#c4a574; min-height:1.4em; font-variant-numeric:tabular-nums;
+              letter-spacing:.04em; text-shadow:0 1px 8px #000a; }
 </style>
 
 <div id="loader">
-  <h1>Asset museum</h1>
-  <div class="sub">Kitchen, prep, and converted prefabs</div>
   <div id="load-msg">Loading…</div>
-  <div id="hint">please wait</div>
 </div>
 <div id="hud">
   <h1>Asset museum</h1>
-  <div class="r"><span>exhibits</span><b id="s-exhibits">-</b></div>
-  <div class="r"><span>NPCs</span><b id="s-visitors">-</b></div>
-  <div class="r"><span>rats</span><b id="s-rats">-</b></div>
   <div class="r"><span>holding</span><b id="s-hold">-</b></div>
   <div class="r"><span>tool</span><b id="s-tool">hand</b></div>
   <div class="r"><span>gait</span><b id="s-speed">-</b></div>
   <div class="r"><span>pos</span><b id="s-pos">-</b></div>
   <div class="r"><span>fps</span><b id="s-fps">-</b></div>
+</div>
+<div id="fpsHud">
+  <span>fps</span>
+  <canvas id="fpsGraph" width="120" height="20"></canvas>
+  <b id="fpsVal">-</b>
 </div>
 <div id="look"></div>
 <div id="cross"></div>
