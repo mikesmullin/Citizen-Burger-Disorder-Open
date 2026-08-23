@@ -19,6 +19,7 @@ import { createPosters } from '../systems/posters.js'
 import { createKitchen } from '../systems/kitchen.js'
 import { createFront } from '../systems/front.js'
 import { createSwitchSet, SWITCH_Y } from '../systems/lightSwitch.js'
+import { createSkybox, SKY_FOG_DAY, SKY_FOG_DUSK, SKY_FOG_NIGHT } from '../systems/skybox.js'
 import { createWorld } from '../common/ecs.js'
 import { installHarness } from '../common/harness.js'
 import { createFpsOverlay } from '../common/fpsOverlay.js'
@@ -237,8 +238,43 @@ document.body.appendChild(renderer.domElement)
 const fpsOverlay = createFpsOverlay()
 
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x2a261f)
-scene.fog = new THREE.Fog(0x2a261f, 60, 150)
+scene.background = new THREE.Color(SKY_FOG_DAY)
+scene.fog = new THREE.Fog(SKY_FOG_DAY, 70, 170)
+
+let skybox = null
+let hallLit = null
+const _illumA = new THREE.Color()
+const _illumB = new THREE.Color()
+
+function lerp(a, b, t) {
+  return a + (b - a) * t
+}
+
+function mixIllumColor(target, nightHex, dayHex, duskHex, t, dusk) {
+  _illumA.setHex(nightHex)
+  _illumB.setHex(dayHex)
+  target.copy(_illumA).lerp(_illumB, t)
+  if (dusk > 0) target.lerp(_illumA.setHex(duskHex), dusk)
+}
+
+function applyHallIllum(t) {
+  if (!hallLit) return
+  const dusk = skybox ? skybox.dusk : 0
+  const day = hallLit.day
+  const night = hallLit.night
+  const twi = hallLit.dusk
+  hallLit.hemi.intensity = lerp(lerp(night.hemi, day.hemi, t), twi.hemi, dusk)
+  hallLit.key.intensity = lerp(lerp(night.key, day.key, t), twi.key, dusk)
+  hallLit.fill.intensity = lerp(lerp(night.fill, day.fill, t), twi.fill, dusk)
+  const pi = lerp(lerp(night.point, day.point, t), twi.point, dusk)
+  for (const p of hallLit.points) p.intensity = pi
+  mixIllumColor(hallLit.key.color, night.keyColor, day.keyColor, twi.keyColor, t, dusk)
+  mixIllumColor(hallLit.hemi.color, night.hemiSky, day.hemiSky, twi.hemiSky, t, dusk)
+  mixIllumColor(hallLit.hemi.groundColor, night.hemiGround, day.hemiGround, twi.hemiGround, t, dusk)
+  mixIllumColor(hallLit.fill.color, night.fillColor, day.fillColor, twi.fillColor, t, dusk)
+  mixIllumColor(scene.background, SKY_FOG_NIGHT, SKY_FOG_DAY, SKY_FOG_DUSK, t, dusk)
+  if (scene.fog) mixIllumColor(scene.fog.color, SKY_FOG_NIGHT, SKY_FOG_DAY, SKY_FOG_DUSK, t, dusk)
+}
 
 const loader = createUnityLoader({ base: './assets' })
 const player = createFirstPersonPlayer()
@@ -399,18 +435,13 @@ function buildRoom(minx, maxx, minz, maxz, height) {
   const cx = (minx + maxx) / 2, cz = (minz + maxz) / 2
   const floorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: tiledFloor(w, d), roughness: 0.88 })
   const wallMat  = new THREE.MeshStandardMaterial({ color: 0xcfc6b8, roughness: 0.88 })
-  const ceilMat  = new THREE.MeshBasicMaterial({ color: 0x3a3530, side: THREE.DoubleSide })
 
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), floorMat)
   floor.rotation.x = -Math.PI / 2
   floor.position.set(cx, 0, cz)
   floor.receiveShadow = true
   scene.add(floor)
-
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(w, d), ceilMat)
-  ceil.rotation.x = Math.PI / 2
-  ceil.position.set(cx, height, cz)
-  scene.add(ceil)
+  // Open to sky — the hall has no ceiling; skybox is the dome.
 
   const thick = 0.4
   const walls = [
@@ -743,29 +774,43 @@ async function boot() {
   const minz = -64
   const maxz = 16
   buildRoom(minx, maxx, minz, maxz, 9.5)
-  const hallLit = addLights(minx, maxx, minz, maxz)
-  const hallDay = {
+  skybox = createSkybox(scene, {
+    sunDir: new THREE.Vector3(10, 24, 18),
+    onDay: applyHallIllum,
+  })
+  hallLit = addLights(minx, maxx, minz, maxz)
+  hallLit.day = {
     hemi: 1.05,
     key: 1.9,
     fill: 0.45,
     point: 16,
-    bg: scene.background.getHex(),
-    fog: scene.fog.color.getHex(),
     hemiSky: 0xfff3e0,
     hemiGround: 0x3a3228,
     keyColor: 0xfff4e6,
+    fillColor: 0xb9d4ff,
+  }
+  hallLit.night = {
+    hemi: 0.15,
+    key: 0.22,
+    fill: 0.06,
+    point: 2.2,
+    hemiSky: 0x9aa8c4,
+    hemiGround: 0x1a1c22,
+    keyColor: 0x8a9bb8,
+    fillColor: 0x5a6a88,
+  }
+  hallLit.dusk = {
+    hemi: 0.52,
+    key: 0.95,
+    fill: 0.28,
+    point: 6.5,
+    hemiSky: 0xff9a68,
+    hemiGround: 0x4a2418,
+    keyColor: 0xff7a32,
+    fillColor: 0x6a48a0,
   }
   function setHallDay(day) {
-    hallLit.hemi.intensity = day ? hallDay.hemi : 0.15
-    hallLit.key.intensity = day ? hallDay.key : 0.22
-    hallLit.fill.intensity = day ? hallDay.fill : 0.06
-    const pi = day ? hallDay.point : 2.2
-    for (const p of hallLit.points) p.intensity = pi
-    hallLit.key.color.setHex(day ? hallDay.keyColor : 0x8a9bb8)
-    hallLit.hemi.color.setHex(day ? hallDay.hemiSky : 0x9aa8c4)
-    hallLit.hemi.groundColor.setHex(day ? hallDay.hemiGround : 0x1a1c22)
-    scene.background.setHex(day ? hallDay.bg : 0x1a1c22)
-    if (scene.fog) scene.fog.color.setHex(day ? hallDay.fog : 0x1a1c22)
+    if (skybox) skybox.setDay(day)
   }
 
   try {
@@ -1227,7 +1272,7 @@ async function boot() {
   $('loader').style.display = 'none'
 
   window.__museum = {
-    scene, camera: player.camera, renderer, player, exhibits, crowd,
+    scene, camera: player.camera, renderer, player, exhibits, crowd, skybox,
     foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler, swatches,
     posters, posKiosk, kitchen, front, world, fires, fpsOverlay,
     teleport, enter, pause,
@@ -1335,6 +1380,12 @@ function dumpExtras() {
     badges: demoPlayers?.badgeDump?.() || [],
     armScale: hands?.armScale ?? 1,
     front: front?.dump() || null,
+    sky: skybox ? {
+      ...skybox.dump(),
+      hemi: hallLit ? +hallLit.hemi.intensity.toFixed(3) : 0,
+      key: hallLit ? +hallLit.key.intensity.toFixed(3) : 0,
+      fill: hallLit ? +hallLit.fill.intensity.toFixed(3) : 0,
+    } : null,
   }
 }
 
@@ -1380,6 +1431,7 @@ function tick(dt) {
   if (exhibitSwitches) exhibitSwitches.update(dt)
   if (fires) fires.update(dt)
   if (fireSprites.length || facePlayer.length) updateFireSprites(dt)
+  if (skybox) skybox.update(dt)
 }
 
 function fitRenderer() {
