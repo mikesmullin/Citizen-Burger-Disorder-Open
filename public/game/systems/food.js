@@ -211,7 +211,7 @@ export function createFoodWorld({ scene, player }) {
     scene.add(object)
     const item = {
       object, type, slug: slug || null,
-      kind: isTool(type) ? 'tool' : (type === 'plate' ? 'plate' : (type === 'fire' ? 'fire' : 'food')),
+      kind: isTool(type) ? 'tool' : (type === 'plate' ? 'plate' : (type === 'fire' ? 'fire' : (type === 'box' ? 'box' : 'food'))),
       position: object.position,
       radius: Math.max(0.22, (size?.x || height) * 0.45),
       height,

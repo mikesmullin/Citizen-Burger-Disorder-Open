@@ -11,7 +11,7 @@ import { createHands } from '../systems/hands.js'
 import { createRatDen, RAT_SIZE } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
 import { createSoundboard } from '../systems/soundboard.js'
-import { createDelivery, makeOpenNet, BOX_SIZE } from '../systems/delivery.js'
+import { createDelivery, makeOpenNet, BOX_SIZE, prepareClosedBox } from '../systems/delivery.js'
 import { createScaler } from '../systems/scaler.js'
 import { createSwatches, BOOTH_D as TEXTURE_BOOTH_D, BOOTH_W as TEXTURE_BOOTH_W } from '../systems/swatches.js'
 import { createPosters } from '../systems/posters.js'
@@ -21,16 +21,17 @@ import { createFireWatch } from '../systems/fire.js'
 import { installHarness } from '../common/harness.js'
 
 const FEATURED = [
-  { slug: 'heroes/Player', caption: 'Player' },
-  { slug: 'mobs/Rat',      caption: 'Rat' },
+  { slug: 'mobs/Rat', caption: 'Rat' },
 ]
 
-// Pedestals we skip: live in the hall already (Arm, NPC), unused Kritz
+// Pedestals we skip: live in the hall already (Arm, NPC, Player lineup), unused Kritz
 // leftovers, or a light we will add natively later.
 const SKIP_EXHIBITS = new Set([
+  'heroes/Player',
   'mobs/Npc',
   'items/Notepad',
   'items/Paper',
+  'items/Pencil',
   'items/PointLight',
   'items/LettucePart',   // nested inside LettuceHead
   'items/MonitorPickup', // same slab as Monitor, pickup-sized
@@ -174,7 +175,6 @@ const EXHIBIT_LONGEST = {
   'items/NumberStand': 1.011,
   'items/Knife': 0.888,
   'items/LightSwitch': 0.437,
-  'items/Pencil': 0.524,
   'items/Fire': 0.828,
   'items/Plate': 0.714,
   'items/Cheese': FOOD_SIZE.cheese,
@@ -1003,6 +1003,10 @@ async function boot() {
       scene, player, armProto: armRoot, foodWorld, exhibits, foodProtos,
       getRats: () => rats,
       fireWatch: fires,
+      prepareBox: item => prepareClosedBox(item, {
+        scene, player, foodWorld, foodProtos,
+        boxTex: delivery?.boxTex || null,
+      }),
       spawnSwatch: spec => swatches && swatches.take(spec),
       spawnPoster: spec => posters && posters.take(spec),
     })
@@ -1020,6 +1024,18 @@ async function boot() {
         x: 0, z: 7.5, yaw: -Math.PI / 2,
       })
       demoPlayers.setScale(DEMO_ARM_SCALE)
+      const lead = demoPlayers.players[0]
+      exhibits.push({
+        slug: 'heroes/Player',
+        caption: 'Player',
+        label: 'Player',
+        group: 'heroes',
+        virtual: true,
+        x: lead.body.position.x,
+        z: lead.body.position.z,
+        display: lead.body,
+        size: { x: 1, y: 2, z: 1 },
+      })
       const demoArmsRec = {
         slug: 'heroes/DemoArm',
         caption: 'Player arms',
@@ -1027,9 +1043,9 @@ async function boot() {
         group: 'heroes',
         virtual: true,
         editMul: DEMO_ARM_MUL,
-        x: demoPlayers.players[0].body.position.x,
-        z: demoPlayers.players[0].body.position.z,
-        display: demoPlayers.players[0].left.object,
+        x: lead.body.position.x,
+        z: lead.body.position.z,
+        display: lead.left.object,
         size: { x: 1, y: 1, z: 1 },
       }
       exhibits.push(demoArmsRec)
@@ -1235,7 +1251,7 @@ function currentLook() {
     if (npc) return npc.notice ? `${npc.skin} · looking at you` : `${npc.skin} · ${npc.want}`
     if (h.object.userData.demoPlayer) {
       const d = h.object.userData.demoPlayer
-      return d.spec.name + ' · ' + d.spec.skin
+      return d.spec.skin ? d.spec.name + ' · ' + d.spec.skin : d.spec.name
     }
     if (h.object.userData.rat) {
       const rat = h.object.userData.rat

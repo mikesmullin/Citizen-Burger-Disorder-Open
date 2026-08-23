@@ -1,7 +1,8 @@
 # Scratch, Unity dumps, original source archive, screenshots, plans
 tmp/
 
-# Local reference dumps (keep public/assets/**/*.png)
+# Local Obsidian vault lives at tmp/obsidian/ (also gitignored via tmp/).
+# Keep these so a vault opened at repo root cannot leak into git.
 /*.png
 *.canvas
 .obsidian/

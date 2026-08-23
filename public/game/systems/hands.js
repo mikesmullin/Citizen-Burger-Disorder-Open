@@ -23,22 +23,32 @@ const CAM_Y = -0.48
 const CAM_Z = -0.68
 const CAM_PITCH = 18
 
-export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, getFires, fireWatch, onDrop, spawnSwatch, spawnPoster } = {}) {
+export function createHands({ scene, player, armProto, foodWorld, exhibits, foodProtos, getRats, getFires, fireWatch, prepareBox, onDrop, spawnSwatch, spawnPoster } = {}) {
   hideTriggers(armProto)
 
   function makeArm(side) {
     const object = armProto.clone(true)
     object.name = side + '-arm'
     object.visible = false
-    player.camera.add(object)
-    const sign = side === 'left' ? -1 : 1
-    object.position.set(sign * CAM_X, CAM_Y, CAM_Z)
-    object.rotation.set(THREE.MathUtils.degToRad(CAM_PITCH), 0, 0)
     object.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+    object.updateMatrixWorld(true)
+    const box = new THREE.Box3().setFromObject(object)
+    const shoulderZ = box.max.z
+    object.position.set(0, 0, -shoulderZ)
+    const pivot = new THREE.Group()
+    pivot.name = side + '-shoulder'
+    const sign = side === 'left' ? -1 : 1
+    pivot.position.set(sign * CAM_X, CAM_Y, CAM_Z)
+    pivot.add(object)
+    player.camera.add(pivot)
     const hand = object.getObjectByName('hand') || object.children[0]
+    const downX = THREE.MathUtils.degToRad(CAM_PITCH - 105)
+    pivot.rotation.x = downX
     return {
-      side, object, hand,
+      side, object, pivot, hand,
       baseScale: object.scale.clone(),
+      shoulderZ,
+      pitchX: downX,
       holding: null,
       history: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
     }
@@ -57,18 +67,17 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
   const _fwd = new THREE.Vector3()
   const _right = new THREE.Vector3()
   const _up = new THREE.Vector3(0, 1, 0)
-  const _goal = new THREE.Vector3()
   const _q = new THREE.Quaternion()
-  const _eul = new THREE.Euler(0, 0, 0, 'YXZ')
   const _world = new THREE.Vector3()
   const _camFwd = new THREE.Vector3()
-  const _hidden = new THREE.Vector3()
   let armScale = 1
 
   function setScale(mul) {
     armScale = Math.max(0.05, mul)
-    left.object.scale.copy(left.baseScale).multiplyScalar(armScale)
-    right.object.scale.copy(right.baseScale).multiplyScalar(armScale)
+    for (const arm of [left, right]) {
+      arm.object.scale.copy(arm.baseScale).multiplyScalar(armScale)
+      arm.object.position.z = -arm.shoulderZ * armScale
+    }
   }
 
   function camPitch() {
@@ -83,23 +92,20 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
     const sign = arm.side === 'left' ? -1 : 1
     const extra = armReach()
     const down = Math.max(0, -player.pitch / MAX_PITCH)
-    // Rest in the lower frame. Looking down: reach along the look ray
-    // (FirstPersonControl armExtraReach) and lift so we don't pitch through the floor.
-    _goal.set(
+    // Shoulder stays in the lower frame. Looking down: slide the pivot along
+    // the look ray (FirstPersonControl armExtraReach). Raise/lower is a
+    // pitch at this joint — not a Y translation.
+    arm.pivot.position.set(
       sign * CAM_X,
       CAM_Y + down * 0.22,
       CAM_Z - extra * 0.45,
     )
-    _hidden.set(sign * CAM_X, -2.4, -0.45)
-    const target = active ? _goal : _hidden
-    if (active && !arm.object.visible) {
-      arm.object.position.copy(_hidden)
-      arm.object.visible = true
-    }
-    arm.object.position.lerp(target, Math.min(1, ARM_POS_LERP * dt))
-    _eul.set(THREE.MathUtils.degToRad(CAM_PITCH), 0, 0)
-    _q.setFromEuler(_eul)
-    arm.object.quaternion.slerp(_q, Math.min(1, ARM_ROT_LERP * dt))
+    const upX = THREE.MathUtils.degToRad(CAM_PITCH)
+    const downX = THREE.MathUtils.degToRad(CAM_PITCH - 105)
+    const want = active ? upX : downX
+    arm.pitchX = THREE.MathUtils.lerp(arm.pitchX, want, Math.min(1, ARM_ROT_LERP * dt))
+    arm.pivot.rotation.x = arm.pitchX
+    if (active) arm.object.visible = true
     if (active) {
       arm.object.updateMatrixWorld(true)
       const box = boundsOf(arm.object)
@@ -111,16 +117,14 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
           )
           : 0
         if (box.min.y < gy + FLOOR_PAD) {
-          arm.object.getWorldPosition(_world)
+          arm.pivot.getWorldPosition(_world)
           _world.y += gy + FLOOR_PAD - box.min.y
           player.camera.worldToLocal(_world)
-          arm.object.position.copy(_world)
+          arm.pivot.position.copy(_world)
         }
       }
     }
-    if (!active && arm.object.position.distanceTo(_hidden) < 0.15) {
-      arm.object.visible = false
-    }
+    if (!active && Math.abs(arm.pitchX - downX) < 0.04) arm.object.visible = false
   }
 
   function recordHistory(arm) {
@@ -197,6 +201,7 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       item.dirty = true
     }
     if (type === 'fire' && fireWatch) fireWatch.takeCopy(item)
+    if (type === 'box' && prepareBox) prepareBox(item)
     grabItem(arm, item)
   }
 
@@ -481,9 +486,8 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       fires: fireWatch ? fireWatch.list() : (getFires ? getFires() : []),
     })
 
-    if (!lActive && left.holding) { /* keep showing arm while holding */ }
-    if (!lActive && !left.holding) left.object.visible = false
-    if (!rActive && !right.holding) right.object.visible = false
+    if (!lActive && left.holding) left.object.visible = true
+    if (!rActive && right.holding) right.object.visible = true
   }
 
   function holdingLabel() {

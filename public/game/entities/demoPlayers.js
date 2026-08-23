@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 
 export const PLAYER_SKINS = [
+  { skin: null,    name: 'PLAYER' },
   { skin: 'Staff1', name: 'I_AM_WILDCAT' },
   { skin: 'Staff2', name: 'LINE_COOK' },
   { skin: 'Staff3', name: 'PREP' },
@@ -45,6 +46,26 @@ function applySkin(root, texture) {
     o.material.color.set(0xffffff)
     o.material.needsUpdate = true
     o.castShadow = o.receiveShadow = true
+  })
+}
+
+// Default Feac.png face sits at u≈0.34; THREE.CapsuleGeometry puts local +X
+// (the badge / "forward") at u=0.5. Shift the map, not the mesh, so the
+// nametag stays on the chest.
+const FEAC_FACE_OFFSET_U = -0.18
+
+function alignDefaultFace(root) {
+  root.traverse(o => {
+    if (!o.isMesh || o.userData.trigger) return
+    if (o.name === 'NameTag' || o.name === 'NameTagTop' || o.name === 'NameText') return
+    if (!o.material || !o.material.map) return
+    o.material = o.material.clone()
+    const map = o.material.map.clone()
+    map.wrapS = THREE.RepeatWrapping
+    map.offset.x = FEAC_FACE_OFFSET_U
+    map.needsUpdate = true
+    o.material.map = map
+    o.material.needsUpdate = true
   })
 }
 
@@ -147,8 +168,21 @@ function makeWorldArm(armProto, side) {
   object.name = side + '-arm-3p'
   object.visible = false
   object.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+  object.updateMatrixWorld(true)
+  const box = new THREE.Box3().setFromObject(object)
+  // Hand is local −Z; the +Z end of the cube is the shoulder.
+  const shoulderZ = box.max.z
+  object.position.set(0, 0, -shoulderZ)
+  const pivot = new THREE.Group()
+  pivot.name = side + '-shoulder'
+  pivot.add(object)
   const sign = side === 'left' ? -1 : 1
-  return { side, sign, object, baseScale: object.scale.clone(), raise: 0 }
+  return {
+    side, sign, object, pivot,
+    baseScale: object.scale.clone(),
+    shoulderZ,
+    raise: 0,
+  }
 }
 
 export function createDemoPlayers({
@@ -156,7 +190,9 @@ export function createDemoPlayers({
   x = 0, z = 7.2, yaw = -Math.PI / 2, spacing = 2.15,
 } = {}) {
   const skins = {}
-  for (const s of PLAYER_SKINS) skins[s.skin] = loadSkin(s.skin)
+  for (const s of PLAYER_SKINS) {
+    if (s.skin) skins[s.skin] = loadSkin(s.skin)
+  }
 
   const list = []
   const n = PLAYER_SKINS.length
@@ -165,7 +201,8 @@ export function createDemoPlayers({
 
   PLAYER_SKINS.forEach((spec, i) => {
     const body = playerProto.clone(true)
-    applySkin(body, skins[spec.skin])
+    if (spec.skin) applySkin(body, skins[spec.skin])
+    else alignDefaultFace(body)
     sitPlayer(body)
     const inv = 1 / (body.scale.y || 1)
     body.position.x = x0 + i * spacing
@@ -180,8 +217,8 @@ export function createDemoPlayers({
 
     const left = makeWorldArm(armProto, 'left')
     const right = makeWorldArm(armProto, 'right')
-    scene.add(left.object)
-    scene.add(right.object)
+    scene.add(left.pivot)
+    scene.add(right.pivot)
 
     scene.add(body)
     const demo = {
@@ -200,48 +237,32 @@ export function createDemoPlayers({
     list.push(demo)
   })
 
-  const _raised = new THREE.Vector3()
-  const _hidden = new THREE.Vector3()
   const _face = new THREE.Vector3()
   const _side = new THREE.Vector3()
-  const _look = new THREE.Vector3()
-  const _dummy = new THREE.Object3D()
-  const _eul = new THREE.Euler(0, 0, 0, 'YXZ')
-  const _q = new THREE.Quaternion()
+  const REACH_X = -0.35
+  const HANG_X = REACH_X - Math.PI / 2
 
   function poseArm(demo, arm, raised, dt) {
-    const s = arm.sign
     const origin = demo.body.position
-    // Player faces along local +X. World face / right from yaw.
     const yaw = demo.body.rotation.y
     _face.set(Math.cos(yaw), 0, -Math.sin(yaw))
-    _side.set(_face.z, 0, -_face.x) // right
-    _raised.copy(origin)
-      .addScaledVector(_face, 0.28)
-      .addScaledVector(_side, s * 0.52)
-      .setY(origin.y + 0.32)
-    _hidden.copy(origin)
-      .addScaledVector(_side, s * 0.2)
-      .setY(origin.y - 1.4)
-    const target = raised ? _raised : _hidden
-    if (raised && !arm.object.visible) {
-      arm.object.position.copy(_hidden)
-      arm.object.visible = true
-    }
-    arm.object.position.lerp(target, Math.min(1, ARM_LERP * dt))
-    // Hand sits on local −Z; point that axis forward and a little down.
-    _look.copy(_face).multiplyScalar(-1)
-    _look.y = 0.55
-    _dummy.position.copy(arm.object.position)
-    _dummy.lookAt(
-      arm.object.position.x + _look.x,
-      arm.object.position.y + _look.y,
-      arm.object.position.z + _look.z,
-    )
-    arm.object.quaternion.slerp(_dummy.quaternion, Math.min(1, ARM_LERP * dt))
-    if (!raised && arm.object.position.distanceTo(_hidden) < 0.15) {
-      arm.object.visible = false
-    }
+    _side.set(_face.z, 0, -_face.x)
+    // Shoulder stays on the chest; the limb swings around this pivot.
+    arm.pivot.position.copy(origin)
+      .addScaledVector(_face, 0.10)
+      .addScaledVector(_side, arm.sign * 0.40)
+    arm.pivot.position.y = origin.y + 0.42
+
+    const want = raised ? 1 : 0
+    arm.raise = THREE.MathUtils.lerp(arm.raise, want, Math.min(1, ARM_LERP * dt))
+    arm.pivot.rotation.order = 'YXZ'
+    arm.pivot.rotation.y = Math.PI / 2 - yaw
+    arm.pivot.rotation.z = 0
+    arm.pivot.rotation.x = THREE.MathUtils.lerp(HANG_X, REACH_X, arm.raise)
+
+    const show = raised || arm.raise > 0.03
+    arm.object.visible = show
+    arm.pivot.visible = show
   }
 
   function update(dt) {
@@ -275,8 +296,10 @@ export function createDemoPlayers({
   function setScale(mul) {
     const s = Math.max(0.05, mul)
     for (const d of list) {
-      d.left.object.scale.copy(d.left.baseScale).multiplyScalar(s)
-      d.right.object.scale.copy(d.right.baseScale).multiplyScalar(s)
+      for (const arm of [d.left, d.right]) {
+        arm.object.scale.copy(arm.baseScale).multiplyScalar(s)
+        arm.object.position.z = -arm.shoulderZ * s
+      }
     }
   }
 

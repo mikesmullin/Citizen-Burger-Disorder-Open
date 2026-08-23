@@ -96,18 +96,6 @@
   "source": "Resources/Prefabs/Food/bun-bottom.prefab"
  },
  {
-  "slug": "items/Pencil",
-  "label": "Pencil",
-  "group": "items",
-  "kind": "prefab",
-  "nodes": 3,
-  "meshes": 2,
-  "prim": 2,
-  "ui": 0,
-  "mats": 2,
-  "source": "Resources/Prefabs/Drawing/!pencil.prefab"
- },
- {
   "slug": "heroes/Arm",
   "label": "Arm",
   "group": "heroes",

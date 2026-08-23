@@ -16,6 +16,13 @@ export const Contents = {
 }
 
 const CONTENTS_CYCLE = [Contents.meat, Contents.bread, Contents.produce]
+let boxGrab = 0
+
+export function nextBoxContents() {
+  const c = CONTENTS_CYCLE[boxGrab % CONTENTS_CYCLE.length]
+  boxGrab++
+  return c
+}
 
 export const BOX_SIZE = FOOD_SIZE.box
 // Pedestal boxes grew to 0.856 m; scale the truck so a 2×2 pack still fits.
@@ -74,6 +81,68 @@ export function makeOpenNet(tex, S = BOX_SIZE) {
   face(0, -S)          // front
   face(0, -2 * S)      // back
   return g
+}
+
+function spillFood(origin, contents, { player, foodWorld, foodProtos }) {
+  const spec = SPILL[contents] || SPILL[Contents.meat]
+  const gy = player.groundY ? player.groundY(origin.x, origin.z) : 0
+  for (const row of spec) {
+    const proto = foodProtos[row.slug]
+    if (!proto) continue
+    const n = randInt(row.n[0], row.n[1])
+    for (let i = 0; i < n; i++) {
+      const ox = (Math.random() - 0.5) * 0.55
+      const oz = (Math.random() - 0.5) * 0.55
+      const food = foodWorld.spawn({
+        proto, type: row.type, slug: row.slug,
+        x: origin.x + ox,
+        z: origin.z + oz,
+        y: gy + 0.28 + i * 0.12,
+        onFloor: false,
+      })
+      food.vel.set(
+        (Math.random() - 0.5) * 3.4,
+        1.2 + Math.random() * 2.2,
+        (Math.random() - 0.5) * 3.4,
+      )
+      food.foodBeenOnFloor = false
+      food.onFloor = false
+    }
+  }
+}
+
+export function openClosedBox(item, { scene, player, foodWorld, foodProtos, boxTex }) {
+  if (!item || item.opened || item.kind !== 'box') return
+  item.opened = true
+  item.held = false
+  const pos = item.object.position.clone()
+  const gy = player.groundY ? player.groundY(pos.x, pos.z) : 0
+  if (item.object.parent) item.object.parent.remove(item.object)
+  const i = foodWorld.items.indexOf(item)
+  if (i >= 0) foodWorld.items.splice(i, 1)
+
+  const net = makeOpenNet(boxTex, BOX_SIZE)
+  net.position.set(pos.x, gy, pos.z)
+  net.rotation.y = item.object.rotation.y
+  scene.add(net)
+
+  spillFood(pos, item.contents, { player, foodWorld, foodProtos })
+  return net
+}
+
+export function prepareClosedBox(item, ctx) {
+  if (!item) return item
+  item.kind = 'box'
+  item.type = 'box'
+  item.opened = false
+  if (!item.contents) item.contents = nextBoxContents()
+  item.onLand = () => openClosedBox(item, ctx)
+  if (item.object) {
+    item.object.userData.food = item
+    item.object.userData.box = item
+    item.object.traverse(o => { o.userData.food = item; o.userData.box = item })
+  }
+  return item
 }
 
 function detachNamed(root, re) {
@@ -361,54 +430,12 @@ export async function createDelivery({
     stamp(object, item)
     foodWorld.items.push(item)
     boxes.push(item)
+    prepareClosedBox(item, { scene, player, foodWorld, foodProtos, boxTex })
     return item
   }
 
-  function spillFood(origin, contents) {
-    const spec = SPILL[contents] || SPILL[Contents.meat]
-    const gy = player.groundY(origin.x, origin.z)
-    for (const row of spec) {
-      const proto = foodProtos[row.slug]
-      if (!proto) continue
-      const n = randInt(row.n[0], row.n[1])
-      for (let i = 0; i < n; i++) {
-        const ox = (Math.random() - 0.5) * 0.55
-        const oz = (Math.random() - 0.5) * 0.55
-        const food = foodWorld.spawn({
-          proto, type: row.type, slug: row.slug,
-          x: origin.x + ox,
-          z: origin.z + oz,
-          y: gy + 0.28 + i * 0.12,
-          onFloor: false,
-        })
-        food.vel.set(
-          (Math.random() - 0.5) * 3.4,
-          1.2 + Math.random() * 2.2,
-          (Math.random() - 0.5) * 3.4,
-        )
-        food.foodBeenOnFloor = false
-        food.onFloor = false
-      }
-    }
-  }
-
   function openBox(item) {
-    if (!item || item.opened || item.kind !== 'box') return
-    item.opened = true
-    item.held = false
-    const pos = item.object.position.clone()
-    const gy = player.groundY(pos.x, pos.z)
-    if (item.object.parent) item.object.parent.remove(item.object)
-    const i = foodWorld.items.indexOf(item)
-    if (i >= 0) foodWorld.items.splice(i, 1)
-
-    const net = makeOpenNet(boxTex, BOX_SIZE)
-    net.position.set(pos.x, gy, pos.z)
-    net.rotation.y = item.object.rotation.y
-    scene.add(net)
-
-    spillFood(pos, item.contents)
-    return net
+    return openClosedBox(item, { scene, player, foodWorld, foodProtos, boxTex })
   }
 
   // Two rows in the trailer, mixed contents. Original spawned 4–9.
@@ -436,6 +463,8 @@ export async function createDelivery({
     object: root,
     boxes,
     openBox,
+    boxTex,
+    prepareClosedBox: item => prepareClosedBox(item, { scene, player, foodWorld, foodProtos, boxTex }),
     x, z,
     bedY,
     size,
