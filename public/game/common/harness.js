@@ -25,9 +25,10 @@ const HELP = `dbg — time travel
   dbg.mouse(0, true)      mouse button 0=LMB 2=RMB
   dbg.look(yaw, pitch)    degrees, applied immediately
   dbg.teleport('Cheese')  same as __museum.teleport
-  dbg.equip(0|1)          0 empty hands, 1 scale gun
-  dbg.mouseMove(dx, dy)   pointer-lock delta (LMB-drag scales when gun is out)
-  dbg.scales()            exhibit mul / longest-edge dump
+  dbg.equip(0|1|2)        0 empty hands, 1 scale gun, 2 transform gun
+  dbg.axes('x'|'y'|'z')   toggle transform-gun axis (X/Y/Z)
+  dbg.mouseMove(dx, dy)   pointer-lock delta (LMB-drag scales/moves when a gun is out)
+  dbg.scales()            exhibit mul / longest-edge / badge pos dump
   dbg.panel(true|false)   show the on-screen panel
   dbg.help()
 
@@ -199,6 +200,13 @@ export function installHarness({
       const s = extraDbg && extraDbg.scaler
       if (!s) return { error: 'no scaler' }
       s.equip(name)
+      s.update()
+      return s.dump()
+    },
+    axes(name) {
+      const s = extraDbg && extraDbg.scaler
+      if (!s) return { error: 'no scaler' }
+      if (name) s.toggleAxis(name)
       s.update()
       return s.dump()
     },

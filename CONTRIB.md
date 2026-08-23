@@ -45,6 +45,8 @@ Click to capture the mouse.
 | mouse | look |
 | Q / E | raise left / right arm |
 | LMB / RMB | grab or drop with that hand (arm must be up) |
+| 0 / 1 / 2 | empty hands / scale gun / transform gun |
+| X / Y / Z | (transform gun) toggle that axis; drag does nothing until one is on |
 | Space | jump |
 | Esc | release mouse (click to recapture; game does not pause) |
 
@@ -68,6 +70,8 @@ Agent round-trips are too slow to screenshot a moving frame — freeze first.
     dbg.state()                  // JSON: player, food, rats, NPCs, T
     dbg.key('KeyQ', true)        // hold Q, then dbg.step(1)
     dbg.mouse(0, true)           // LMB down (0) / RMB (2)
+    dbg.equip(1)                 // 0 empty, 1 scale gun, 2 transform gun
+    dbg.axes('y')                // transform gun: toggle Y
     dbg.unfreeze()
     dbg.help()
 
@@ -282,8 +286,13 @@ Do not introduce a bundler or a Unity WebGL build to get there.
 - **Hands:** Q/E raises a hand; click while that hand is up grabs. Food
   exhibits clone; `rec.foodType` (from `inferFoodType`) marks grab copies.
 - **Debug handle:** `window.__museum`. `teleport('Spatula')` by label or
-  slug. `dbg.freeze()` / `dbg.step(n)` before a screenshot; `pose.enter(slug)`
-  to inspect a model on white (`pose.view('front'|'left'|'top', 'isometric')`).
+  slug (`'Name badge'` for the nametag). `dbg.freeze()` / `dbg.step(n)` before
+  a screenshot; `pose.enter(slug)` to inspect a model on white
+  (`pose.view('front'|'left'|'top', 'isometric')`). `dbg.equip(1|2)` for
+  scale / transform guns; `dbg.axes('y')` toggles a transform axis.
+- **Badge guns:** Digit1 scales the nametag; Digit2 moves it. Transform
+  drag is a no-op until X/Y/Z has been tapped. Release logs
+  `tag.position.set` / `tag.scale.set` for encoding back into `seatNameTag`.
 - **Pages:** `public/` is the site root. Keep asset URLs relative
   (`./assets/…`, `./game/…`). `public/.nojekyll` must stay.
 - **Scope:** grab/throw feel, cooking, orders, fire, and netcode are the

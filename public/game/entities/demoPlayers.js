@@ -71,7 +71,11 @@ function alignDefaultFace(root) {
 
 // Classic "HELLO my name is" sticker: red header, solid white body.
 // Burger PNGs under textures/badges/ are menu-item art for the kitchen
-// order board — they do not belong on the nametag.
+// order board — they do not belong on the nametag. Front-facing plane only;
+// the Unity NameTag cube is kept as a transform host but not drawn.
+const BADGE_W = 0.96
+const BADGE_H = 0.60
+
 function makeNameBadge(username) {
   const c = document.createElement('canvas')
   c.width = 512
@@ -103,9 +107,9 @@ function makeNameBadge(username) {
   map.colorSpace = THREE.SRGBColorSpace
   map.anisotropy = 4
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.96, 0.60),
+    new THREE.PlaneGeometry(BADGE_W, BADGE_H),
     new THREE.MeshBasicMaterial({
-      map, toneMapped: false,
+      map, toneMapped: false, side: THREE.FrontSide,
     }),
   )
   mesh.name = 'NameText'
@@ -113,39 +117,32 @@ function makeNameBadge(username) {
 }
 
 // Prefab NameTag sits at hip height on local -Z (a purse), nested under
-// Player's (2,3,2) scale. Seat it on the chest in world space, facing
-// local +X. White card + red header; Unity Hello/Username 3D text stays off.
+// Player's (2,3,2) scale. Seat it on the chest, facing local +X. Pose
+// from the museum transform/scale guns (I_AM_WILDCAT / KRITZ pass).
+const BADGE_POS = [0.502, 0.372, -0.162]
+const BADGE_SCALE = [0.573, 0.238, 0.038]
+
 function seatNameTag(body, username) {
   const tag = body.getObjectByName('NameTag')
   if (!tag) return null
-  body.updateMatrixWorld(true)
-  const box = boundsOf(body)
-  const h = box.max.y - box.min.y || 2
-  const yaw = body.rotation.y
-  const world = new THREE.Vector3(
-    body.position.x + Math.cos(yaw) * 0.34,
-    box.min.y + h * 0.55,
-    body.position.z - Math.sin(yaw) * 0.34,
-  )
-  tag.parent.updateMatrixWorld(true)
-  tag.parent.worldToLocal(world)
-  tag.position.copy(world)
+  tag.position.set(...BADGE_POS)
   tag.rotation.set(0, -Math.PI / 2, 0)
-  tag.scale.set(0.82, 0.34, 0.055)
+  tag.scale.set(...BADGE_SCALE)
   tag.traverse(o => {
     if (o.name === 'Hello' || o.name === 'Username') o.visible = false
     if (o.name === 'NameTagTop') o.visible = false
     if (o.isMesh && o.name === 'NameTag') {
-      o.material = o.material.clone()
-      o.material.map = null
-      o.material.color.set(0xffffff)
-      o.material.needsUpdate = true
+      o.geometry = new THREE.BufferGeometry()
+      o.material.visible = false
+      o.raycast = () => {}
     }
   })
   const text = makeNameBadge(username)
   text.position.set(0, 0, -0.52)
   text.rotation.y = Math.PI
   tag.add(text)
+  tag.userData.baseScale = tag.scale.clone()
+  tag.userData.basePos = tag.position.clone()
   return tag
 }
 
@@ -303,5 +300,34 @@ export function createDemoPlayers({
     }
   }
 
-  return { players: list, update, setScale }
+  function setBadgeScale(mul) {
+    const s = Math.max(0.05, mul)
+    for (const d of list) {
+      const tag = d.badge
+      const base = tag && tag.userData.baseScale
+      if (!tag || !base) continue
+      tag.scale.set(base.x * s, base.y * s, base.z * s)
+    }
+  }
+
+  function setBadgePos(pos) {
+    if (!pos) return
+    for (const d of list) {
+      if (d.badge) d.badge.position.set(pos.x, pos.y, pos.z)
+    }
+  }
+
+  function badgeDump() {
+    return list.map(d => {
+      const tag = d.badge
+      if (!tag) return { name: d.spec.name }
+      return {
+        name: d.spec.name,
+        pos: { x: +tag.position.x.toFixed(3), y: +tag.position.y.toFixed(3), z: +tag.position.z.toFixed(3) },
+        scale: { x: +tag.scale.x.toFixed(3), y: +tag.scale.y.toFixed(3), z: +tag.scale.z.toFixed(3) },
+      }
+    })
+  }
+
+  return { players: list, update, setScale, setBadgeScale, setBadgePos, badgeDump }
 }

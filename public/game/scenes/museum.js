@@ -1059,6 +1059,31 @@ async function boot() {
           })
         }
       }
+      if (lead.badge) {
+        const badgeRec = {
+          slug: 'heroes/NameTag',
+          caption: 'Name badge',
+          label: 'Name badge',
+          group: 'heroes',
+          virtual: true,
+          kind: 'badge',
+          editMul: 1,
+          x: lead.body.position.x,
+          z: lead.body.position.z,
+          display: lead.badge,
+          size: { x: 0.2, y: 0.12, z: 0.04 },
+          targets: () => demoPlayers.players.map(d => d.badge).filter(Boolean),
+        }
+        exhibits.push(badgeRec)
+        for (const d of demoPlayers.players) {
+          if (!d.badge) continue
+          d.badge.traverse(o => {
+            o.userData.exhibit = badgeRec
+            o.userData.editRoot = d.badge
+            o.userData.demoPlayer = d
+          })
+        }
+      }
     }
   } catch (err) {
     console.warn('[museum] demo players skipped', err)
@@ -1176,7 +1201,9 @@ function dumpExtras() {
     })),
     exhibits: exhibits.map(e => e.slug),
     tool: scaler.tool,
+    axes: scaler.axes,
     scales: scaler.dump(),
+    badges: demoPlayers?.badgeDump?.() || [],
     armScale: hands?.armScale ?? 1,
   }
 }
@@ -1293,11 +1320,17 @@ renderer.setAnimationLoop(() => {
     ? 'run' : ((k.has('ControlLeft') || k.has('ControlRight')) ? 'walk' : 'move')
   if ($('s-hold')) $('s-hold').textContent = hands?.holdingLabel() || '—'
   if ($('s-rats')) $('s-rats').textContent = String(rats ? rats.count : 0)
-  if ($('s-tool')) $('s-tool').textContent = scaler.tool === 'scale' ? 'scale gun' : 'hand'
+  if ($('s-tool')) {
+    $('s-tool').textContent = scaler.tool === 'scale'
+      ? 'scale gun'
+      : scaler.tool === 'transform' ? 'transform gun' : 'hand'
+  }
   if ($('help')) {
     $('help').textContent = scaler.tool === 'scale'
-      ? 'SCALE GUN  ·  aim at an exhibit  ·  hold LMB, drag right = bigger / left = smaller  ·  0 empty hands'
-      : 'WASD move · Space jump · Q/E hands · 0 empty · 1 scale gun · click grab/drop · Shift run · Esc release mouse'
+      ? 'SCALE GUN  ·  aim at an exhibit (or a player badge)  ·  hold LMB, drag right = bigger / left = smaller  ·  0 empty hands'
+      : scaler.tool === 'transform'
+        ? `TRANSFORM GUN  ·  axes ${['x', 'y', 'z'].filter(k => scaler.axes[k]).map(k => k.toUpperCase()).join(' ') || 'none'}  ·  tap X/Y/Z to lock  ·  aim, hold LMB, drag  ·  0 empty`
+        : 'WASD move · Space jump · Q/E hands · 0 empty · 1 scale gun · 2 transform gun · click grab/drop · Shift run · Esc release mouse'
   }
 
   render()

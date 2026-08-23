@@ -120,6 +120,8 @@ away under the studio).
 | `dbg.mouse(0, true)` | `{ button, down }` | `0` LMB, `2` RMB. Needs a following `step(1)` to fire `fire1Down` |
 | `dbg.look(yaw, pitch)` | `{ yaw, pitch }` | degrees, applied immediately |
 | `dbg.teleport('Cheese')` | caption or `null` | label, caption, or slug. Also `'Soundboard'` |
+| `dbg.equip(0\|1\|2)` | scale dump | 0 empty hands, 1 scale gun, 2 transform gun |
+| `dbg.axes('x'\|'y'\|'z')` | scale dump | toggle a transform-gun axis (all off by default) |
 | `dbg.panel(true)` | `{ panel }` | on-screen HUD. `?debug` in the URL does this |
 | `dbg.T` / `dbg.frozen` | number / bool | |
 | `dbg.help()` | string | |
@@ -363,6 +365,10 @@ dbg.step(600)                // 10 s — cooked
 ```
 
 Demo-player nametags are a white "HELLO my name is" card, not a burger sprite.
+The grey NameTag cube matches the sticker's width/height (visible from the
+side or back). Scale gun (Digit1) and transform gun (Digit2) both pick the
+badge; transform-gun X/Y/Z lock parent-local axes, then LMB-drag moves it
+and `console.log`s `tag.position.set(...)` / `tag.scale.set(...)`.
 
 ### 7. Screenshot a gameplay moment
 
