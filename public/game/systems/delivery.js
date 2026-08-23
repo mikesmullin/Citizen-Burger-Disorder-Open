@@ -376,11 +376,13 @@ export async function createDelivery({
     minx: cx - rampW / 2, maxx: cx + rampW / 2,
     minz: rampZ0, maxz: rampZ1,
     z0: rampZ1, z1: rampZ0, y0: 0, y1: bedY,
+    mat: 'truck',
   })
   player.addPlatform({
     minx: innerX0, maxx: innerX1,
     minz: cargoZ0 + 0.12, maxz: openZ + 0.08,
     y: bedY,
+    mat: 'truck',
   })
 
   let boxTex = null

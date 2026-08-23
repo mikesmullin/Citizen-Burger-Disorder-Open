@@ -11,7 +11,6 @@ import { createSpray } from './spray.js'
 const ARM_EXTRA = 1.2
 const MAX_PITCH = 86
 const GRAB_RANGE = 4.75
-const HOLD_LERP = 30
 const ARM_POS_LERP = 25
 const ARM_ROT_LERP = 20
 const HOLD_PAST_HAND = 0.42
@@ -163,7 +162,6 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
   function holdPose(arm, dt) {
     const item = arm.holding
     if (!item) return
-    const k = Math.min(1, HOLD_LERP * dt)
     if (isTool(item.type)) {
       if (arm.hand) arm.hand.getWorldPosition(_pos)
       else arm.object.getWorldPosition(_pos)
@@ -175,8 +173,10 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       const half = (item.height || 0.1) * 0.5
       const floor = player.groundY ? player.groundY(_pos.x, _pos.z) : 0
       if (_pos.y < floor + half + FLOOR_PAD) _pos.y = floor + half + FLOOR_PAD
-      item.object.position.lerp(_pos, k)
-      item.object.quaternion.slerp(arm.object.getWorldQuaternion(_q), k)
+      // Pinned: snap, don't chase. A lerp leaves a one-frame trail that
+      // fights the hand target and jitters against anything in the way.
+      item.object.position.copy(_pos)
+      item.object.quaternion.copy(arm.object.getWorldQuaternion(_q))
     } else {
       const off = holdSpec(item)
       const sign = arm.side === 'right' ? -1 : 1
@@ -197,7 +197,11 @@ export function createHands({ scene, player, armProto, foodWorld, exhibits, food
       const half = (item.height || 0.1) * 0.5
       const floor = player.groundY ? player.groundY(_pos.x, _pos.z) : 0
       if (_pos.y < floor + half + FLOOR_PAD) _pos.y = floor + half + FLOOR_PAD
-      item.object.position.lerp(_pos, k)
+      // Pinned in hand: snap position and orientation to the grip so the
+      // item has zero lag and cannot be knocked, blocked, or jitter.
+      item.object.position.copy(_pos)
+      item.object.quaternion.copy(arm.hand ? arm.hand.getWorldQuaternion(_q)
+        : arm.object.getWorldQuaternion(_q))
     }
     if (item.vel) item.vel.set(0, 0, 0)
     if (item.type === 'plate' && item.plated) layoutPlate(item)

@@ -4,6 +4,35 @@
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { tryLandStack, tickStacks, layoutStack, layoutPlate } from './stacking.js'
+import { createImpactSfx } from './sfx.js'
+
+// Friction per surface material. Kritz's original: Food mat = 0.5 (friction
+// Combine=Maximum), Frictiony mat = 1.0. We split the world by material and
+// let the item's own material combine with it (Maximum), so cast-iron grill
+// and wooden board grip hard, stainless sink and glossy tile let things skid.
+const SURFACE_FRICTION = {
+  floor: 0.35,     // glossy museum tile
+  counter: 0.55,   // laminate counter
+  grill: 1.15,     // cast-iron cooktop — a patty parked here stays put
+  board: 0.95,     // wooden cutting board
+  sink: 0.18,      // stainless steel — a plate skids
+  truck: 0.4,      // metal trailer bed
+  surface: 0.4,    // generic raised surface
+}
+// Item's own material friction (organic food grips, porcelain skids).
+const ITEM_FRICTION = {
+  plate: 0.16,
+  box: 0.4,
+}
+function itemFriction(item) {
+  if (item.type === 'plate') return ITEM_FRICTION.plate
+  if (item.type === 'box' || item.kind === 'box') return ITEM_FRICTION.box
+  return 0.55   // organic food (Kritz Food mat ≈ 0.5)
+}
+// Combined = max of the two, Unity frictionCombine=Maximum.
+function combinedFriction(item, mat) {
+  return Math.max(SURFACE_FRICTION[mat] ?? SURFACE_FRICTION.surface, itemFriction(item))
+}
 
 export function inferFoodType(slug = '', label = '') {
   const s = (slug + ' ' + label).toLowerCase()
@@ -206,6 +235,7 @@ export function createFoodWorld({ scene, player }) {
   const items = []
   const spawners = []
   const SPAWN_EVERY = 5 * 60
+  const sfx = createImpactSfx({ scene, player })
 
   function spawn({ proto, type, slug, x, z, y = null, onFloor = false, fromSpawner = null, maxSize }) {
     const object = proto.clone(true)
@@ -231,6 +261,7 @@ export function createFoodWorld({ scene, player }) {
       overcooked: 0,
       inFood: false,
       soakTime: 0,
+      restingOn: null,   // surface mat the item is parked on (set on land)
     }
     object.userData.food = item
     object.traverse(o => { o.userData.food = item })
@@ -271,37 +302,85 @@ export function createFoodWorld({ scene, player }) {
     const landed = []
     for (const item of items) {
       if (item.held || item.stolen || item.inFood || item.planted) continue
-      item.vel.y -= 9.81 * dt
-      item.object.position.addScaledVector(item.vel, dt)
       const half = item.height * 0.5
-      const gy = player.groundY ? player.groundY(item.object.position.x, item.object.position.z) : 0
-      if (item.object.position.y - half <= gy) {
-        item.object.position.y = gy + half
-        if (item.vel.y < 0) item.vel.y *= -0.15
-        if (Math.abs(item.vel.y) < 0.4) item.vel.y = 0
-        item.vel.x *= Math.max(0, 1 - 6 * dt)
-        item.vel.z *= Math.max(0, 1 - 6 * dt)
-        if (item.vel.lengthSq() < 0.04) item.vel.set(0, 0, 0)
+      const px = item.object.position.x
+      const py = item.object.position.y
+      const pz = item.object.position.z
+      const prevFeet = py - half
+
+      item.vel.y -= 9.81 * dt
+      const nx = px + item.vel.x * dt
+      const ny = py + item.vel.y * dt
+      const nz = pz + item.vel.z * dt
+
+      // Highest surface directly under the item whose top is at or below its
+      // feet — the thing it would land on. Not a height band: a falling item
+      // finds the cooktop / counter / trailer bed it is dropping onto, while an
+      // item sitting on the open floor is not mistaken for a nearby counter.
+      const surf = player.surfaceAt
+        ? player.surfaceAt(nx, nz, prevFeet, item.restingOn)
+        : { y: player.groundY ? player.groundY(nx, nz) : 0, mat: 'floor', plat: null }
+
+      if (item.vel.y <= 0 && ny - half <= surf.y + 0.02) {
+        // Land: snap the feet to the top of the surface and kill the fall.
+        const impact = -item.vel.y
+        item.object.position.x = nx
+        item.object.position.z = nz
+        item.object.position.y = surf.y + half
+        const rest = surf.mat === 'floor' ? 0.12 : 0.07
+        item.vel.y = impact > 0.5 ? impact * rest : 0
+        if (impact > 0.5) sfx.impact(item, impact, time)
         const wasAir = !item.onFloor
         item.onFloor = true
+        item.restingOn = surf.plat
+        item.restingY = surf.y
+        item.restingMat = surf.mat
         // Only the museum floor counts as "the floor" for rats. Food on a
         // counter, grill, or trailer bed is resting, not dropped.
-        if (gy <= 0.08) item.foodBeenOnFloor = true
+        if (surf.y <= 0.08) item.foodBeenOnFloor = true
         if (wasAir && item.dropped) landed.push(item)
-        // Only player-dropped items assemble burgers on landing. Box-spilled
-        // food (no `dropped` flag) just rests on the floor.
         if (wasAir && item.dropped) tryLandStack(item, items)
       } else {
+        // Airborne: free projectile (no drag — it should fly).
+        item.object.position.x = nx
+        item.object.position.z = nz
+        item.object.position.y = ny
         item.onFloor = false
+        item.restingOn = null
+        item.restingY = 0
+        // Keep a falling item out of the kitchen / truck walls, but only when
+        // it is heading for the open floor — over a cooktop or counter let it
+        // drop straight on.
+        if (surf.plat === null && ny - half < 1.3) {
+          const hit = player.resolveXZ(nx, nz, item.radius, null)
+          item.object.position.x = hit.x
+          item.object.position.z = hit.z
+        }
       }
-      // Parked cargo on the trailer bed must not get shoved out by wall AABBs
-      // (that dropped a box under the chassis). Same for food sitting on a
-      // raised kitchen surface — the station collider would shove it off.
-      const onRaised = gy > 0.12
-      if (!(item.kind === 'box' && item.onFloor && !item.dropped) && !onRaised) {
-        const hit = player.resolveXZ(item.object.position.x, item.object.position.z, item.radius, null)
-        item.object.position.x = hit.x
-        item.object.position.z = hit.z
+
+      // Resting: stay on the surface it landed on.
+      if (item.onFloor) {
+        const p = item.restingOn
+        if (p) {
+          // Confined to the surface footprint — a patty parked on the grill
+          // cannot slide off the edge and clip through the wall behind it, and
+          // cargo stays on the trailer bed instead of being shoved out.
+          item.object.position.x = Math.max(p.minx, Math.min(p.maxx, item.object.position.x))
+          item.object.position.z = Math.max(p.minz, Math.min(p.maxz, item.object.position.z))
+          item.object.position.y = item.restingY + half
+        } else {
+          const hit = player.resolveXZ(item.object.position.x, item.object.position.z, item.radius, null)
+          item.object.position.x = hit.x
+          item.object.position.z = hit.z
+          item.object.position.y = item.restingY + half
+        }
+        // Per-frame friction, combined per surface material. Cast iron and
+        // wood grip hard; stainless and glossy tile let a plate skid.
+        const fr = combinedFriction(item, item.restingMat || 'floor')
+        const damp = Math.max(0, 1 - fr * 9 * dt)
+        item.vel.x *= damp
+        item.vel.z *= damp
+        if (item.vel.lengthSq() < 0.02) item.vel.set(0, 0, 0)
       }
     }
     for (const item of landed) {

@@ -461,14 +461,26 @@ export async function createKitchen({
   addWorldCollider(dryX - dryW / 2, dryX + dryW / 2, sinkZ - sinkD / 2, sinkZ + sinkD / 2)
 
   const counterPlat = addWorldPlatform(-hx + WALL_T, cInner, cZ0, cZ1, COUNTER_Y + 0.03)
+  counterPlat.mat = 'counter'
   const grillPlat = addWorldPlatform(rInner + 0.04, rOuter - 0.04, cookZ0 + 0.04, cookZ1 - 0.04, RANGE_Y + 0.03)
+  grillPlat.mat = 'grill'
   const boardPlat = addWorldPlatform(rInner, rOuter, cookZ1, rZ1, RANGE_Y + 0.03)
+  boardPlat.mat = 'board'
+  // Solid range body just under the cooktop/board: a patty that does slide off
+  // the cooktop edge lands on the cast-iron body instead of through the wall.
+  addWorldPlatform(rInner, rOuter, rZ0, rZ1, RANGE_Y - 0.03).mat = 'grill'
   const dryPlat = addWorldPlatform(sinkX0, sinkX0 + dryW, sinkZ - sinkD / 2, sinkZ + sinkD / 2, sinkY + 0.03)
+  dryPlat.mat = 'counter'
   const basinPlat = addWorldPlatform(
     basinX - basinW / 2 + rim + 0.02, basinX + basinW / 2 - rim - 0.02,
     sinkZ - sinkD / 2 + rim + 0.02, sinkZ + sinkD / 2 - rim - 0.02,
     basinFloorY + 0.18,
   )
+  basinPlat.mat = 'sink'
+  // People can stand on the counter but not step into the open basin: a solid
+  // AABB around the whole sink+counter foot so the player's groundY stops at
+  // the counter rim. Plates/food keep using the food system (basinPlat).
+  addWorldCollider(sinkX0 - 0.02, sinkX1 + 0.02, sinkZ - sinkD / 2 - 0.02, sinkZ + sinkD / 2 + 0.02)
 
   function onRect(p, plat, ySlop = 0.35) {
     return p.x >= plat.minx && p.x <= plat.maxx

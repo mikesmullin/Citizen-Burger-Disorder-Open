@@ -274,6 +274,34 @@ export function createFirstPersonPlayer({
     return y
   }
 
+  // Surface an item should land on at (x, z) given its feet height. If the
+  // item is already resting on `prefer` and is still within that footprint,
+  // keep it there (don't snap onto a nearby counter it is falling in front
+  // of). Otherwise take the highest platform whose top is at/below the feet.
+  // Returns { y, mat, plat } — plat is null on the plain floor.
+  function surfaceAt(x, z, feetY, prefer = null) {
+    let best = null
+    let bestY = -Infinity
+    for (const p of platforms) {
+      if (x < p.minx || x > p.maxx || z < p.minz || z > p.maxz) continue
+      let h
+      if (p.z0 != null && p.y1 != null) {
+        const span = p.z1 - p.z0
+        const t = Math.max(0, Math.min(1, (z - p.z0) / (span || 1e-6)))
+        h = p.y0 + (p.y1 - p.y0) * t
+      } else {
+        h = p.y
+      }
+      if (h > feetY + 0.18) continue
+      if (prefer && p === prefer && h >= feetY - 0.6 && h > bestY + 1e-4) {
+        return { y: h, mat: prefer.mat || 'surface', plat: prefer }
+      }
+      if (h > bestY + 1e-4) { bestY = h; best = p }
+    }
+    if (!best) return { y: floorY, mat: 'floor', plat: null }
+    return { y: bestY, mat: best.mat || 'surface', plat: best }
+  }
+
   function addPlatform(p) {
     platforms.push(p)
     return p
@@ -432,6 +460,7 @@ export function createFirstPersonPlayer({
     addPlatform,
     addHull,
     groundY,
+    surfaceAt,
     resolveXZ: collideXZ,
     slideXZ,
     get bounds() { return bounds },
