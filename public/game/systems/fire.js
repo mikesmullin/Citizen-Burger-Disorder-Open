@@ -61,7 +61,7 @@ function faceYaw(root, cam) {
 }
 
 export function createFireWatch({
-  scene, player, foodWorld, getRats, getHands, fireProto,
+  scene, player, foodWorld, getRats, getHands, fireProto, instancer,
 } = {}) {
   const fires = []
   let proto = fireProto || null
@@ -161,6 +161,7 @@ export function createFireWatch({
     f.putOut = () => extinguish(f)
     if (!copy && root.parent !== scene) scene.add(root)
     fires.push(f)
+    if (instancer && root) instancer.attach(root, { fire: f }, 'fire')
     syncSizzle(f)
     return f
   }
@@ -240,6 +241,7 @@ export function createFireWatch({
     if (!f || f.out) return
     f.out = true
     stopSizzle(f)
+    if (instancer && f.root) instancer.detach(f.root)
     const item = f.item
     if (item) {
       item.onFire = false

@@ -7,7 +7,7 @@
 import * as THREE from 'three'
 import { applyCookLook, isFood, cookTick } from './food.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
-import { createKit, makeFloor, makeRoof, WALL_T, WAINSCOT_T } from '../common/kit.js'
+import { createKit, addTiledFloor, WALL_T, WAINSCOT_T } from '../common/kit.js'
 import { loadBuffer, getListener, safePlay } from '../common/audio.js'
 
 export const BOOTH_W = 6.4
@@ -169,7 +169,7 @@ async function makeOrderScreen() {
 
 export async function createKitchen({
   scene, player, foodWorld, foodProtos,
-  getRats, getFireWatch, switchProto,
+  getRats, getFireWatch, switchProto, labels, pickInst,
   x = 0, z = 0, facingY = 0,
 } = {}) {
   const object = new THREE.Group()
@@ -200,8 +200,20 @@ export async function createKitchen({
     kit.box(material, w, h, d, x, y, z)
   }
 
-  object.add(makeFloor({ map: floorTex, w: BOOTH_W, d: BOOTH_D, layer: 1 }))
-  object.add(makeRoof({ w: BOOTH_W, d: BOOTH_D, y: BOOTH_H }))
+  addTiledFloor(kit, { map: floorTex, w: BOOTH_W, d: BOOTH_D, layer: 1 })
+  kit.roof(BOOTH_W, BOOTH_D, 0, BOOTH_H, 0)
+
+  function putTag(text, x, y, z, extra = {}) {
+    if (labels) {
+      return labels.place({ text, kind: 'tag', x, y, z, parent: object, ...extra })
+    }
+    const m = makeLabel(text)
+    if (extra.sx || extra.sy) m.scale.set(extra.sx || 1, extra.sy || 1, 1)
+    m.position.set(x, y, z)
+    if (extra.yaw) m.rotation.y = extra.yaw
+    object.add(m)
+    return m
+  }
 
   const hx = BOOTH_W / 2
   const hz = BOOTH_D / 2
@@ -223,10 +235,7 @@ export async function createKitchen({
 
   // Front header beam + hanging banner.
   box(BOOTH_W, 0.22, WALL_T, railMat, 0, BOOTH_H - 0.14, hz - WALL_T / 2)
-  const banner = makeLabel('KITCHEN')
-  banner.scale.set(2.2, 1.6, 1)
-  banner.position.set(0, BOOTH_H - 0.42, hz + 0.02)
-  object.add(banner)
+  putTag('KITCHEN', 0, BOOTH_H - 0.42, hz + 0.02, { sx: 2.2, sy: 1.6 })
 
   // —— Prep counter (left) ——
   const cInner = -hx + WALL_T + COUNTER_D
@@ -237,10 +246,7 @@ export async function createKitchen({
   const cX = -hx + WALL_T + COUNTER_D / 2
   kit.counter(greyMat, topMat, COUNTER_D, cLen, cX, cZ, COUNTER_Y)
 
-  const prepLabel = makeLabel('PREP')
-  prepLabel.position.set(cInner + 0.02, 1.55, cZ1 - 1.4)
-  prepLabel.rotation.y = Math.PI / 2
-  object.add(prepLabel)
+  putTag('PREP', cInner + 0.02, 1.55, cZ1 - 1.4, { yaw: Math.PI / 2 })
 
   // —— Range / cooktop (right) ——
   const rOuter = hx - WALL_T
@@ -264,12 +270,7 @@ export async function createKitchen({
   box(RANGE_W + 0.18, 0.08, cookLen + 0.1, greyMat, rX, 2.62, cookZ)
   box(RANGE_W * 0.55, 0.85, cookLen * 0.45, greyMat, rX, 2.62 + 0.46, cookZ)
 
-  const rangeLabel = makeLabel('RANGE')
-  rangeLabel.scale.set(1.25, 1.25, 1)
-  // Inner face of the right wall, above the cook surface (range body is only ~0.94 m tall).
-  rangeLabel.position.set(hx - WALL_T - 0.04, 1.92, cookZ)
-  rangeLabel.rotation.y = -Math.PI / 2
-  object.add(rangeLabel)
+  putTag('RANGE', hx - WALL_T - 0.04, 1.92, cookZ, { sx: 1.25, sy: 1.25, yaw: -Math.PI / 2 })
 
   // —— Order board: top-left corner, 45° yaw, pitched down so you look up at it ——
   const orderBoard = await makeOrderScreen()
@@ -293,9 +294,7 @@ export async function createKitchen({
   object.add(order)
 
   // Adjacent wall in the same corner: the partition, facing the galley.
-  const ordersLabel = makeLabel('ORDERS')
-  ordersLabel.position.set(-hx + 1.45, 1.55, doorZ + 0.09)
-  object.add(ordersLabel)
+  putTag('ORDERS', -hx + 1.45, 1.55, doorZ + 0.09)
 
   // —— Dish pit through a yellow doorway at the back-right ——
   // Partition wall with a hole: two side posts + lintel (the yellow frame).
@@ -368,9 +367,7 @@ export async function createKitchen({
   box(0.08, 0.42, 0.08, greyMat, basinX, sinkY + 0.28, sinkZ - sinkD / 2 + 0.12)
   box(0.08, 0.08, 0.32, greyMat, basinX, sinkY + 0.46, sinkZ - sinkD / 2 + 0.28)
 
-  const sinkLabel = makeLabel('DISH PIT')
-  sinkLabel.position.set(sinkX, 1.55, -hz + WALL_T + 0.07)
-  object.add(sinkLabel)
+  putTag('DISH PIT', sinkX, 1.55, -hz + WALL_T + 0.07)
 
   const lamp = new THREE.PointLight(0xfff1d0, 14, 16, 2)
   lamp.position.set(0, 3.05, 1.2)
@@ -379,7 +376,7 @@ export async function createKitchen({
   lamp2.position.set(1.2, 2.8, -5.2)
   object.add(lamp2)
 
-  const switches = createSwitchSet({ player, proto: switchProto })
+  const switches = createSwitchSet({ player, proto: switchProto, instancer: pickInst })
   // Galley lamp: east wall, above the cutting board (right of the range
   // when facing the cooktop).
   switches.add({
@@ -396,7 +393,7 @@ export async function createKitchen({
     label: 'Dish pit lights',
   })
   kit.finalize()
-  muteBoothShadows(object, { castNames: ['RoomCeiling'] })
+  muteBoothShadows(object, { skipNames: ['Kit:Floor'], castNames: ['Kit:Roof'] })
 
   function worldOf(lx, ly, lz) {
     object.updateMatrixWorld(true)
@@ -475,6 +472,7 @@ export async function createKitchen({
     { slug: 'items/LettuceHead', type: 'lettuceHead', n: 3 },
     { slug: 'items/Lettuce', type: 'lettuce', n: 2 },
     { slug: 'items/Bacon', type: 'bacon', n: 3 },
+    { slug: 'items/Patty', type: 'patty', n: 3 },
     { slug: 'items/BunBottom', type: 'bun', n: 3 },
     { slug: 'items/BunTop', type: 'topBun', n: 3 },
   ]
@@ -506,19 +504,23 @@ export async function createKitchen({
       const w = worldOf(dryX + (i - 0.5) * 0.28, sinkY + 0.08, sinkZ)
       const item = foodWorld.spawn({
         proto: plateProto, type: 'plate', slug: 'items/Plate',
-        x: w.x, z: w.z, y: sinkY + 0.1,
+        x: w.x, z: w.z, y: sinkY + 0.1, instanced: false,
       })
       item.dirty = true
+      item.instVariant = 'dirty'
       applyCookLook(item.object, { mapUrl: './assets/textures/PlateDirty.png' })
+      foodWorld.watch(item)
     }
     for (let i = 0; i < 3; i++) {
       const w = worldOf(basinX + (i - 1) * 0.55, basinFloorY + 0.22, sinkZ + (i % 2 ? 0.12 : -0.12))
       const item = foodWorld.spawn({
         proto: plateProto, type: 'plate', slug: 'items/Plate',
-        x: w.x, z: w.z, y: basinFloorY + 0.22,
+        x: w.x, z: w.z, y: basinFloorY + 0.22, instanced: false,
       })
       item.dirty = true
+      item.instVariant = 'dirty'
       applyCookLook(item.object, { mapUrl: './assets/textures/PlateDirty.png' })
+      foodWorld.watch(item)
     }
   }
 

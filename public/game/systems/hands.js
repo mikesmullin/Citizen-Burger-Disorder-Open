@@ -460,7 +460,10 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
       if (ratHit && !ratHit.held) {
         return { kind: 'rat', item: ratHit, dist: h.distance }
       }
-      const food = h.object.userData.food
+      if (inst && inst.exhibit && inst.exhibit.pickup) {
+        return { kind: 'exhibit', rec: inst.exhibit, dist: h.distance }
+      }
+      const food = (inst && inst.food) || h.object.userData.food
       if (food && food.stolen && food.stolen.kind === 'rat' && !food.stolen.held) {
         return { kind: 'rat', item: food.stolen, dist: h.distance }
       }

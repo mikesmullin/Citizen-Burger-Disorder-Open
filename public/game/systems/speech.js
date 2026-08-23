@@ -35,21 +35,38 @@ function badgeMap(name) {
 
 export function update(world, ctx) {
   const playerPos = ctx.playerPos || { x: 0, z: 0 }
+  const bubbles = ctx.bubbles
   for (const [eid, speech, tf, view] of world.query(C.Speech, C.Transform, C.View)) {
-    const bubble = view.object && view.object.userData.bubble
-    if (!bubble) continue
+    const think = world.field(eid, C.Thinker)
+    const cust = world.field(eid, C.Customer)
     const dist = Math.hypot(tf.x - playerPos.x, tf.z - playerPos.z)
-    const show = !!speech.icon && (!speech.nearOnly || dist < 20)
-    bubble.visible = show
-    if (show) {
-      bubble.position.set(tf.x, tf.y + 1.28, tf.z)
-      if (bubble.userData.icon !== speech.icon) {
-        bubble.material.map = badgeMap(speech.icon)
-        bubble.material.needsUpdate = true
-        bubble.userData.icon = speech.icon
+    let show = false
+    if (speech.icon) {
+      const want = think && think.want
+      if (want === 'order') show = cust && cust.queueSlot === 1
+      else if (want === 'waitFood') show = dist < 7
+    }
+    const slot = view.object && view.object.userData.bubbleSlot
+    if (slot >= 0 && bubbles) {
+      bubbles.set(slot, {
+        x: tf.x, y: tf.y + 1.28, z: tf.z,
+        icon: speech.icon || 'notice',
+        visible: show,
+      })
+    } else {
+      const bubble = view.object && view.object.userData.bubble
+      if (bubble) {
+        bubble.visible = show
+        if (show) {
+          bubble.position.set(tf.x, tf.y + 1.28, tf.z)
+          if (bubble.userData.icon !== speech.icon) {
+            bubble.material.map = badgeMap(speech.icon)
+            bubble.material.needsUpdate = true
+            bubble.userData.icon = speech.icon
+          }
+        }
       }
     }
-    const think = world.field(eid, C.Thinker)
     if (view.object && think) {
       view.object.traverse(o => { o.userData.want = think.want })
     }

@@ -86,6 +86,22 @@ export function makePane({
   return m
 }
 
+/** Tiled floor as a kit plane instance (hides with flags.kit). */
+export function addTiledFloor(kit, {
+  map, w, d, x = 0, z = 0, layer = 1, tile = 1.55, roughness = 0.9,
+} = {}) {
+  let tex = map
+  if (tex) {
+    tex = tex.clone()
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(Math.max(0.01, w / tile), Math.max(0.01, d / tile))
+  }
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, map: tex, roughness, metalness: 0, side: THREE.FrontSide,
+  })
+  return kit.floor(mat, w, d, x, floorY(layer), z)
+}
+
 export function createKit({ parent, max = 192 } = {}) {
   const batches = new Map()
   const planes = new Map()

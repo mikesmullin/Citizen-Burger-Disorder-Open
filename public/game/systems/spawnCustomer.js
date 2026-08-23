@@ -79,16 +79,18 @@ function makeBadgeBubble() {
   return m
 }
 
-export function cloneCustomerMesh(proto, skin) {
+export function cloneCustomerMesh(proto, skin, bubbles) {
   const object = proto.clone(true)
   applySkin(object, loadSkin(skin))
   sitOnFloor(object)
   const footY = object.position.y
-  const bubble = makeBadgeBubble()
+  const bubbleSlot = bubbles ? bubbles.alloc() : -1
+  const bubble = bubbleSlot < 0 ? makeBadgeBubble() : null
   object.userData.bubble = bubble
+  object.userData.bubbleSlot = bubbleSlot
   object.userData.footY = footY
   object.name = 'FrontNPC:' + skin
-  return { object, footY, bubble }
+  return { object, footY, bubble, bubbleSlot }
 }
 
 function freeCapacity(world, size) {
@@ -159,13 +161,16 @@ function despawn(world, eid, ctx) {
     }
     const bubble = view.object?.userData?.bubble
     if (bubble && bubble.parent) bubble.parent.remove(bubble)
+    const slot = view.object?.userData?.bubbleSlot
+    if (slot >= 0 && ctx.bubbles) ctx.bubbles.release(slot)
+    if (view.object && ctx.bodies) ctx.bodies.detach(view.object)
     if (view.object && view.object.parent) view.object.parent.remove(view.object)
   }
   world.kill(eid)
 }
 
 export function spawnGroup(world, {
-  size, street, door, proto, scene, player,
+  size, street, door, proto, scene, player, bubbles, bodies,
 } = {}) {
   let n = countCustomers(world)
   size = Math.max(1, Math.min(size || groupSize(), MAX - n))
@@ -180,9 +185,9 @@ export function spawnGroup(world, {
       skin = EASTER[(Math.random() * EASTER.length) | 0]
       special = false
     }
-    const { object, footY, bubble } = cloneCustomerMesh(proto, skin)
+    const { object, footY, bubble, bubbleSlot } = cloneCustomerMesh(proto, skin, bubbles)
     scene.add(object)
-    scene.add(bubble)
+    if (bubble) scene.add(bubble)
     const x = street.x + (i - (size - 1) / 2) * 1.3
     const z = street.z + (Math.random() - 0.5) * 1.2
     const eid = spawnPrefab(world, 'mobs/Npc', {
@@ -196,6 +201,13 @@ export function spawnGroup(world, {
     cust.groupId = gid
     object.userData.eid = eid
     object.traverse(o => { o.userData.eid = eid; o.userData.frontNpc = true })
+    if (bodies) {
+      bodies.attach(object, {
+        skin,
+        map: loadSkin(skin),
+        payload: { frontNpc: true, eid, skin, object },
+      })
+    }
     if (view) {
       view.mover = { position: object.position, radius: RADIUS, eid }
       if (player) player.addMover(view.mover)
@@ -227,6 +239,8 @@ export function update(world, dt, ctx) {
     size: groupSize(),
     street: ctx.street,
     door: ctx.door,
+    bubbles: ctx.bubbles,
+    bodies: ctx.bodies,
     proto: ctx.proto,
     scene: ctx.scene,
     player: ctx.player,

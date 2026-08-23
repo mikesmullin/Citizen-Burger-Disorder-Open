@@ -193,7 +193,7 @@ function makeWorldArm(armProto, side, pool) {
 }
 
 export function createDemoPlayers({
-  scene, player, playerProto, armProto, armPool,
+  scene, player, playerProto, armProto, armPool, bodies,
   x = 0, z = 7.2, yaw = -Math.PI / 2, spacing = 2.15,
 } = {}) {
   const skins = {}
@@ -239,21 +239,11 @@ export function createDemoPlayers({
     scene.add(body)
     const vis = visualMesh(body)
     const skinKey = spec.skin || 'default'
-    if (!pools[skinKey] && vis) {
-      pools[skinKey] = createInstancePool({
-        geometry: vis.geometry,
-        material: vis.material.clone(),
-        max: n,
-        scene,
-        name: 'PlayerInst:' + skinKey,
-      })
-    }
-    hideVisuals(body)
     const demo = {
       spec, body, left, right, badge,
       inv,
       visual: vis,
-      pool: pools[skinKey] || null,
+      pool: null,
       slot: -1,
       baseY: body.position.y,
       faceYaw: yaw,
@@ -262,9 +252,33 @@ export function createDemoPlayers({
       radius: 0.45,
       position: body.position,
     }
-    if (demo.pool && vis) {
-      demo.slot = demo.pool.alloc({ demo })
-      demo.pool.setFromObject(demo.slot, vis)
+    if (bodies && vis) {
+      const rec = bodies.attach(body, {
+        skin: skinKey,
+        map: vis.material.map,
+        payload: { demo },
+      })
+      if (rec) {
+        demo.pool = rec.pool
+        demo.slot = rec.i
+        demo.visual = rec.vis
+      }
+    } else {
+      if (!pools[skinKey] && vis) {
+        pools[skinKey] = createInstancePool({
+          geometry: vis.geometry,
+          material: vis.material.clone(),
+          max: n,
+          scene,
+          name: 'PlayerInst:' + skinKey,
+        })
+      }
+      hideVisuals(body)
+      demo.pool = pools[skinKey] || null
+      if (demo.pool && vis) {
+        demo.slot = demo.pool.alloc({ demo })
+        demo.pool.setFromObject(demo.slot, vis)
+      }
     }
     body.userData.demoPlayer = demo
     body.traverse(o => { o.userData.demoPlayer = demo })

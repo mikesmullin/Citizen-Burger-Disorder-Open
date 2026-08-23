@@ -172,6 +172,7 @@ export function mountSwitch({
   lookOff = '',
   listener = null,
   clickBuf = null,
+  instancer = null,
 } = {}) {
   const wrap = new THREE.Group()
   wrap.name = 'WallSwitch'
@@ -204,10 +205,14 @@ export function mountSwitch({
     listener, clickBuf,
   })
   handle.wrap = wrap
+  if (instancer) {
+    instancer.attach(object, { wallSwitch: handle }, 'switch')
+    handle.instancer = instancer
+  }
   return handle
 }
 
-export function createSwitchSet({ player, proto } = {}) {
+export function createSwitchSet({ player, proto, instancer } = {}) {
   const items = []
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2(0, 0)
@@ -217,7 +222,7 @@ export function createSwitchSet({ player, proto } = {}) {
     if (!p) return null
     const sw = mountSwitch({
       startOn: true, invertPaddle: true, ...opts,
-      proto: p,
+      proto: p, instancer,
     })
     items.push(sw)
     return sw
@@ -229,6 +234,10 @@ export function createSwitchSet({ player, proto } = {}) {
       startOn: false, label: 'Light switch',
       ...opts,
     })
+    if (instancer) {
+      instancer.attach(object, { wallSwitch: sw }, 'switch')
+      sw.instancer = instancer
+    }
     items.push(sw)
     return sw
   }
@@ -236,10 +245,16 @@ export function createSwitchSet({ player, proto } = {}) {
   function pick() {
     if (!player?.camera || !items.length) return null
     raycaster.setFromCamera(ndc, player.camera)
-    const roots = items.map(s => s.wrap)
+    const roots = items.map(s => s.wrap).filter(Boolean)
+    if (instancer) {
+      for (const m of instancer.meshes()) roots.push(m)
+    }
     const hits = raycaster.intersectObjects(roots, true)
     for (const h of hits) {
       if (h.distance > PRESS_RANGE) continue
+      const inst = h.object.userData.byInstance && h.instanceId != null
+        ? h.object.userData.byInstance[h.instanceId] : null
+      if (inst && inst.wallSwitch) return inst.wallSwitch
       const sw = h.object.userData.wallSwitch
       if (sw) return sw
     }
@@ -264,7 +279,10 @@ export function createSwitchSet({ player, proto } = {}) {
   }
 
   function update(dt) {
-    for (const sw of items) sw.update(dt)
+    for (const sw of items) {
+      sw.update(dt)
+      if (sw.instancer && sw.object) sw.instancer.sync(sw.object)
+    }
   }
 
   return { add, bind, tryPress, lookLabel, update, items, pick }

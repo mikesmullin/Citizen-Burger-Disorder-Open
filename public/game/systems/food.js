@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { tryLandStack, tickStacks, layoutStack, layoutPlate } from './stacking.js'
 import { createImpactSfx } from './sfx.js'
+import { createVisualInstancer } from '../common/instancePool.js'
 
 // Friction per surface material. Kritz's original: Food mat = 0.5 (friction
 // Combine=Maximum), Frictiony mat = 1.0. We split the world by material and
@@ -195,8 +196,30 @@ export function cookTick(item, dt) {
     ? (item.overcooked > 0.4
       ? './assets/textures/BaconCooked.png'
       : './assets/textures/BaconCooked2.png')
-    : null
+    : (item.dirty ? './assets/textures/PlateDirty.png' : null)
   const root = item.object
+  const variant = mapUrl || ''
+  if (root && item.watchVisual && item.instVariant !== variant) {
+    applyCookLook(root, {
+      cooked: Math.min(1, item.cooked),
+      overcooked: Math.min(1, item.overcooked),
+      cookedRGB: rgb,
+      mapUrl,
+    })
+    item.instVariant = variant
+    item.watchVisual(item)
+    return
+  }
+  if (root && root.userData && root.userData.instSlots) {
+    const tgt = new THREE.Color(rgb.r, rgb.g, rgb.b)
+    const burn = new THREE.Color(0.005, 0, 0)
+    const c = (item.cookOrig || new THREE.Color(1, 1, 1)).clone()
+    if (item.cooked > 0) c.lerp(tgt, Math.min(1, item.cooked))
+    if (item.overcooked > 0) c.lerp(burn, Math.min(1, item.overcooked * 0.82))
+    const slots = root.userData.instSlots
+    for (const s of slots.slots) s.pool.setColor(s.i, c)
+    return
+  }
   if (root) applyCookLook(root, {
     cooked: Math.min(1, item.cooked),
     overcooked: Math.min(1, item.overcooked),
@@ -231,13 +254,39 @@ export function layoutFood(root, { maxSize, sit = false, type, slug } = {}) {
   return { height: sz.y, size: sz }
 }
 
-export function createFoodWorld({ scene, player }) {
+export function createFoodWorld({ scene, player, instancer: given } = {}) {
   const items = []
   const spawners = []
   const SPAWN_EVERY = 5 * 60
   const sfx = createImpactSfx({ scene, player })
+  const instancer = given || createVisualInstancer({ scene, max: 96, prefix: 'Pick' })
 
-  function spawn({ proto, type, slug, x, z, y = null, onFloor = false, fromSpawner = null, maxSize }) {
+  function captureOrig(item) {
+    if (!item || !item.object || item.cookOrig) return
+    item.object.traverse(o => {
+      if (item.cookOrig || !o.isMesh || !o.material || o.userData.trigger) return
+      item.cookOrig = o.material.color.clone()
+    })
+    if (!item.cookOrig) item.cookOrig = new THREE.Color(1, 1, 1)
+  }
+
+  function watch(item) {
+    if (!item || !item.object) return item
+    captureOrig(item)
+    item.watchVisual = watch
+    instancer.attach(item.object, { food: item }, item.instVariant || '')
+    return item
+  }
+
+  function forget(item) {
+    if (!item) return
+    if (item.object) instancer.detach(item.object)
+    const i = items.indexOf(item)
+    if (i >= 0) items.splice(i, 1)
+    if (item.fromSpawner && item.fromSpawner.item === item) item.fromSpawner.item = null
+  }
+
+  function spawn({ proto, type, slug, x, z, y = null, onFloor = false, fromSpawner = null, maxSize, instanced = true }) {
     const object = proto.clone(true)
     const { height, size } = layoutFood(object, { maxSize, sit: true, type, slug })
     object.position.x = x
@@ -268,15 +317,15 @@ export function createFoodWorld({ scene, player }) {
     object.traverse(o => { o.userData.food = item })
     items.push(item)
     if (fromSpawner) fromSpawner.item = item
+    if (instanced) watch(item)
     return item
   }
 
   function destroy(item) {
     if (!item) return
+    forget(item)
+    if (item.object && item.object.parent) item.object.parent.remove(item.object)
     scene.remove(item.object)
-    const i = items.indexOf(item)
-    if (i >= 0) items.splice(i, 1)
-    if (item.fromSpawner && item.fromSpawner.item === item) item.fromSpawner.item = null
   }
 
   function addSpawner(x, z, proto) {
@@ -393,7 +442,11 @@ export function createFoodWorld({ scene, player }) {
       if (item.held && item.type === 'plate' && item.plated) layoutPlate(item)
     }
     tickStacks(items)
+    instancer.syncAll()
   }
 
-  return { items, spawners, spawn, destroy, addSpawner, foodOnFloor, update, SPAWN_EVERY }
+  return {
+    items, spawners, spawn, destroy, forget, watch, addSpawner, foodOnFloor, update,
+    instancer, SPAWN_EVERY,
+  }
 }

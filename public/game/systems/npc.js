@@ -116,7 +116,7 @@ function sitOnFloor(root) {
   root.position.y -= fitted.min.y
 }
 
-export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
+export function createCrowd({ scene, player, proto, exhibits, count = 12, bubbles, bodies } = {}) {
   const skins = {}
   for (const n of [...SKINS, ...EASTER]) skins[n] = loadSkin(n)
 
@@ -185,9 +185,10 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
     object.position.x = x
     object.position.z = z
     object.name = 'NPC:' + skin
-    const bubble = makeNoticeBubble()
+    const bubbleSlot = bubbles ? bubbles.alloc() : -1
+    const bubble = bubbleSlot < 0 ? makeNoticeBubble() : null
     scene.add(object)
-    scene.add(bubble)
+    if (bubble) scene.add(bubble)
 
     const npc = {
       object, skin, group,
@@ -204,6 +205,7 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
       phase: Math.random() * Math.PI * 2,
       turnMul: 0.85 + Math.random() * 0.3,
       bubble,
+      bubbleSlot,
       footY,
       blockedTime: 0,
       maneuverUntil: 0,
@@ -212,13 +214,22 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
     }
     object.userData.npc = npc
     object.traverse(o => { o.userData.npc = npc })
-    const vis = visualMesh(object)
-    hideVisuals(object)
-    const pool = poolFor(skin)
-    npc.visual = vis
-    npc.pool = pool
-    npc.slot = pool.alloc({ npc })
-    if (vis) pool.setFromObject(npc.slot, vis)
+    if (bodies) {
+      const rec = bodies.attach(object, { skin, map: skins[skin], payload: { npc } })
+      if (rec) {
+        npc.visual = rec.vis
+        npc.pool = rec.pool
+        npc.slot = rec.i
+      }
+    } else {
+      const vis = visualMesh(object)
+      hideVisuals(object)
+      const pool = poolFor(skin)
+      npc.visual = vis
+      npc.pool = pool
+      npc.slot = pool.alloc({ npc })
+      if (vis) pool.setFromObject(npc.slot, vis)
+    }
     player.addMover(npc)
     npcs.push(npc)
     return npc
@@ -359,11 +370,17 @@ export function createCrowd({ scene, player, proto, exhibits, count = 12 }) {
       const pd = Math.hypot(player.position.x - npc.position.x, player.position.z - npc.position.z)
       if (pd < NOTICE_IN) npc.notice = true
       else if (pd > NOTICE_OUT) npc.notice = false
-      npc.bubble.visible = npc.notice && pd < NOTICE_IN + 0.5
+      const show = npc.notice && pd < NOTICE_IN + 0.5
       const gy = player.groundY ? player.groundY(npc.position.x, npc.position.z) : 0
       npc.position.y = gy + npc.footY
-      if (npc.bubble.visible) {
-        npc.bubble.position.set(npc.position.x, gy + HEIGHT + 0.38, npc.position.z)
+      if (npc.bubbleSlot >= 0 && bubbles) {
+        bubbles.set(npc.bubbleSlot, {
+          x: npc.position.x, y: gy + HEIGHT + 0.38, z: npc.position.z,
+          icon: 'notice', visible: show,
+        })
+      } else if (npc.bubble) {
+        npc.bubble.visible = show
+        if (show) npc.bubble.position.set(npc.position.x, gy + HEIGHT + 0.38, npc.position.z)
       }
 
       if (npc.want === Wants.wander) {

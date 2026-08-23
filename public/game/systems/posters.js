@@ -2,6 +2,7 @@
 // to step through the stack; grab with Q/E to take a copy onto the floor.
 
 import * as THREE from 'three'
+import { atlasUvMaterial } from '../common/atlasUv.js'
 
 export const POSTERS = [
   { id: 'CoverYourBurger', file: './assets/textures/posters/CoverYourBurger.png', caption: 'Cover your burger' },
@@ -54,41 +55,69 @@ function makeSheet(map) {
 }
 
 function atlasMaterial(map) {
-  const mat = new THREE.MeshStandardMaterial({
-    map, color: 0xffffff, roughness: 0.72, metalness: 0.02, side: THREE.FrontSide,
-  })
-  mat.onBeforeCompile = shader => {
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-attribute vec4 instanceUv;
-varying vec4 vInstanceUv;`,
+  return atlasUvMaterial(map, { key: 'poster-atlas-uv' })
+}
+
+let _atlasMeta = null
+function loadAtlasMeta() {
+  if (_atlasMeta) return _atlasMeta
+  _atlasMeta = fetch('./assets/textures/posters/atlas.json')
+    .then(r => { if (!r.ok) throw new Error('no atlas'); return r.json() })
+  return _atlasMeta
+}
+
+/** Wall-mounted posters as one atlas InstancedMesh (dining + pass). */
+export async function mountWallPosters(parent, mounts) {
+  if (!mounts || !mounts.length) return null
+  let meta
+  try {
+    meta = await loadAtlasMeta()
+  } catch (err) {
+    console.warn('[posters] wall atlas missing', err)
+    for (const m of mounts) {
+      const map = loadMap(m.file || `./assets/textures/posters/${m.id}.png`)
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(m.w, m.h),
+        new THREE.MeshStandardMaterial({ map, color: 0xffffff, roughness: 0.72 }),
       )
-      .replace(
-        '#include <uv_vertex>',
-        `#include <uv_vertex>
-vInstanceUv = instanceUv;`,
-      )
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-varying vec4 vInstanceUv;`,
-      )
-      .replace(
-        '#include <map_fragment>',
-        `#ifdef USE_MAP
-	vec4 sampledDiffuseColor = texture2D( map, vMapUv * vInstanceUv.zw + vInstanceUv.xy );
-	#ifdef DECODE_VIDEO_TEXTURE
-		sampledDiffuseColor = sRGBTransferEOTF( sampledDiffuseColor );
-	#endif
-	diffuseColor *= sampledDiffuseColor;
-#endif`,
-      )
+      mesh.position.set(m.x, m.y, m.z)
+      mesh.rotation.y = m.yaw || 0
+      mesh.castShadow = true
+      parent.add(mesh)
+    }
+    return null
   }
-  mat.customProgramCacheKey = () => 'poster-atlas-uv'
-  return mat
+  const n = mounts.length
+  const map = loadMap(meta.image)
+  const geo = new THREE.PlaneGeometry(1, 1)
+  const uv = new Float32Array(n * 4)
+  const dummy = new THREE.Object3D()
+  for (let i = 0; i < n; i++) {
+    const f = meta.frames[mounts[i].id]
+    if (!f) continue
+    uv[i * 4] = f.u
+    uv[i * 4 + 1] = f.v
+    uv[i * 4 + 2] = f.du
+    uv[i * 4 + 3] = f.dv
+  }
+  geo.setAttribute('instanceUv', new THREE.InstancedBufferAttribute(uv, 4))
+  const mesh = new THREE.InstancedMesh(geo, atlasMaterial(map), n)
+  mesh.name = 'WallPosters'
+  mesh.count = n
+  mesh.castShadow = true
+  mesh.frustumCulled = false
+  parent.add(mesh)
+  for (let i = 0; i < n; i++) {
+    const m = mounts[i]
+    dummy.position.set(m.x, m.y, m.z)
+    dummy.rotation.set(0, m.yaw || 0, 0)
+    dummy.scale.set(m.w, m.h, 1)
+    dummy.updateMatrix()
+    mesh.setMatrixAt(i, dummy.matrix)
+  }
+  mesh.instanceMatrix.needsUpdate = true
+  mesh.computeBoundingSphere()
+  return mesh
 }
 
 export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
@@ -169,8 +198,7 @@ export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {
     carousel.instanceMatrix.needsUpdate = true
   }
 
-  fetch('./assets/textures/posters/atlas.json')
-    .then(r => { if (!r.ok) throw new Error('no atlas'); return r.json() })
+  loadAtlasMeta()
     .then(meta => {
       const map = loadMap(meta.image)
       const geo = new THREE.PlaneGeometry(PW, PH)

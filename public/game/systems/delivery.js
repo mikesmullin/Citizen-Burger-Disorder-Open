@@ -67,19 +67,25 @@ export function makeOpenNet(tex, S = BOX_SIZE) {
   const mat = cardboardMat(tex)
   const g = new THREE.Group()
   g.name = 'BoxOpen'
-  const face = (x, z) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(S, thick, S), mat)
-    m.position.set(x, thick * 0.5, z)
-    m.castShadow = m.receiveShadow = true
-    g.add(m)
-    return m
-  }
-  face(0, 0)           // floor
-  face(-S, 0)          // left
-  face(S, 0)           // right
-  face(0, S)           // lid
-  face(0, -S)          // front
-  face(0, -2 * S)      // back
+  const geo = new THREE.BoxGeometry(S, thick, S)
+  const mesh = new THREE.InstancedMesh(geo, mat, 6)
+  mesh.name = 'Pick:BoxOpen'
+  mesh.count = 6
+  mesh.castShadow = mesh.receiveShadow = true
+  mesh.frustumCulled = false
+  const dummy = new THREE.Object3D()
+  const spots = [
+    [0, 0], [-S, 0], [S, 0], [0, S], [0, -S], [0, -2 * S],
+  ]
+  spots.forEach(([x, z], i) => {
+    dummy.position.set(x, thick * 0.5, z)
+    dummy.rotation.set(0, 0, 0)
+    dummy.scale.set(1, 1, 1)
+    dummy.updateMatrix()
+    mesh.setMatrixAt(i, dummy.matrix)
+  })
+  mesh.instanceMatrix.needsUpdate = true
+  g.add(mesh)
   return g
 }
 
@@ -117,9 +123,12 @@ export function openClosedBox(item, { scene, player, foodWorld, foodProtos, boxT
   item.held = false
   const pos = item.object.position.clone()
   const gy = player.groundY ? player.groundY(pos.x, pos.z) : 0
+  if (foodWorld.forget) foodWorld.forget(item)
+  else {
+    const i = foodWorld.items.indexOf(item)
+    if (i >= 0) foodWorld.items.splice(i, 1)
+  }
   if (item.object.parent) item.object.parent.remove(item.object)
-  const i = foodWorld.items.indexOf(item)
-  if (i >= 0) foodWorld.items.splice(i, 1)
 
   const net = makeOpenNet(boxTex, BOX_SIZE)
   net.position.set(pos.x, gy, pos.z)
@@ -433,6 +442,7 @@ export async function createDelivery({
     foodWorld.items.push(item)
     boxes.push(item)
     prepareClosedBox(item, { scene, player, foodWorld, foodProtos, boxTex })
+    if (foodWorld.watch) foodWorld.watch(item)
     return item
   }
 

@@ -24,7 +24,8 @@ import * as View from './view.js'
 import { createPosKiosk } from './posKiosk.js'
 import { boundsOf } from '../common/unityScene.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
-import { createKit, makeFloor, makeRoof, makePane, WALL_T, WAINSCOT, RAIL, WAINSCOT_T, COUNTER_Y } from '../common/kit.js'
+import { createKit, addTiledFloor, WALL_T, WAINSCOT, RAIL, WAINSCOT_T, COUNTER_Y } from '../common/kit.js'
+import { mountWallPosters } from './posters.js'
 
 export const BOOTH_W = 12
 export const BOOTH_D = 18
@@ -146,6 +147,7 @@ function ensureLiveOverlay() {
 export async function createFront({
   scene, player, foodWorld, foodProtos,
   npcProto, world, kitchen, onPosOpen, switchProto, getHands,
+  labels, pickInst, bubbles, bodies,
   x = 0, z = 0, facingY = 0,
 } = {}) {
   const object = new THREE.Group()
@@ -194,14 +196,12 @@ export async function createFront({
 
   const diningD = doorZ - winZ
   const diningZ = (winZ + doorZ) / 2
-  object.add(makeFloor({ map: floorTex, w: BOOTH_W, d: diningD, z: diningZ, layer: 1, tile: 1.55 }))
-  object.add(makeFloor({ map: passTex, w: BOOTH_W, d: passD, z: passZ, layer: 1, tile: 1.8 }))
-  const street = makeFloor({
+  addTiledFloor(kit, { map: floorTex, w: BOOTH_W, d: diningD, z: diningZ, layer: 1, tile: 1.55 })
+  addTiledFloor(kit, { map: passTex, w: BOOTH_W, d: passD, z: passZ, layer: 1, tile: 1.8 })
+  addTiledFloor(kit, {
     map: streetTex, w: BOOTH_W + 1.4, d: STREET_D, z: hz - STREET_D / 2, layer: 2, tile: 2,
   })
-  street.name = 'StreetFloor'
-  object.add(street)
-  object.add(makeRoof({ w: BOOTH_W, d: interiorD, y: BOOTH_H, z: interiorZ }))
+  kit.roof(BOOTH_W, interiorD, 0, BOOTH_H, interiorZ)
 
   function solidWall(w, d, px, pz, alongX) {
     const tw = alongX ? w : WALL_T
@@ -250,10 +250,19 @@ export async function createFront({
   facadeWindow(doorX1, hx, doorZ)
   doorFrame(doorX0, doorX1, doorZ)
 
-  const banner = makeLabel('FRONT')
-  banner.scale.set(1.45, 1.25, 1)
-  banner.position.set(doorX, doorH + 0.52, doorZ + 0.08)
-  object.add(banner)
+  function putTag(text, x, y, z, extra = {}) {
+    const par = extra.parent || object
+    if (labels) {
+      return labels.place({ text, kind: 'tag', x, y, z, parent: par, ...extra })
+    }
+    const m = makeLabel(text)
+    if (extra.sx || extra.sy) m.scale.set(extra.sx || 1, extra.sy || 1, 1)
+    m.position.set(x, y, z)
+    if (extra.yaw) m.rotation.y = extra.yaw
+    par.add(m)
+    return m
+  }
+  putTag('FRONT', doorX, doorH + 0.52, doorZ + 0.08, { sx: 1.45, sy: 1.25 })
 
   // Window wall: west staff passage, then solid, half-wall window, solid.
   const passX1 = -2.35
@@ -267,10 +276,7 @@ export async function createFront({
   box(winW, HALF_H, WALL_T, upperMat, (winX0 + winX1) / 2, HALF_H / 2, winZ)
   box(winW, 0.06, 0.36, topMat, (winX0 + winX1) / 2, HALF_H + 0.03, winZ + 0.22)
 
-  const passLabel = makeLabel('PASS')
-  passLabel.scale.set(0.72, 0.72, 1)
-  passLabel.position.set((winX0 + winX1) / 2, HALF_H - 0.22, winZ + WALL_T / 2 + 0.01)
-  object.add(passLabel)
+  putTag('PASS', (winX0 + winX1) / 2, HALF_H - 0.22, winZ + WALL_T / 2 + 0.01, { sx: 0.72, sy: 0.72 })
 
   // Checkout: bar running east–west. Staff stand on the -Z side (toward
   // the window); guests queue on the +Z side. West wall closes the pen.
@@ -329,10 +335,7 @@ export async function createFront({
   posScreen.position.set(0, COUNTER_Y + 0.42, 0.09)
   posScreen.userData.posLive = true
   posG.add(posScreen)
-  const posLabel = makeLabel('POS')
-  posLabel.scale.set(0.7, 0.7, 1)
-  posLabel.position.set(0, COUNTER_Y + 0.78, 0.08)
-  posG.add(posLabel)
+  putTag('POS', 0, COUNTER_Y + 0.78, 0.08, { sx: 0.7, sy: 0.7, parent: posG })
   object.add(posG)
 
   const regX = cX0 + 0.55
@@ -363,11 +366,7 @@ export async function createFront({
   regDisp.position.set(regX, COUNTER_Y + 0.52, cZ - cD / 2 - 0.02)
   regDisp.rotation.y = Math.PI
   object.add(regDisp)
-  const regLabel = makeLabel('TILL')
-  regLabel.scale.set(0.65, 0.65, 1)
-  regLabel.position.set(regX, COUNTER_Y + 0.78, cZ - cD / 2 - 0.02)
-  regLabel.rotation.y = Math.PI
-  object.add(regLabel)
+  putTag('TILL', regX, COUNTER_Y + 0.78, cZ - cD / 2 - 0.02, { sx: 0.65, sy: 0.65, yaw: Math.PI })
 
   const compX = 0.15
 
@@ -413,27 +412,9 @@ export async function createFront({
     box(0.36, 0.02, 0.52, markMat, q.x, 0.05, q.z)
   }
 
-  const backLabel = makeLabel('BACK')
-  backLabel.scale.set(0.75, 0.75, 1)
-  backLabel.position.set((backDoorX0 + backDoorX1) / 2, 2.55, -hz + WALL_T + 0.08)
-  object.add(backLabel)
+  putTag('BACK', (backDoorX0 + backDoorX1) / 2, 2.55, -hz + WALL_T + 0.08, { sx: 0.75, sy: 0.75 })
 
-  // Two wall posters in the back (pass) room, bare canvas style (no frame):
-  // one on the east back-wall section (clear of the back door / staff
-  // corridor), one on the adjacent east wall.
-  function mountCanvas(id, px, py, pz, yaw, w) {
-    // These posters are square (512x512), so height = width, no distortion.
-    const m = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, w),
-      mat(0xffffff, { map: loadMap(`./assets/textures/posters/${id}.png`), roughness: 0.85 }),
-    )
-    m.castShadow = true
-    m.position.set(px, py, pz)
-    m.rotation.y = yaw
-    object.add(m)
-  }
-  mountCanvas('CoverYourBurger', 1.30, 1.80, -hz + WALL_T + 0.02, 0, 1.1)              // back wall, faces +z
-  mountCanvas('Poster2', hx - WALL_T - 0.02, 1.80, -7.2, -Math.PI / 2, 1.1)            // east wall, faces -x
+  // Wall posters (dining + pass) share the kiosk atlas — one InstancedMesh.
 
   function makeTable(spec) {
     const tw = spec.w
@@ -461,27 +442,14 @@ export async function createFront({
     makeTable({ tableId: 4, capacity: 4, x: 3.85, z: 1.0, w: 1.85, d: 1.15 }),
   ]
 
-  // Wall art: the original's "Promo" shots, mounted like framed posters on the
-  // two long side walls of the dining area, one above each table, facing into
-  // the room. The wainscot rail ends at WAINSCOT, so the bottoms float free.
-  function mountPoster(id, px, pz, yaw, w) {
-    const map = new THREE.TextureLoader().load(`./assets/textures/posters/${id}.png`)
-    map.colorSpace = THREE.SRGBColorSpace
-    map.anisotropy = 4
-    const h = w * 0.75
-    const face = makePane({
-      w, h, x: px, y: 2.0, z: pz, yaw,
-      material: mat(0xffffff, { map, roughness: 0.72 }),
-    })
-    face.material.side = THREE.FrontSide
-    face.castShadow = true
-    object.add(face)
-  }
-  // West wall (x=-hx) faces +X into the room; east wall (x=+hx) faces -X.
-  mountPoster('jTZL8p0', -hx + WALL_T + 0.04, 3.2,  Math.PI / 2, 1.8)  // above table 1
-  mountPoster('n0kvMQ6', -hx + WALL_T + 0.04, 1.05,  Math.PI / 2, 1.8)  // above table 3
-  mountPoster('BLCkYpI',  hx - WALL_T - 0.04, 3.2, -Math.PI / 2, 1.8)  // above table 2
-  mountPoster('VF9IcfX',  hx - WALL_T - 0.04, 1.0,  -Math.PI / 2, 1.8)  // above table 4
+  await mountWallPosters(object, [
+    { id: 'CoverYourBurger', x: 1.30, y: 1.80, z: -hz + WALL_T + 0.02, yaw: 0, w: 1.1, h: 1.1 },
+    { id: 'Poster2', x: hx - WALL_T - 0.02, y: 1.80, z: -7.2, yaw: -Math.PI / 2, w: 1.1, h: 1.1 },
+    { id: 'jTZL8p0', x: -hx + WALL_T + 0.04, y: 2.0, z: 3.2, yaw: Math.PI / 2, w: 1.8, h: 1.35 },
+    { id: 'n0kvMQ6', x: -hx + WALL_T + 0.04, y: 2.0, z: 1.05, yaw: Math.PI / 2, w: 1.8, h: 1.35 },
+    { id: 'BLCkYpI', x: hx - WALL_T - 0.04, y: 2.0, z: 3.2, yaw: -Math.PI / 2, w: 1.8, h: 1.35 },
+    { id: 'VF9IcfX', x: hx - WALL_T - 0.04, y: 2.0, z: 1.0, yaw: -Math.PI / 2, w: 1.8, h: 1.35 },
+  ])
 
   const lamp = new THREE.PointLight(0xfff1d0, 16, 20, 2)
   lamp.position.set(0, 3.05, 0.6)
@@ -495,7 +463,7 @@ export async function createFront({
 
   // Guest-face divider west of the till (the south wall in the screenshot:
   // stand behind the counter, look at the till, wall to the right).
-  const switches = createSwitchSet({ player, proto: switchProto })
+  const switches = createSwitchSet({ player, proto: switchProto, instancer: pickInst })
   const swStep = 0.28
   const swX = cX0 - 0.55
   const swZ0 = divideZ
@@ -518,7 +486,7 @@ export async function createFront({
     label: 'Pass lights',
   })
   kit.finalize()
-  muteBoothShadows(object, { skipNames: ['StreetFloor'], castNames: ['RoomCeiling'] })
+  muteBoothShadows(object, { skipNames: ['Kit:Floor', 'Kit:Glass'], castNames: ['Kit:Roof'] })
 
   function worldOf(lx, ly, lz) {
     object.updateMatrixWorld(true)
@@ -710,7 +678,7 @@ export async function createFront({
     if (!world || !npcProto) return []
     return SpawnCustomer.spawnGroup(world, {
       size, street: streetWpos, door: doorWpos,
-      proto: npcProto, scene, player,
+      proto: npcProto, scene, player, bubbles, bodies,
     })
   }
 
@@ -945,6 +913,8 @@ export async function createFront({
       player,
       playerPos: player.position,
       foodWorld,
+      bubbles,
+      bodies,
       tipProto: foodProtos && foodProtos['items/Tip'],
       hands: getHands ? getHands() : null,
       indoorNodes,

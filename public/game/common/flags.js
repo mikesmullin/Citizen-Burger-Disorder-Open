@@ -14,9 +14,9 @@ flags.help = () => {
   const line = (k, note) => `  flags.${k} = ${flags[k]}  ${note}`
   const msg = [
     'window.flags (toggle in the console, next frame)',
-    line('instances', 'InstancedMesh: characters, pedestals, posters, arms, rats'),
+    line('instances', 'InstancedMesh: characters, pedestals, posters, food, labels, holes'),
     line('pointLights', 'PointLight only (directional / hemi stay)'),
-    line('kit', 'Kit:* instanced room greybox (walls, counters, wainscot)'),
+    line('kit', 'Kit:* room greybox (walls, counters, floors, roofs, glass)'),
   ].join('\n')
   console.log(msg)
   return flags

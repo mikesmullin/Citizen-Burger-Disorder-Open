@@ -25,10 +25,13 @@ import { createSkybox, SKY_FOG_DAY, SKY_FOG_DUSK, SKY_FOG_NIGHT } from '../syste
 import { createWorld } from '../common/ecs.js'
 import { installHarness } from '../common/harness.js'
 import { createFpsOverlay } from '../common/fpsOverlay.js'
-import { createInstancePool, visualMesh } from '../common/instancePool.js'
+import { createInstancePool, visualMesh, createVisualInstancer } from '../common/instancePool.js'
+import { createBodyInstancer } from '../common/bodyInstancer.js'
 import { createKit, makeFloor, FLOOR_PHYSICS } from '../common/kit.js'
 import { flags, applyFlags } from '../common/flags.js'
 import { bindAudio } from '../common/audio.js'
+import { createLabelField } from '../common/labelField.js'
+import { createBubbleField } from '../common/bubbleField.js'
 
 const FEATURED = [
   { slug: 'mobs/Rat', caption: 'Rat' },
@@ -293,6 +296,10 @@ bindAudio(player.camera)
 
 const exhibits = []
 const foodProtos = {}
+const labels = createLabelField({ scene })
+const bubbles = createBubbleField({ scene })
+const pickInst = createVisualInstancer({ scene, max: 96, prefix: 'Pick' })
+const bodies = createBodyInstancer({ scene, maxPerSkin: 32, prefix: 'BodyInst:' })
 let crowd = null
 let foodWorld = null
 let hands = null
@@ -619,14 +626,17 @@ function placeOnPedestal(asset, x, z, meta, yaw = 0, data = null) {
   const nativeStr = native
     ? `native ${native.x.toFixed(2)} × ${native.y.toFixed(2)} × ${native.z.toFixed(2)}`
     : meta.group
-  const plaque = makePlaque(caption, `${meta.group}  ·  ${nativeStr}`)
-  plaque.position.set(0, 0.55, PEDESTAL_W * 0.52 + 0.02)
-
   const wrap = new THREE.Group()
   wrap.position.set(x, 0, z)
   wrap.rotation.y = yaw
   wrap.add(asset)
-  wrap.add(plaque)
+  labels.place({
+    text: caption,
+    sub: `${meta.group}  ·  ${nativeStr}`,
+    kind: 'plaque',
+    x: 0, y: 0.55, z: PEDESTAL_W * 0.52 + 0.02,
+    parent: wrap,
+  })
   scene.add(wrap)
   if (pedestals) pedestals.place(x, z, yaw)
 
@@ -649,6 +659,11 @@ function placeOnPedestal(asset, x, z, meta, yaw = 0, data = null) {
   }
   exhibits.push(rec)
   wrap.traverse(o => { o.userData.exhibit = rec })
+  if (rec.pickup && rec.slug !== 'items/Fire' && rec.slug !== 'items/LightSwitch') {
+    const variant = rec.cookState === 'dirty' ? 'dirty'
+      : (rec.cookState && String(rec.cookState).startsWith('bacon') ? rec.cookState : '')
+    pickInst.attach(asset, { exhibit: rec }, variant)
+  }
   return rec
 }
 
@@ -688,6 +703,7 @@ function updateFireSprites(dt) {
       f.next = 0.1 + Math.random() * 0.2
     }
     faceYaw(f.root)
+    pickInst.sync(f.root)
   }
   for (const root of facePlayer) faceYaw(root)
 }
@@ -854,7 +870,10 @@ async function boot() {
           if (loadSlug === 'items/Patty') restorePattyDisc(foodProtos[item.slug])
         }
         const rec = placeOnPedestal(display, slot.x, slot.z, item, slot.yaw, loaderData)
-        if (loadSlug === 'items/Fire') setupFireSprite(display)
+        if (loadSlug === 'items/Fire') {
+          setupFireSprite(display)
+          pickInst.attach(display, { exhibit: rec }, 'fire')
+        }
         if (FACE_PLAYER.has(loadSlug)) facePlayer.push(display)
       } catch (err) {
         console.warn('[museum] skip', item.slug, err)
@@ -862,7 +881,7 @@ async function boot() {
     }
   }
 
-  exhibitSwitches = createSwitchSet({ player })
+  exhibitSwitches = createSwitchSet({ player, instancer: pickInst })
   const switchRec = exhibits.find(e => e.slug === 'items/LightSwitch')
   if (switchRec) {
     exhibitSwitches.bind(switchRec.display, { label: 'Light switch', startOn: false })
@@ -872,12 +891,12 @@ async function boot() {
     const npc = await loader.load('mobs/Npc')
     hideTriggers(npc.root)
     npcProto = npc.root
-    crowd = createCrowd({ scene, player, proto: npc.root, exhibits, count: 12 })
+    crowd = createCrowd({ scene, player, proto: npc.root, exhibits, count: 12, bubbles, bodies })
   } catch (err) {
     console.warn('[museum] NPC crowd skipped', err)
   }
 
-  foodWorld = createFoodWorld({ scene, player })
+  foodWorld = createFoodWorld({ scene, player, instancer: pickInst })
 
   try {
     setStatus('Loading texture samples…')
@@ -999,7 +1018,7 @@ async function boot() {
       scene, player, foodWorld, foodProtos,
       getRats: () => rats,
       getFireWatch: () => fires,
-      switchProto,
+      switchProto, labels, pickInst,
       x: BOOTHS.kitchen.x, z: BOOTHS.kitchen.z, facingY: 0,
     })
     exhibits.push({
@@ -1036,7 +1055,7 @@ async function boot() {
     world = createWorld()
     front = await createFront({
       scene, player, foodWorld, foodProtos,
-      npcProto, world, kitchen, switchProto,
+      npcProto, world, kitchen, switchProto, labels, bubbles, pickInst, bodies,
       getHands: () => hands,
       onPosOpen: () => { player.unlock() },
       x: BOOTHS.front.x, z: BOOTHS.front.z, facingY: 0,
@@ -1100,18 +1119,17 @@ async function boot() {
     exhibits.push(rec)
     const ns = delivery.size
     const nativeStr = `native ${ns.x.toFixed(2)} × ${ns.y.toFixed(2)} × ${ns.z.toFixed(2)}`
-    const plaque = makePlaqueStand(rec.caption, `${rec.group}  ·  ${nativeStr}`)
-    // Same card as the pedestals, leaned 45° (label up) at the foot of the ramp.
     const lean = Math.PI / 4
-    const plaqueH = 0.48
-    plaque.rotation.x = -lean
-    plaque.position.set(
-      delivery.ramp.width * 0.5 + 0.82,
-      Math.sin(lean) * plaqueH * 0.5 + 0.01,
-      delivery.ramp.z1 + 0.35,
-    )
-    plaque.traverse(o => { o.userData.exhibit = rec })
-    scene.add(plaque)
+    labels.place({
+      text: rec.caption,
+      sub: `${rec.group}  ·  ${nativeStr}`,
+      kind: 'plaque',
+      x: delivery.ramp.width * 0.5 + 0.82,
+      y: Math.sin(lean) * 0.48 * 0.5 + 0.22,
+      z: delivery.ramp.z1 + 0.35,
+      pitch: -lean,
+      parent: scene,
+    })
   } catch (err) {
     console.warn('[museum] delivery truck skipped', err)
   }
@@ -1121,6 +1139,7 @@ async function boot() {
     getRats: () => rats,
     getHands: () => hands,
     fireProto: foodProtos['items/Fire'] || null,
+    instancer: pickInst,
   })
 
   let armRoot = null
@@ -1157,7 +1176,7 @@ async function boot() {
     hideTriggers(pl.root)
     if (armRoot) {
       demoPlayers = createDemoPlayers({
-        scene, player, playerProto: pl.root, armProto: armRoot, armPool,
+        scene, player, playerProto: pl.root, armProto: armRoot, armPool, bodies,
         x: 0, z: 7.5, yaw: -Math.PI / 2,
       })
       demoPlayers.setScale(DEMO_ARM_SCALE)
@@ -1238,6 +1257,7 @@ async function boot() {
   }
 
   if (pedestals) pedestals.finalize()
+  labels.finalize()
 
   player.spawn(0, 0, 11, 0)
   setStatus('')
@@ -1407,6 +1427,9 @@ function tick(dt) {
   if (exhibitSwitches) exhibitSwitches.update(dt)
   if (fires) fires.update(dt)
   if (fireSprites.length || facePlayer.length) updateFireSprites(dt)
+  if (bubbles) bubbles.billboard(player.camera)
+  pickInst.syncAll()
+  bodies.syncAll()
   if (skybox) skybox.update(dt)
 }
 
@@ -1448,14 +1471,17 @@ function currentLook() {
   raycaster.setFromCamera(ndc, player.camera)
   const hits = raycaster.intersectObjects(scene.children, true)
   for (const h of hits) {
-    const npc = h.object.userData.npc
+    const inst = (h.object.userData.byInstance && h.instanceId != null)
+      ? h.object.userData.byInstance[h.instanceId] : null
+    const npc = h.object.userData.npc || (inst && inst.npc)
     if (npc) return npc.notice ? `${npc.skin} · looking at you` : `${npc.skin} · ${npc.want}`
-    if (h.object.userData.frontNpc) {
-      return (h.object.userData.want || 'customer')
+    if (h.object.userData.frontNpc || (inst && inst.frontNpc)) {
+      const obj = h.object.userData.frontNpc ? h.object : (inst && inst.object)
+      return (obj && obj.userData.want) || (inst && inst.skin) || 'customer'
     }
-    if (h.object.userData.demoPlayer) {
-      const d = h.object.userData.demoPlayer
-      return d.spec.skin ? d.spec.name + ' · ' + d.spec.skin : d.spec.name
+    const demo = h.object.userData.demoPlayer || (inst && inst.demo)
+    if (demo) {
+      return demo.spec.skin ? demo.spec.name + ' · ' + demo.spec.skin : demo.spec.name
     }
     if (h.object.userData.rat) {
       const rat = h.object.userData.rat

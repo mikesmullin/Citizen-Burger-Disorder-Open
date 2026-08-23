@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { ratWillSteal } from './food.js'
 import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
+import { mergeGeometries, setVertexColor } from '../common/geom.js'
 
 export const RAT_SIZE = 1.05
 
@@ -36,20 +37,12 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
   let cooldownUntil = 0
   let currentRats = 0
 
+  const holeSpecs = []
   function makeHole(x, z, facing) {
+    holeSpecs.push({ x, z, facing })
     const g = new THREE.Group()
     g.position.set(x, 0.35, z)
     g.rotation.y = facing
-    const ring = new THREE.Mesh(
-      new THREE.CircleGeometry(0.42, 20),
-      new THREE.MeshStandardMaterial({ color: 0x1a120c, roughness: 1 })
-    )
-    const pit = new THREE.Mesh(
-      new THREE.CircleGeometry(0.28, 16),
-      new THREE.MeshBasicMaterial({ color: 0x050403 })
-    )
-    pit.position.z = 0.01
-    g.add(ring, pit)
     scene.add(g)
     const hole = { object: g, x, z, facing, position: g.position }
     holes.push(hole)
@@ -61,6 +54,30 @@ export function createRatDen({ scene, player, ratProto, foodWorld }) {
     makeHole(b.minx + 0.22, 2.5, Math.PI / 2)
     makeHole(b.maxx - 0.22, -18, -Math.PI / 2)
     makeHole(b.minx + 0.22, -40, Math.PI / 2)
+  }
+  if (holeSpecs.length) {
+    const ring = new THREE.CircleGeometry(0.42, 20)
+    setVertexColor(ring, 0x1a120c)
+    const pit = new THREE.CircleGeometry(0.28, 16)
+    pit.translate(0, 0, 0.01)
+    setVertexColor(pit, 0x050403)
+    const geo = mergeGeometries([ring, pit])
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 })
+    const holeMesh = new THREE.InstancedMesh(geo, mat, holeSpecs.length)
+    holeMesh.name = 'HoleInst'
+    holeMesh.count = holeSpecs.length
+    holeMesh.frustumCulled = false
+    holeMesh.receiveShadow = true
+    scene.add(holeMesh)
+    const dummy = new THREE.Object3D()
+    holeSpecs.forEach((h, i) => {
+      dummy.position.set(h.x, 0.35, h.z)
+      dummy.rotation.set(0, h.facing, 0)
+      dummy.scale.set(1, 1, 1)
+      dummy.updateMatrix()
+      holeMesh.setMatrixAt(i, dummy.matrix)
+    })
+    holeMesh.instanceMatrix.needsUpdate = true
   }
 
   function sizeRat(root) {
