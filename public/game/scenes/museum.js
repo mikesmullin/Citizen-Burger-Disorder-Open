@@ -11,14 +11,15 @@ import { createHands } from '../systems/hands.js'
 import { createRatDen, RAT_SIZE } from '../systems/rats.js'
 import { createDemoPlayers } from '../entities/demoPlayers.js'
 import { createSoundboard } from '../systems/soundboard.js'
+import { createFireWatch } from '../systems/fire.js'
 import { createDelivery, makeOpenNet, BOX_SIZE, prepareClosedBox } from '../systems/delivery.js'
 import { createScaler } from '../systems/scaler.js'
 import { createSwatches, BOOTH_D as TEXTURE_BOOTH_D, BOOTH_W as TEXTURE_BOOTH_W } from '../systems/swatches.js'
 import { createPosters } from '../systems/posters.js'
 import { createKitchen } from '../systems/kitchen.js'
 import { createFront } from '../systems/front.js'
+import { createSwitchSet, SWITCH_Y } from '../systems/lightSwitch.js'
 import { createWorld } from '../common/ecs.js'
-import { createFireWatch } from '../systems/fire.js'
 import { installHarness } from '../common/harness.js'
 import { createFpsOverlay } from '../common/fpsOverlay.js'
 
@@ -257,6 +258,8 @@ let kitchen = null
 let front = null
 let world = null
 let npcProto = null
+let exhibitSwitches = null
+let daySwitchSpot = null
 let fires = null
 const fireSprites = []
 const facePlayer = []
@@ -429,24 +432,29 @@ function buildRoom(minx, maxx, minz, maxz, height) {
 }
 
 function addLights(minx, maxx, minz, maxz) {
-  scene.add(new THREE.HemisphereLight(0xfff3e0, 0x3a3228, 1.05))
+  const hemi = new THREE.HemisphereLight(0xfff3e0, 0x3a3228, 1.05)
+  scene.add(hemi)
   const key = new THREE.DirectionalLight(0xfff4e6, 1.9)
   key.position.set(10, 24, 18)
   key.castShadow = true
   key.shadow.mapSize.set(2048, 2048)
+  key.shadow.bias = -0.0008
   Object.assign(key.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 120 })
   scene.add(key)
   const fill = new THREE.DirectionalLight(0xb9d4ff, 0.45)
   fill.position.set(-12, 10, -8)
   scene.add(fill)
+  const points = []
   const xs = [minx * 0.55, 0, maxx * 0.55]
   for (let z = maxz - 8; z >= minz + 8; z -= 16) {
     for (const x of xs) {
       const p = new THREE.PointLight(0xffe6c4, 16, 20, 2)
       p.position.set(x, 6.5, z)
       scene.add(p)
+      points.push(p)
     }
   }
+  return { hemi, key, fill, points }
 }
 
 function isExhibit(item) {
@@ -652,6 +660,9 @@ function setupFireSprite(root) {
       side: THREE.DoubleSide,
     })
   })
+  const drop = []
+  root.traverse(o => { if (o.isLight) drop.push(o) })
+  for (const L of drop) { if (L.parent) L.parent.remove(L) }
   fireSprites.push({ root, next: 0.1 + Math.random() * 0.2 })
 }
 
@@ -728,7 +739,30 @@ async function boot() {
   const minz = -64
   const maxz = 16
   buildRoom(minx, maxx, minz, maxz, 9.5)
-  addLights(minx, maxx, minz, maxz)
+  const hallLit = addLights(minx, maxx, minz, maxz)
+  const hallDay = {
+    hemi: 1.05,
+    key: 1.9,
+    fill: 0.45,
+    point: 16,
+    bg: scene.background.getHex(),
+    fog: scene.fog.color.getHex(),
+    hemiSky: 0xfff3e0,
+    hemiGround: 0x3a3228,
+    keyColor: 0xfff4e6,
+  }
+  function setHallDay(day) {
+    hallLit.hemi.intensity = day ? hallDay.hemi : 0.15
+    hallLit.key.intensity = day ? hallDay.key : 0.22
+    hallLit.fill.intensity = day ? hallDay.fill : 0.06
+    const pi = day ? hallDay.point : 2.2
+    for (const p of hallLit.points) p.intensity = pi
+    hallLit.key.color.setHex(day ? hallDay.keyColor : 0x8a9bb8)
+    hallLit.hemi.color.setHex(day ? hallDay.hemiSky : 0x9aa8c4)
+    hallLit.hemi.groundColor.setHex(day ? hallDay.hemiGround : 0x1a1c22)
+    scene.background.setHex(day ? hallDay.bg : 0x1a1c22)
+    if (scene.fog) scene.fog.color.setHex(day ? hallDay.fog : 0x1a1c22)
+  }
 
   try {
     setStatus('Loading soundboard…')
@@ -817,6 +851,12 @@ async function boot() {
     }
   }
 
+  exhibitSwitches = createSwitchSet({ player })
+  const switchRec = exhibits.find(e => e.slug === 'items/LightSwitch')
+  if (switchRec) {
+    exhibitSwitches.bind(switchRec.display, { label: 'Light switch', startOn: false })
+  }
+
   try {
     const npc = await loader.load('mobs/Npc')
     hideTriggers(npc.root)
@@ -893,6 +933,36 @@ async function boot() {
     'items/Knife', 'items/Spatula', 'items/FireExtinguisher', 'items/Fire',
     'items/Tip', 'items/NumberStand',
   ]
+  let switchProto = null
+  try {
+    const sw = await loader.load('items/LightSwitch')
+    hideTriggers(sw.root)
+    switchProto = sw.root
+  } catch (err) {
+    console.warn('[museum] LightSwitch proto missing', err)
+  }
+  if (soundboard && switchProto && soundboard.mountLightSwitch) {
+    soundboard.mountLightSwitch(switchProto)
+  }
+  if (exhibitSwitches && switchProto) {
+    const hallCx = (minx + maxx) / 2
+    daySwitchSpot = { x: hallCx - 7.45, z: maxz - 0.22 }
+    exhibitSwitches.add({
+      parent: scene,
+      proto: switchProto,
+      x: daySwitchSpot.x,
+      y: SWITCH_Y,
+      z: daySwitchSpot.z,
+      inwardX: 0,
+      inwardZ: -1,
+      label: 'Day / night',
+      startOn: true,
+      invertPaddle: true,
+      lookOn: 'Day · click for night',
+      lookOff: 'Night · click for day',
+      onToggle: setHallDay,
+    })
+  }
   for (const slug of needFood) {
     if (foodProtos[slug]) continue
     try {
@@ -913,6 +983,7 @@ async function boot() {
       scene, player, foodWorld, foodProtos,
       getRats: () => rats,
       getFireWatch: () => fires,
+      switchProto,
       x: BOOTHS.kitchen.x, z: BOOTHS.kitchen.z, facingY: 0,
     })
     exhibits.push({
@@ -929,6 +1000,8 @@ async function boot() {
       ['kitchen/Sink', 'Sink'],
       ['kitchen/Counter', 'Counter'],
       ['kitchen/Orders', 'Orders'],
+      ['kitchen/Lights', 'KitchenLights'],
+      ['kitchen/DishLights', 'DishLights'],
     ]
     for (const [slug, caption] of kitchenSpots) {
       const v = kitchen.viewSpot(caption)
@@ -947,7 +1020,7 @@ async function boot() {
     world = createWorld()
     front = await createFront({
       scene, player, foodWorld, foodProtos,
-      npcProto, world, kitchen,
+      npcProto, world, kitchen, switchProto,
       onPosOpen: () => { player.unlock() },
       x: BOOTHS.front.x, z: BOOTHS.front.z, facingY: 0,
     })
@@ -969,6 +1042,7 @@ async function boot() {
       ['front/Register', 'Register'],
       ['front/NumberStand', 'NumberStand'],
       ['front/Staff', 'Staff'],
+      ['front/Lights', 'Lights'],
       ['front/Window', 'Window'],
       ['front/Pass', 'Pass'],
       ['front/Back', 'Back'],
@@ -1160,11 +1234,16 @@ let playing = false
 let lookName = ''
 
 function teleport(slug) {
-  if (soundboard && /^(Soundboard|Audio|audio\/Soundboard)$/i.test(slug)) {
-    const v = soundboard.viewSpot()
+  if (daySwitchSpot && /^(DayNight|Day\/night|hall\/Day)$/i.test(slug)) {
+    player.spawn(daySwitchSpot.x, 0, daySwitchSpot.z - 1.8, 180)
+    return 'DayNight'
+  }
+  if (soundboard && /^(Soundboard|Audio|AudioLights|audio\/(Soundboard|Lights))$/i.test(slug)) {
+    const wantLights = /light/i.test(slug)
+    const v = soundboard.viewSpot(wantLights ? 'Lights' : undefined)
     player.spawn(v.stand.x, 0, v.stand.z, 0)
     player.lookAt(v.look.x, v.look.y, v.look.z)
-    return 'Soundboard'
+    return wantLights ? 'AudioLights' : 'Soundboard'
   }
   if (delivery && /^(Truck|Delivery|items\/Truck)$/i.test(slug)) {
     const v = delivery.viewSpot()
@@ -1190,14 +1269,14 @@ function teleport(slug) {
     player.lookAt(v.look.x, v.look.y, v.look.z)
     return 'POS'
   }
-  if (kitchen && /^(Kitchen|Range|Grill|Cooktop|Sink|Dish|Counter|Prep|Orders|Board|kitchen\/)/i.test(slug)) {
+  if (kitchen && /^(Kitchen|Range|Grill|Cooktop|Sink|Dish|Counter|Prep|Orders|Board|KitchenLights|DishLights|kitchen\/)/i.test(slug)) {
     const name = String(slug).split('/').pop()
     const v = kitchen.viewSpot(name)
     player.spawn(v.stand.x, 0, v.stand.z, 0)
     player.lookAt(v.look.x, v.look.y, v.look.z)
     return v.label
   }
-  if (front && /^(Front|Street|Door|Queue|Register|Checkout|Staff|Window|Pass|Back|NumberStand|Seat\d|Table\d|front\/)/i.test(slug)) {
+  if (front && /^(Front|Street|Door|Queue|Register|Checkout|Staff|Window|Pass|Back|NumberStand|Lights|Switch|Seat\d|Table\d|front\/)/i.test(slug)) {
     const name = String(slug).split('/').pop()
     const v = front.viewSpot(name)
     player.spawn(v.stand.x, 0, v.stand.z, 0)
@@ -1267,12 +1346,16 @@ function tick(dt) {
       soundboard.tryPress()
       if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
       if (front && !front.overlayOpen) front.tryPress()
+      if (kitchen) kitchen.tryPress()
+      if (exhibitSwitches) exhibitSwitches.tryPress()
     }
   } else if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
     const handsUp = player.leftHand || player.rightHand
     if (!handsUp && posters) posters.tryTurn()
     if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
     if (front && !front.overlayOpen) front.tryPress()
+    if (kitchen) kitchen.tryPress()
+    if (exhibitSwitches) exhibitSwitches.tryPress()
   }
   if (hands && !posKiosk?.isOpen && !front?.overlayOpen) {
     hands.update(dt, { grab: scaler.tool === 'hand', right: scaler.tool === 'hand' })
@@ -1283,6 +1366,7 @@ function tick(dt) {
   if (demoPlayers) demoPlayers.update(dt)
   if (kitchen) kitchen.update(dt)
   if (front) front.update(dt, harness.time.T)
+  if (exhibitSwitches) exhibitSwitches.update(dt)
   if (fires) fires.update(dt)
   if (fireSprites.length || facePlayer.length) updateFireSprites(dt)
 }
@@ -1317,8 +1401,12 @@ function currentLook() {
   if (posterLook) return posterLook
   const posLook = posKiosk?.lookLabel()
   if (posLook) return posLook
+  const kitchenLook = kitchen?.lookLabel()
+  if (kitchenLook) return kitchenLook
   const frontLook = front?.lookLabel()
   if (frontLook) return frontLook
+  const switchLook = exhibitSwitches?.lookLabel()
+  if (switchLook) return switchLook
   raycaster.setFromCamera(ndc, player.camera)
   const hits = raycaster.intersectObjects(scene.children, true)
   for (const h of hits) {

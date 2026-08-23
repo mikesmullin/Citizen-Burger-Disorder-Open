@@ -6,6 +6,7 @@
 
 import * as THREE from 'three'
 import { applyCookLook, isFood, cookTick } from './food.js'
+import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
 
 export const BOOTH_W = 6.4
 export const BOOTH_D = 14.6
@@ -174,7 +175,7 @@ async function makeOrderScreen() {
 
 export async function createKitchen({
   scene, player, foodWorld, foodProtos,
-  getRats, getFireWatch,
+  getRats, getFireWatch, switchProto,
   x = 0, z = 0, facingY = 0,
 } = {}) {
   const object = new THREE.Group()
@@ -215,11 +216,13 @@ export async function createKitchen({
   object.add(floor)
 
   const ceil = new THREE.Mesh(
-    new THREE.PlaneGeometry(BOOTH_W, BOOTH_D),
+    new THREE.BoxGeometry(BOOTH_W, 0.1, BOOTH_D),
     mat(0xffffff, { map: roofTex, roughness: 0.95 }),
   )
-  ceil.rotation.x = Math.PI / 2
+  ceil.name = 'RoomCeiling'
   ceil.position.y = BOOTH_H
+  ceil.castShadow = true
+  ceil.receiveShadow = false
   object.add(ceil)
 
   const hx = BOOTH_W / 2
@@ -396,6 +399,24 @@ export async function createKitchen({
   const lamp2 = new THREE.PointLight(0xe8f0ff, 8, 10, 2)
   lamp2.position.set(1.2, 2.8, -5.2)
   object.add(lamp2)
+
+  const switches = createSwitchSet({ player, proto: switchProto })
+  // Galley lamp: east wall, above the cutting board (right of the range
+  // when facing the cooktop).
+  switches.add({
+    parent: object, light: lamp,
+    x: hx - WALL_T, z: boardZ,
+    inwardX: -1, inwardZ: 0,
+    label: 'Kitchen lights',
+  })
+  // Dish-pit lamp: right wall of the pit, under the light.
+  switches.add({
+    parent: object, light: lamp2,
+    x: hx - WALL_T, z: -5.2,
+    inwardX: -1, inwardZ: 0,
+    label: 'Dish pit lights',
+  })
+  muteBoothShadows(object, { castNames: ['RoomCeiling'] })
 
   function worldOf(lx, ly, lz) {
     object.updateMatrixWorld(true)
@@ -589,6 +610,7 @@ export async function createKitchen({
   let washAcc = 0
   function update(dt) {
     dt = Math.min(dt, 0.1)
+    switches.update(dt)
     washAcc += dt
 
     const den = getRats && getRats()
@@ -633,7 +655,18 @@ export async function createKitchen({
   }
 
   function viewSpot(name = 'Kitchen') {
-    const key = name && stations[name] ? name : 'Kitchen'
+    const raw = name || 'Kitchen'
+    if (/^(Lights|KitchenLights|Switch)$/i.test(raw)) {
+      const look = worldOf(hx - WALL_T, SWITCH_Y - 0.04, boardZ)
+      const stand = worldOf(rInner - 1.35, 0, boardZ)
+      return { stand, look, label: 'KitchenLights' }
+    }
+    if (/^DishLights$/i.test(raw)) {
+      const look = worldOf(hx - WALL_T, SWITCH_Y, -5.2)
+      const stand = worldOf(hx - WALL_T - 1.55, 0, -5.2)
+      return { stand, look, label: 'DishLights' }
+    }
+    const key = stations[raw] ? raw : 'Kitchen'
     if (key === 'Kitchen') {
       const stand = worldOf(0, 0, hz + 2.1)
       const look = worldOf(0, 1.55, 1.4)
@@ -660,7 +693,11 @@ export async function createKitchen({
   }
 
   function lookLabel() {
-    return ''
+    return switches.lookLabel()
+  }
+
+  function tryPress() {
+    return switches.tryPress()
   }
 
   function setTickets(columns) {
@@ -668,7 +705,7 @@ export async function createKitchen({
   }
 
   return {
-    object, update, viewSpot, lookLabel, stations, setTickets,
+    object, update, viewSpot, lookLabel, tryPress, stations, setTickets,
     width: BOOTH_W, depth: BOOTH_D, height: BOOTH_H,
     counterY: COUNTER_Y, rangeY: RANGE_Y,
     grillPlat, counterPlat, dryPlat, basinPlat, boardPlat,

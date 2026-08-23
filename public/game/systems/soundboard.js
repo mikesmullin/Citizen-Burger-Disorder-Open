@@ -4,17 +4,21 @@
 // on re-press.
 
 import * as THREE from 'three'
+import { createSwitchSet, SWITCH_Y } from './lightSwitch.js'
 
 const BOARD_W = 3.85
 const BOARD_H = 2.42
 const BOARD_T = 0.10
 const BOARD_Y = 0.48
 const MUSIC_W = 1.12
+// Extra canvas on the right so the light switch sits on the panel
+// with margin, without shifting the music / SFX layout.
+const SWITCH_COL = 0.58
 const PRESS_RANGE = 6.8
 const SFX_PRESS = 0.11
 const COLS = 5
 
-const BOOTH_W = 5.0
+const BOOTH_W = 5.6
 const BOOTH_D = 3.5
 const BOOTH_H = 3.2
 const WALL_T = 0.09
@@ -46,7 +50,7 @@ function wrapLines(g, text, maxWidth) {
   return lines.slice(0, 3)
 }
 
-function labelMap(text, { accent = '#c4a574' } = {}) {
+function labelMap(text) {
   return canvasTexture(512, 256, (g, w, h) => {
     g.clearRect(0, 0, w, h)
     g.fillStyle = '#f0e6d4'
@@ -61,13 +65,11 @@ function labelMap(text, { accent = '#c4a574' } = {}) {
       lines = wrapLines(g, text, w - 48)
     }
     const lh = size + 8
-    const y0 = h / 2 - ((lines.length - 1) * lh) / 2
+    const y0 = h / 2 - ((lines.length - 1) * lh) / 2 + 10
     lines.forEach((ln, i) => {
       g.fillStyle = i === 0 ? '#f0e6d4' : '#d4c4ae'
       g.fillText(ln, w / 2, y0 + i * lh)
     })
-    g.fillStyle = accent
-    g.fillRect(w * 0.22, 18, w * 0.56, 5)
   })
 }
 
@@ -146,8 +148,10 @@ function buildBooth(object) {
   }
 
   const fill = new THREE.PointLight(0xffe0b8, 8, 11, 2)
+  fill.name = 'AudioFill'
   fill.position.set(0, 3.2, 0.2)
   object.add(fill)
+  return fill
 }
 
 export async function createSoundboard({
@@ -189,27 +193,29 @@ export async function createSoundboard({
   object.name = 'AudioBooth'
   object.position.set(x, y, z)
   object.rotation.y = facingY
-  buildBooth(object)
+  const overhead = buildBooth(object)
 
   const board = new THREE.Group()
   board.name = 'ButtonWall'
   board.position.set(0, BOARD_Y, -BOOTH_D / 2 + WALL_T + BOARD_T / 2 + 0.03)
   object.add(board)
 
+  const panelW = BOARD_W + SWITCH_COL
+  const panelX = SWITCH_COL / 2
   const panel = new THREE.Mesh(
-    new THREE.BoxGeometry(BOARD_W, BOARD_H, BOARD_T),
+    new THREE.BoxGeometry(panelW, BOARD_H, BOARD_T),
     panelMat,
   )
-  panel.position.set(0, BOARD_H / 2, 0)
+  panel.position.set(panelX, BOARD_H / 2, 0)
   panel.castShadow = panel.receiveShadow = true
   panel.userData.soundboard = true
   board.add(panel)
 
   const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(BOARD_W + 0.08, BOARD_H + 0.08, BOARD_T * 0.55),
+    new THREE.BoxGeometry(panelW + 0.08, BOARD_H + 0.08, BOARD_T * 0.55),
     trimMat,
   )
-  frame.position.set(0, BOARD_H / 2, -0.02)
+  frame.position.set(panelX, BOARD_H / 2, -0.02)
   board.add(frame)
 
   const header = makePlane(BOARD_W - 0.18, 0.38, headerMap('AUDIO', 'original game sounds'))
@@ -240,6 +246,26 @@ export async function createSoundboard({
   lamp.position.set(0, BOARD_H - 0.05, 0.45)
   board.add(lamp)
 
+  let switches = null
+  function mountLightSwitch(proto) {
+    if (!proto || switches) return
+    switches = createSwitchSet({ player, proto })
+    switches.add({
+      parent: board,
+      light: overhead,
+      x: BOARD_W / 2 + SWITCH_COL / 2,
+      y: SWITCH_Y - BOARD_Y,
+      z: BOARD_T / 2,
+      inwardX: 0,
+      inwardZ: 1,
+      label: 'Audio lights',
+      onToggle: on => {
+        lamp.visible = on
+        lamp.intensity = on ? 4 : 0
+      },
+    })
+  }
+
   const buttons = []
   const ndc = new THREE.Vector2(0, 0)
   const raycaster = new THREE.Raycaster()
@@ -261,9 +287,11 @@ export async function createSoundboard({
     const latched = btn.kind === 'music' && musicId === btn.id
     const k = latched ? 1 : (btn.kind === 'sfx' ? Math.min(1, btn.pressT / SFX_PRESS) : 0)
     btn.object.position.z = restZ - (restZ - inZ) * k
+    const lit = !!(btn.audio && btn.audio.isPlaying)
     if (btn.led) {
-      btn.led.material.color.setHex(latched ? 0x7dff6a : 0x2a2a24)
-      btn.led.material.emissive.setHex(latched ? 0x1a8a18 : 0x000000)
+      btn.led.material.color.setHex(lit ? 0xffe0a0 : (btn.kind === 'music' ? 0xc4a574 : 0x6b5a45))
+      btn.led.material.emissive.setHex(lit ? 0xffc060 : 0x000000)
+      btn.led.material.emissiveIntensity = lit ? 1.8 : 0
     }
   }
 
@@ -279,25 +307,30 @@ export async function createSoundboard({
       }),
     )
     body.castShadow = true
+    const faceW = bw * 0.92
+    const faceH = bh * 0.78
     const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(bw * 0.92, bh * 0.78),
+      new THREE.PlaneGeometry(faceW, faceH),
       new THREE.MeshBasicMaterial({
-        map: labelMap(clip.label, { accent: kind === 'music' ? '#c4a574' : '#6b5a45' }),
+        map: labelMap(clip.label),
         transparent: true,
         depthWrite: false,
       }),
     )
     face.position.z = 0.029
     g.add(body, face)
-    let led = null
-    if (kind === 'music') {
-      led = new THREE.Mesh(
-        new THREE.SphereGeometry(0.035, 12, 12),
-        new THREE.MeshStandardMaterial({ color: 0x2a2a24, roughness: 0.4, emissive: 0x000000 }),
-      )
-      led.position.set(bw * 0.5 - 0.08, bh * 0.5 - 0.07, 0.04)
-      g.add(led)
-    }
+    const led = new THREE.Mesh(
+      new THREE.BoxGeometry(faceW * 0.56, Math.max(0.01, faceH * 0.05), 0.008),
+      new THREE.MeshStandardMaterial({
+        color: 0x2a2418,
+        roughness: 0.38,
+        metalness: 0.12,
+        emissive: 0x000000,
+        emissiveIntensity: 0,
+      }),
+    )
+    led.position.set(0, faceH * 0.42, 0.033)
+    g.add(led)
     const audio = new THREE.PositionalAudio(listener)
     audio.setRefDistance(8)
     audio.setMaxDistance(48)
@@ -402,6 +435,8 @@ export async function createSoundboard({
   }
 
   function lookLabel() {
+    const sw = switches && switches.lookLabel()
+    if (sw) return sw
     if (!hovered) return ''
     if (hovered.kind === 'panel') return 'Audio booth · original sounds'
     if (!hovered.ready) return hovered.label + ' · loading'
@@ -415,6 +450,7 @@ export async function createSoundboard({
 
   function update(dt) {
     dt = Math.min(dt, 0.1)
+    if (switches) switches.update(dt)
     hovered = pick()
     for (const b of buttons) {
       if (b.pressT > 0) b.pressT = Math.max(0, b.pressT - dt)
@@ -423,6 +459,7 @@ export async function createSoundboard({
   }
 
   function tryPress() {
+    if (switches && switches.tryPress()) return true
     const target = pick()
     if (!target || target.kind === 'panel') return false
     return activate(target)
@@ -447,11 +484,23 @@ export async function createSoundboard({
     unlock()
   }
 
-  function viewSpot() {
+  function viewSpot(name) {
     object.updateMatrixWorld(true)
     object.getWorldQuaternion(_q)
     _face.set(0, 0, 1).applyQuaternion(_q)
     const origin = new THREE.Vector3(x, 0, z)
+    if (name && /light/i.test(String(name)) && switches?.items?.[0]) {
+      const handle = switches.items[0]
+      const src = handle.object || handle.wrap
+      src.updateMatrixWorld(true)
+      const look = new THREE.Vector3()
+      src.getWorldPosition(look)
+      look.y = SWITCH_Y
+      look.addScaledVector(_face, 0.06)
+      const stand = look.clone().addScaledVector(_face, 1.35)
+      stand.y = 0
+      return { stand, look }
+    }
     const stand = origin.clone().addScaledVector(_face, BOOTH_D / 2 - 0.85)
     const look = origin.clone()
       .addScaledVector(_face, -BOOTH_D / 2 + 0.25)
@@ -473,6 +522,7 @@ export async function createSoundboard({
 
   return {
     object, buttons, update, tryPress, press, lookLabel,
+    mountLightSwitch,
     unlock, pause, resume, viewSpot,
     get musicId() { return musicId },
     get hovered() { return hovered },

@@ -22,6 +22,7 @@ import * as Register from './register.js'
 import * as Speech from './speech.js'
 import * as View from './view.js'
 import { createPosKiosk } from './posKiosk.js'
+import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
 
 export const BOOTH_W = 12
 export const BOOTH_D = 18
@@ -151,7 +152,7 @@ function ensureLiveOverlay() {
 
 export async function createFront({
   scene, player, foodWorld, foodProtos,
-  npcProto, world, kitchen, onPosOpen,
+  npcProto, world, kitchen, onPosOpen, switchProto,
   x = 0, z = 0, facingY = 0,
 } = {}) {
   const object = new THREE.Group()
@@ -225,16 +226,19 @@ export async function createFront({
     new THREE.BoxGeometry(BOOTH_W + 1.4, 0.03, STREET_D),
     mat(0xffffff, { map: streetTex, roughness: 0.82 }),
   )
+  street.name = 'StreetFloor'
   street.position.set(0, 0.015, hz - STREET_D / 2)
   street.receiveShadow = true
   object.add(street)
 
   const ceil = new THREE.Mesh(
-    new THREE.PlaneGeometry(BOOTH_W, interiorD),
+    new THREE.BoxGeometry(BOOTH_W, 0.1, interiorD),
     mat(0xffffff, { map: roofTex, roughness: 0.95 }),
   )
-  ceil.rotation.x = Math.PI / 2
+  ceil.name = 'RoomCeiling'
   ceil.position.set(0, BOOTH_H, interiorZ)
+  ceil.castShadow = true
+  ceil.receiveShadow = false
   object.add(ceil)
 
   function wallSeg(w, h, d, px, py, pz, material) {
@@ -436,16 +440,20 @@ export async function createFront({
     onClose: () => {},
   })
 
-  const qz = cZ + cD / 2 + 1.55
-  const queueLocal = [
-    { slotId: 1, x: cX - 1.5, z: qz },
-    { slotId: 2, x: cX - 0.15, z: qz },
-    { slotId: 3, x: cX + 1.2, z: qz },
-    { slotId: 4, x: cX + 2.55, z: qz },
-  ]
+  // Single-file queue, perpendicular to the counter. Slot 1 is closest
+  // to the guest face so staff see who is first. 1.55 m off the counter
+  // and 1.35 m apart matches the earlier anti-jitter spacing.
+  const qx = 0.15
+  const qz0 = cZ + cD / 2 + 1.55
+  const qStep = 1.35
+  const queueLocal = [1, 2, 3, 4].map(slotId => ({
+    slotId,
+    x: qx,
+    z: qz0 + (slotId - 1) * qStep,
+  }))
   const markMat = mat(0x2a241f, { roughness: 0.9 })
   for (const q of queueLocal) {
-    object.add(box(0.42, 0.02, 0.42, markMat, q.x, 0.05, q.z))
+    object.add(box(0.36, 0.02, 0.52, markMat, q.x, 0.05, q.z))
   }
 
   const backLabel = makeLabel('BACK')
@@ -460,21 +468,6 @@ export async function createFront({
     const td = spec.d
     g.add(box(tw, TABLE_Y - 0.04, td, greyMat, 0, (TABLE_Y - 0.04) / 2, 0))
     g.add(box(tw + 0.04, 0.04, td + 0.04, topMat, 0, TABLE_Y, 0))
-    const numMap = canvasTexture(128, 128, (ctx, w, h) => {
-      ctx.fillStyle = '#f4f0e6'
-      ctx.fillRect(0, 0, w, h)
-      ctx.fillStyle = '#1a1a1a'
-      ctx.font = '700 78px ui-sans-serif, system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(String(spec.tableId), w / 2, h / 2 + 4)
-    })
-    const cube = new THREE.Mesh(
-      new THREE.BoxGeometry(0.16, 0.16, 0.16),
-      new THREE.MeshStandardMaterial({ map: numMap, roughness: 0.7 }),
-    )
-    cube.position.set(tw / 2 - 0.18, TABLE_Y + 0.12, td / 2 - 0.18)
-    g.add(cube)
     object.add(g)
 
     const seats = []
@@ -506,6 +499,32 @@ export async function createFront({
   const lamp3 = new THREE.PointLight(0xfff1d0, 8, 11, 2)
   lamp3.position.set(doorX, 2.7, doorZ - 1.4)
   object.add(lamp3)
+
+  // Guest-face divider west of the till (the south wall in the screenshot:
+  // stand behind the counter, look at the till, wall to the right).
+  const switches = createSwitchSet({ player, proto: switchProto })
+  const swStep = 0.28
+  const swX = cX0 - 0.55
+  const swZ0 = divideZ
+  switches.add({
+    parent: object, light: lamp,
+    x: swX - swStep, z: swZ0,
+    inwardX: 0, inwardZ: -1,
+    label: 'Dining lights',
+  })
+  switches.add({
+    parent: object, light: lamp3,
+    x: swX, z: swZ0,
+    inwardX: 0, inwardZ: -1,
+    label: 'Entry lights',
+  })
+  switches.add({
+    parent: object, light: lamp2,
+    x: swX + swStep, z: swZ0,
+    inwardX: 0, inwardZ: -1,
+    label: 'Pass lights',
+  })
+  muteBoothShadows(object, { skipNames: ['StreetFloor'], castNames: ['RoomCeiling'] })
 
   function worldOf(lx, ly, lz) {
     object.updateMatrixWorld(true)
@@ -607,7 +626,7 @@ export async function createFront({
     worldOf(3.3, 0, 2.1),
     worldOf(-2.4, 0, 3.8),
     worldOf(2.6, 0, 3.8),
-    worldOf(0.2, 0, 2.4),
+    worldOf(-2.2, 0, 2.4),
     worldOf(-3.4, 0, 0.4),
   ].map(v => ({ x: v.x, z: v.z }))
 
@@ -674,6 +693,7 @@ export async function createFront({
   function tryPress() {
     if (overlayOpen) return false
     if (!player.locked) return false
+    if (switches.tryPress()) return true
     raycaster.setFromCamera(ndc, player.camera)
     const hits = raycaster.intersectObject(object, true)
     for (const h of hits) {
@@ -818,9 +838,10 @@ export async function createFront({
       return { stand, look, label: 'Door' }
     }
     if (/^Queue$/i.test(key)) {
-      const q = queueLocal[0]
-      const stand = worldOf(q.x, 0, q.z + 1.05)
-      const look = worldOf(posX, COUNTER_Y + 0.25, cZ)
+      const q1 = queueLocal[0]
+      const qLast = queueLocal[queueLocal.length - 1]
+      const stand = worldOf(qLast.x - 1.8, 0, (q1.z + qLast.z) / 2)
+      const look = worldOf(q1.x, 1.35, q1.z)
       return { stand, look, label: 'Queue' }
     }
     if (/^(POS|Checkout)$/i.test(key) || key === 'front/POS') {
@@ -835,8 +856,15 @@ export async function createFront({
     if (/^Staff$/i.test(key)) {
       return {
         stand: staffWpos,
-        look: worldOf(posX, COUNTER_Y + 0.3, cZ),
+        look: worldOf(qx, COUNTER_Y + 0.25, qz0),
         label: 'Staff',
+      }
+    }
+    if (/^(Lights|Switch|Switches)$/i.test(key)) {
+      return {
+        stand: worldOf(swX, 0, swZ0 - 1.45),
+        look: worldOf(swX, SWITCH_Y - 0.04, swZ0),
+        label: 'Lights',
       }
     }
     if (/^NumberStand$/i.test(key)) {
@@ -898,6 +926,8 @@ export async function createFront({
 
   function lookLabel() {
     if (overlayOpen) return 'POS · live terminal'
+    const sw = switches.lookLabel()
+    if (sw) return sw
     raycaster.setFromCamera(ndc, player.camera)
     const hits = raycaster.intersectObject(object, true)
     if (hits.length && hits[0].distance < 5.8 && hits[0].object.userData.posLive) {
@@ -925,6 +955,7 @@ export async function createFront({
   }
 
   function update(dt, T) {
+    switches.update(dt)
     if (!world) return
     dt = Math.min(dt, 0.1)
     const c = ctx(dt, T)

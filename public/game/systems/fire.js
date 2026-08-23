@@ -36,6 +36,9 @@ export function isFlammable(item) {
 
 function styleFire(root) {
   hideTriggers(root)
+  const drop = []
+  root.traverse(o => { if (o.isLight) drop.push(o) })
+  for (const L of drop) { if (L.parent) L.parent.remove(L) }
   root.traverse(o => {
     if (!o.isMesh) return
     o.castShadow = o.receiveShadow = false
@@ -68,6 +71,7 @@ export function createFireWatch({
 
   function setProto(p) {
     proto = p || proto
+    if (proto) styleFire(proto)
   }
 
   function cloneFlame(scale = 1) {
@@ -90,14 +94,6 @@ export function createFireWatch({
     return root
   }
 
-  function addLight(f, large) {
-    if (fires.filter(x => x.light).length >= 8) return
-    const light = new THREE.PointLight(0xff6a18, large ? 2.4 : 1.15, large ? 10 : 5.5, 2)
-    light.castShadow = false
-    scene.add(light)
-    f.light = light
-  }
-
   function addFire({ root, item = null, planted = false, large = false, copy = false, onPlayer = false } = {}) {
     if (!root) return null
     const live = fires.filter(x => !x.out)
@@ -113,7 +109,6 @@ export function createFireWatch({
     }
     f.putOut = () => extinguish(f)
     if (!copy && root.parent !== scene) scene.add(root)
-    if ((planted || large || (item && !copy)) && !onPlayer) addLight(f, large)
     fires.push(f)
     return f
   }
@@ -160,7 +155,6 @@ export function createFireWatch({
     if (f) {
       f.planted = true
       f.hitR = 0.95
-      if (!f.light) addLight(f, false)
     }
     return f
   }
@@ -188,7 +182,6 @@ export function createFireWatch({
     const p = f.item.object.position
     const h = Math.max(0.08, f.item.height || 0.12)
     f.root.position.set(p.x, p.y + h * 0.35, p.z)
-    if (f.light) f.light.position.set(p.x, p.y + h * 0.8, p.z)
   }
 
   function extinguish(f) {
@@ -203,10 +196,6 @@ export function createFireWatch({
         if (foodWorld && foodWorld.destroy) foodWorld.destroy(item)
         f.item = null
       }
-    }
-    if (f.light) {
-      scene.remove(f.light)
-      f.light = null
     }
     if (f.root) {
       f.root.visible = false
@@ -377,7 +366,6 @@ export function createFireWatch({
     const spraying = !!(foodWorld && foodWorld.items.some(i => i.type === 'fireExtinguisher' && i.spraying))
     if (playerFire) {
       playerFire.root.position.set(pp.x, pp.y + 1.15, pp.z)
-      if (playerFire.light) playerFire.light.position.copy(playerFire.root.position)
       if (spraying) extinguish(playerFire)
       return
     }
@@ -386,10 +374,7 @@ export function createFireWatch({
       if (playerBurn <= 0) {
         const root = cloneFlame(1.05)
         playerFire = addFire({ root, onPlayer: true, planted: false })
-        if (playerFire) {
-          playerFire.root.position.set(pp.x, pp.y + 1.15, pp.z)
-          addLight(playerFire, false)
-        }
+        if (playerFire) playerFire.root.position.set(pp.x, pp.y + 1.15, pp.z)
       }
     } else {
       playerBurn = Math.min(PLAYER_CATCH, playerBurn + dt * 0.8)
@@ -422,14 +407,8 @@ export function createFireWatch({
       } else if (f.onPlayer) {
         const pp = player.position
         f.root.position.set(pp.x, pp.y + 1.15, pp.z)
-        if (f.light) f.light.position.copy(f.root.position)
       }
       if (f.root && f.root.visible !== false) faceYaw(f.root, _cam)
-      if (f.light && f.root) {
-        const flick = 0.85 + Math.random() * 0.35
-        f.light.intensity = (f.large ? 2.4 : 1.15) * flick
-        if (!f.item && !f.onPlayer) f.light.position.copy(f.root.position)
-      }
       spreadFrom(f, dt)
       if (!f.onPlayer && !hasFuel(f) && !(f.copy && f.item && f.item.held)) {
         f.orphanTime = (f.orphanTime || 0) + dt
