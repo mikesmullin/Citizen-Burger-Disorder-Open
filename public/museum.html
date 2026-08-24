@@ -84,7 +84,7 @@
   body.touch-ui:not(.debug) #hud,
   body.touch-ui:not(.debug) #fpsHud { display:none !important; }
   body.touch-ui #look {
-    top: calc(var(--pad-t) + 56px); bottom:auto; left:50%;
+    top: calc(var(--pad-t) + 12px); bottom:auto; left:50%;
     transform:translateX(-50%); max-width:80vw; text-align:center;
   }
   body.touch-ui #dbgToggle {
@@ -156,36 +156,6 @@
     background: linear-gradient(#ffb3bc, #f07a8a);
     font-size: clamp(22px, 5.5vw, 28px);
   }
-  #touch-pause {
-    position:absolute; z-index:5; pointer-events:auto; touch-action:none;
-    top: var(--pad-t); left: var(--pad-l);
-    width: 44px; height: 44px; border:0; border-radius: 12px; cursor:pointer;
-    background: #fff; color:#5c6570;
-    box-shadow: 0 4px 0 #d5dbe3, 0 8px 16px #0003;
-    display:grid; place-items:center;
-  }
-  #touch-pause.on { transform: translateY(2px); box-shadow: 0 2px 0 #d5dbe3, 0 4px 10px #0003; }
-  #touch-pause svg { width: 18px; height: 18px; display:block; }
-  #touch-help {
-    position:absolute; inset:0; z-index:6; pointer-events:auto;
-    background: #14110ecc; display:grid; place-items:center; padding: 24px;
-  }
-  #touch-help[hidden] { display:none !important; }
-  #touch-help .card {
-    background:#fff; color:#2a2420; border-radius:18px; padding:22px 22px 18px;
-    width:min(360px, 92vw); box-shadow: 0 18px 40px #0005;
-    font: 15px/1.45 ui-sans-serif, system-ui, sans-serif;
-  }
-  #touch-help h2 { font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:#8a7d70; margin-bottom:10px; }
-  #touch-help ul { list-style:none; }
-  #touch-help li { padding: 7px 0; border-top: 1px solid #efe6dc; }
-  #touch-help li:first-child { border-top:0; }
-  #touch-help b { color:#1a1714; }
-  #touch-help-close {
-    margin-top:16px; width:100%; border:0; border-radius:12px; padding:12px;
-    background:#2a241f; color:#f0e6d4; font:700 15px ui-sans-serif, system-ui, sans-serif;
-    cursor:pointer;
-  }
   @media (orientation: landscape) and (max-height: 500px) {
     body.touch-ui {
       --stick: clamp(88px, 28vh, 120px);
@@ -236,25 +206,6 @@
     <div class="touch-row">
       <button type="button" id="touch-l" class="touch-btn" aria-label="Left hand">L</button>
       <button type="button" id="touch-r" class="touch-btn" aria-label="Right hand">R</button>
-    </div>
-  </div>
-  <button type="button" id="touch-pause" aria-label="Controls">
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <rect x="6" y="4" width="4.2" height="16" rx="1.2"/>
-      <rect x="13.8" y="4" width="4.2" height="16" rx="1.2"/>
-    </svg>
-  </button>
-  <div id="touch-help" hidden>
-    <div class="card">
-      <h2>Controls</h2>
-      <ul>
-        <li><b>Stick</b> — drag in the left pad to move. The base follows your thumb; push the knob to the rim to run.</li>
-        <li><b>Drag</b> the empty right side to look. Tap it to use a switch or kiosk.</li>
-        <li><b>L / R</b> — tap to raise that hand and grab. Tap again to drop.</li>
-        <li><b>Jump</b> — the blue arrow.</li>
-        <li><b>Fullscreen</b> — first tap hides the browser bar. Or Firefox menu → Add to Home screen.</li>
-      </ul>
-      <button type="button" id="touch-help-close">Got it</button>
     </div>
   </div>
 </div>

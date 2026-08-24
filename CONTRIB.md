@@ -52,10 +52,10 @@ Click to capture the mouse.
 
 On a phone (or `?touch` on the URL) a left stick + jump + **L** / **R** overlay
 appears instead of pointer lock. Stick output is halved vs. a full analog
-deflection; the rim is still run. Drag the empty right side to look; tap it
-to press a switch or kiosk. Tap **L** / **R** to raise that hand and grab;
-tap again to drop and lower the arm. The pause button is a controls card —
-the sim keeps running. Drive it from an agent with
+deflection; the rim is still run. Drag the empty right side to look. Tap a
+soundboard button or light switch to press it — the tap raycasts from the
+finger, not the crosshair. Tap **L** / **R** to raise that hand and grab;
+tap again to drop and lower the arm. Drive it from an agent with
 `__museum.touch.setStick(x, z)` and `__museum.touch.press('l'|'r'|'jump', true)`.
 
 **Scale and transform guns** are for humans to measure a pose, then paste

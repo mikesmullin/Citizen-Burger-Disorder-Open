@@ -463,8 +463,22 @@ dbg.state().holding                 // ''
 ```
 
 Look-drag is `player.injectMouse(dx, dy)` (the overlay multiplies by ~4). A
-short tap on the empty right side is `player.pulseFire(0)` — one frame of
-LMB for switches / kiosks, without dropping a held item.
+short tap on the look pad (or a tap that did not drag the stick) is
+`player.pulseFire(0, ndc)` — one frame of LMB, raycast from the finger. The
+soundboard and light switches pick that ray instead of the screen-center
+crosshair. `__museum.touch.tapNdc(x, y)` injects the same thing.
+
+```js
+dbg.freeze()
+dbg.teleport('Soundboard')
+__museum.enter()
+const b = __museum.soundboard.buttons.find(x => x.ready)
+const v = b.object.position.clone()
+b.object.getWorldPosition(v).project(__museum.player.camera)
+__museum.touch.tapNdc(v.x, v.y)
+dbg.step(1)
+__museum.soundboard.musicId || __museum.soundboard.playingSfx()
+```
 
 ### 10. After a code change
 

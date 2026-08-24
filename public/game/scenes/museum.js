@@ -1318,6 +1318,7 @@ const harness = installHarness({
 
 const touch = createTouchControls({
   player,
+  canvas: renderer.domElement,
   onEnter: () => enter(),
   getPlaying: () => playing,
   getPosing: () => !!(harness.poser && harness.poser.active),

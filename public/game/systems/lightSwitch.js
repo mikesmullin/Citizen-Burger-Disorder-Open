@@ -244,7 +244,8 @@ export function createSwitchSet({ player, proto, instancer } = {}) {
 
   function pick() {
     if (!player?.camera || !items.length) return null
-    raycaster.setFromCamera(ndc, player.camera)
+    const aim = player.aimNdc || ndc
+    raycaster.setFromCamera(aim, player.camera)
     const roots = items.map(s => s.wrap).filter(Boolean)
     if (instancer) {
       for (const m of instancer.meshes()) roots.push(m)

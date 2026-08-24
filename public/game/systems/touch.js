@@ -56,6 +56,7 @@ export function wantTouchUi() {
 
 export function createTouchControls({
   player,
+  canvas,
   onEnter,
   getPlaying,
   getPosing,
@@ -68,12 +69,8 @@ export function createTouchControls({
   const btnJump = document.getElementById('touch-jump')
   const btnL = document.getElementById('touch-l')
   const btnR = document.getElementById('touch-r')
-  const btnPause = document.getElementById('touch-pause')
-  const help = document.getElementById('touch-help')
-  const helpClose = document.getElementById('touch-help-close')
 
   let active = false
-  let helpOpen = false
   const pointers = new Map()
   const handOn = { l: false, r: false }
 
@@ -204,13 +201,31 @@ export function createTouchControls({
     return { x: ax, z: az }
   }
 
+  function clientToNdc(clientX, clientY) {
+    const el = canvas || document.querySelector('body > canvas')
+    let r = el && el.getBoundingClientRect()
+    if (!r || r.width < 2 || r.height < 2) {
+      r = { left: 0, top: 0, width: innerWidth, height: innerHeight }
+    }
+    return {
+      x: ((clientX - r.left) / r.width) * 2 - 1,
+      y: -(((clientY - r.top) / r.height) * 2 - 1),
+    }
+  }
+
+  function fireTap(clientX, clientY) {
+    if (!player || !player.pulseFire || player.getMouse(0)) return false
+    player.pulseFire(0, clientToNdc(clientX, clientY))
+    return true
+  }
+
   function bindHold(el, role, down, up) {
     if (!el) return
     el.addEventListener('pointerdown', e => {
       if (e.button != null && e.button !== 0) return
       e.preventDefault()
       e.stopPropagation()
-      if (posing() || helpOpen) return
+      if (posing()) return
       ensurePlay()
       try { el.setPointerCapture(e.pointerId) } catch (_) { /* ignore */ }
       pointers.set(e.pointerId, { role })
@@ -262,7 +277,7 @@ export function createTouchControls({
       if (e.button != null && e.button !== 0) return
       e.preventDefault()
       e.stopPropagation()
-      if (posing() || helpOpen) return
+      if (posing()) return
       ensurePlay()
       setHand(side, !handOn[side])
     })
@@ -274,10 +289,12 @@ export function createTouchControls({
     if (e.button != null && e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
-    if (posing() || helpOpen) return
+    if (posing()) return
     ensurePlay()
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch (_) { /* ignore */ }
-    pointers.set(e.pointerId, { role: 'stick' })
+    pointers.set(e.pointerId, {
+      role: 'stick', x: e.clientX, y: e.clientY, px: 0, t: performance.now(),
+    })
     applyStickPointer(e)
   }
 
@@ -285,6 +302,11 @@ export function createTouchControls({
     const p = pointers.get(e.pointerId)
     if (!p || p.role !== 'stick') return
     e.preventDefault()
+    const dx = e.clientX - p.x
+    const dy = e.clientY - p.y
+    p.x = e.clientX
+    p.y = e.clientY
+    p.px += Math.hypot(dx, dy)
     applyStickPointer(e)
   }
 
@@ -294,6 +316,11 @@ export function createTouchControls({
     pointers.delete(e.pointerId)
     emitAnalog(0, 0)
     resetStickHome()
+    if (e.type === 'pointercancel') return
+    const dt = performance.now() - p.t
+    if (p.px < TAP_PX && dt < TAP_MS && !posClicksBlocked()) {
+      fireTap(e.clientX, e.clientY)
+    }
   }
 
   if (moveZone) {
@@ -306,7 +333,7 @@ export function createTouchControls({
   function lookDown(e) {
     if (e.button != null && e.button !== 0) return
     e.preventDefault()
-    if (posing() || helpOpen || posClicksBlocked()) return
+    if (posing() || posClicksBlocked()) return
     ensurePlay()
     try { lookZone.setPointerCapture(e.pointerId) } catch (_) { /* ignore */ }
     pointers.set(e.pointerId, {
@@ -335,9 +362,8 @@ export function createTouchControls({
     }
     pointers.delete(e.pointerId)
     const dt = performance.now() - p.t
-    if (p.px < TAP_PX && dt < TAP_MS && !posClicksBlocked()
-      && player && player.pulseFire && !player.getMouse(0)) {
-      player.pulseFire(0)
+    if (p.px < TAP_PX && dt < TAP_MS && !posClicksBlocked()) {
+      fireTap(e.clientX, e.clientY)
     }
   }
 
@@ -346,44 +372,6 @@ export function createTouchControls({
     lookZone.addEventListener('pointermove', lookMove)
     lookZone.addEventListener('pointerup', lookUp)
     lookZone.addEventListener('pointercancel', lookUp)
-  }
-
-  function setHelp(on) {
-    helpOpen = !!on
-    if (help) help.hidden = !helpOpen
-    btnPause && btnPause.classList.toggle('on', helpOpen)
-    if (helpOpen) {
-      emitAnalog(0, 0)
-      resetStickHome()
-      key('Space', false)
-      setHand('l', false)
-      setHand('r', false)
-      btnJump && btnJump.classList.remove('on')
-    }
-  }
-
-  if (btnPause) {
-    btnPause.addEventListener('pointerdown', e => {
-      e.preventDefault()
-      e.stopPropagation()
-      requestShell()
-      setHelp(!helpOpen)
-    })
-  }
-  if (helpClose) {
-    helpClose.addEventListener('pointerdown', e => {
-      e.preventDefault()
-      e.stopPropagation()
-      setHelp(false)
-    })
-  }
-  if (help) {
-    help.addEventListener('pointerdown', e => {
-      if (e.target === help) {
-        e.preventDefault()
-        setHelp(false)
-      }
-    })
   }
 
   function releasePlayPointers() {
@@ -469,7 +457,6 @@ export function createTouchControls({
       root.setAttribute('aria-hidden', active ? 'false' : 'true')
     }
     if (!active) {
-      setHelp(false)
       onLost()
       if (player && player.setTouchLock) player.setTouchLock(false)
     } else if (playing() && player && player.setTouchLock) {
@@ -494,6 +481,17 @@ export function createTouchControls({
   if (mq.addEventListener) mq.addEventListener('change', onMq)
   else if (mq.addListener) mq.addListener(onMq)
 
+  function tapAt(clientX, clientY) {
+    const ndc = clientToNdc(clientX, clientY)
+    fireTap(clientX, clientY)
+    return { ndc, ...dump() }
+  }
+
+  function tapNdc(x, y) {
+    if (player && player.pulseFire) player.pulseFire(0, { x: +x || 0, y: +y || 0 })
+    return dump()
+  }
+
   function press(name, down = true) {
     const n = String(name || '').toLowerCase()
     if (n === 'jump' || n === 'space') {
@@ -508,7 +506,6 @@ export function createTouchControls({
     const a = player && player.analog
     return {
       active,
-      help: helpOpen,
       analog: a ? { x: +a.x.toFixed(3), z: +a.z.toFixed(3) } : null,
       run: !!(player && player.keys.has('ShiftLeft')),
       hands: { l: handOn.l, r: handOn.r },
@@ -519,6 +516,9 @@ export function createTouchControls({
       fire2: !!(player && player.getMouse && player.getMouse(2)),
       touchLock: !!(player && player.touchLock),
       posOpen: document.body.classList.contains('pos-open'),
+      aim: player && player.aimNdc
+        ? { x: +player.aimNdc.x.toFixed(3), y: +player.aimNdc.y.toFixed(3) }
+        : null,
     }
   }
 
@@ -528,8 +528,9 @@ export function createTouchControls({
     force(on) { apply(!!on) },
     setStick,
     press,
+    tapAt,
+    tapNdc,
     dump,
-    setHelp,
     wantTouchUi,
     RUN_MAG,
   }

@@ -441,7 +441,8 @@ export async function createSoundboard({
 
   function pick() {
     player.object.updateMatrixWorld(true)
-    raycaster.setFromCamera(ndc, player.camera)
+    const aim = player.aimNdc || ndc
+    raycaster.setFromCamera(aim, player.camera)
     const hits = raycaster.intersectObject(object, true)
     for (const h of hits) {
       if (h.distance > PRESS_RANGE) continue

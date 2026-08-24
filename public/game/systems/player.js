@@ -88,6 +88,7 @@ export function createFirstPersonPlayer({
   let enabled = true
   const analog = { x: 0, z: 0 }
   const tap = { 0: false, 1: false, 2: false }
+  const aim = { x: 0, y: 0 }
   // When true, pointer-lock mousemove is not applied to yaw/pitch. The scale
   // gun (and anything else that wants a drag gesture) reads pullDragDelta().
   let lookFrozen = false
@@ -208,6 +209,7 @@ export function createFirstPersonPlayer({
     wasMouse[0] = fire1
     wasMouse[2] = fire2
     tap[0] = tap[1] = tap[2] = false
+    if (!fire1) { aim.x = 0; aim.y = 0 }
     wheelDir = wheelAcc > 0 ? 1 : wheelAcc < 0 ? -1 : 0
     wheelAcc = 0
 
@@ -444,9 +446,14 @@ export function createFirstPersonPlayer({
       analog.z = az
     },
     get analog() { return analog },
-    pulseFire(button = 0) {
+    pulseFire(button = 0, ndc) {
       tap[button] = true
+      if (ndc && Number.isFinite(+ndc.x) && Number.isFinite(+ndc.y)) {
+        aim.x = +ndc.x
+        aim.y = +ndc.y
+      }
     },
+    get aimNdc() { return aim },
     get grounded() { return grounded },
     get jumping() { return !grounded && vy > 0 },
     get yaw() { return yaw },

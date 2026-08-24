@@ -37,6 +37,7 @@ touch (phones, or ?touch on the URL)
   __museum.touch.dump()
   __museum.touch.setStick(0, 1)     // analog: x strafe, z forward
   __museum.touch.press('l'|'r'|'jump', true)
+  __museum.touch.tapNdc(x, y)       // finger tap in NDC (soundboard / switches)
 
 pose — model studio (white bg, nothing else)
   await pose.enter('items/Cheese')
@@ -166,6 +167,7 @@ export function installHarness({
         leftHand: player.leftHand,
         rightHand: player.rightHand,
         analog: player.analog ? { x: r(player.analog.x), z: r(player.analog.z) } : null,
+        aim: player.aimNdc ? { x: r(player.aimNdc.x), y: r(player.aimNdc.y) } : null,
         touchLock: !!player.touchLock,
       } : null,
       ...extra,
