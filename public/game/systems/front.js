@@ -33,6 +33,13 @@ export const BOOTH_H = 3.55
 const STREET_D = 3.6
 const HALF_H = WAINSCOT + RAIL
 const TABLE_Y = 0.76
+// House-roof table tent: triangular prism, numbers on the two roof faces.
+// ~60° pitch so a standing guest reads the aisle face; almost-square roof
+// so the digit is not stretched.
+const TENT_LEN = 0.16
+const TENT_BASE = 0.16
+const TENT_H = 0.14
+const TENT_INSET = 0.16
 
 function loadMap(url, { repeatX = 1, repeatY = 1, flipY = true } = {}) {
   const t = new THREE.TextureLoader().load(url)
@@ -61,7 +68,69 @@ function mat(color, { map = null, roughness = 0.78, metalness = 0.04 } = {}) {
   return new THREE.MeshStandardMaterial({ color, map, roughness, metalness })
 }
 
+function makeTentGeometry() {
+  const hl = TENT_LEN / 2
+  const hz = TENT_BASE / 2
+  const h = TENT_H
+  const A = [-hl, 0, -hz]
+  const B = [hl, 0, -hz]
+  const C = [hl, 0, hz]
+  const D = [-hl, 0, hz]
+  const E = [-hl, h, 0]
+  const F = [hl, h, 0]
+  const pos = []
+  const nrm = []
+  const uv = []
+  function tri(p0, p1, p2, uv0, uv1, uv2) {
+    pos.push(...p0, ...p1, ...p2)
+    const e1x = p1[0] - p0[0], e1y = p1[1] - p0[1], e1z = p1[2] - p0[2]
+    const e2x = p2[0] - p0[0], e2y = p2[1] - p0[1], e2z = p2[2] - p0[2]
+    let nx = e1y * e2z - e1z * e2y
+    let ny = e1z * e2x - e1x * e2z
+    let nz = e1x * e2y - e1y * e2x
+    const inv = 1 / Math.hypot(nx, ny, nz)
+    nx *= inv; ny *= inv; nz *= inv
+    nrm.push(nx, ny, nz, nx, ny, nz, nx, ny, nz)
+    uv.push(...uv0, ...uv1, ...uv2)
+  }
+  // Door roof (+Z). Camera looking −Z has +X on the right, so C/F are u=1.
+  tri(C, F, E, [1, 0], [1, 1], [0, 1])
+  tri(C, E, D, [1, 0], [0, 1], [0, 0])
+  // Back roof (−Z). Camera looking +Z has +X on the left, so B/F are u=0.
+  tri(A, E, F, [1, 0], [1, 1], [0, 1])
+  tri(A, F, B, [1, 0], [0, 1], [0, 0])
+  // Gable ends: blank white.
+  tri(A, D, E, [0, 0], [0, 0], [0, 0])
+  tri(B, F, C, [0, 0], [0, 0], [0, 0])
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+  geo.addGroup(0, 12, 0)
+  geo.addGroup(12, 6, 1)
+  return geo
+}
 
+const TENT_GEO = makeTentGeometry()
+
+function makeNumberTent(n) {
+  const map = canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = '#ffffff'
+    g.fillRect(0, 0, w, h)
+    g.fillStyle = '#111111'
+    g.font = '700 140px ui-sans-serif, system-ui, sans-serif'
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.fillText(String(n), w / 2, h / 2 + 6)
+  })
+  // Unlit: a printed tent card, readable under the booth lamps or in shadow.
+  const roof = new THREE.MeshBasicMaterial({ map })
+  const ends = new THREE.MeshBasicMaterial({ color: 0xffffff })
+  const mesh = new THREE.Mesh(TENT_GEO, [roof, ends])
+  mesh.name = 'TableNumber' + n
+  mesh.receiveShadow = true
+  return mesh
+}
 
 function makeLabel(text) {
   const map = canvasTexture(512, 128, (g, w, h) => {
@@ -418,6 +487,18 @@ export async function createFront({
     box(tw, TABLE_Y - 0.04, td, greyMat, spec.x, (TABLE_Y - 0.04) / 2, spec.z)
     box(tw + 0.04, 0.04, td + 0.04, topMat, spec.x, TABLE_Y, spec.z)
 
+    // Door-nearest aisle corner. Ridge aims at that corner so both
+    // numbered roof faces read from the entrance and the aisle.
+    const aisle = spec.x < 0 ? 1 : -1
+    const tent = makeNumberTent(spec.tableId)
+    tent.position.set(
+      spec.x + aisle * (tw / 2 - TENT_INSET),
+      TABLE_Y + 0.02,
+      spec.z + (td / 2 - TENT_INSET),
+    )
+    tent.rotation.y = Math.atan2(-1, aisle)
+    object.add(tent)
+
     const seats = []
     if (spec.capacity === 4) {
       seats.push({ x: spec.x - tw * 0.22, z: spec.z + td * 0.55 + 0.38 })
@@ -428,7 +509,7 @@ export async function createFront({
       seats.push({ x: spec.x, z: spec.z + td / 2 + 0.38 })
       seats.push({ x: spec.x, z: spec.z - td / 2 - 0.38 })
     }
-    return { ...spec, seats, tw, td }
+    return { ...spec, seats, tw, td, tent, aisle }
   }
 
   const tableSpecs = [
@@ -873,6 +954,16 @@ export async function createFront({
     }
     const tableHit = key.match(/^Table(\d)$/i)
     if (tableHit) {
+      const spec = tableSpecs.find(t => t.tableId === +tableHit[1])
+      if (spec?.tent) {
+        const look = worldOf(spec.tent.position.x, spec.tent.position.y + 0.04, spec.tent.position.z)
+        const stand = worldOf(
+          spec.tent.position.x + spec.aisle * 1.35,
+          0,
+          spec.tent.position.z + 0.35,
+        )
+        return { stand, look, label: 'Table' + spec.tableId }
+      }
       const spot = seatSpots['Table' + tableHit[1]]
       if (spot) {
         return {
