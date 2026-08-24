@@ -287,7 +287,7 @@ export async function createKitchen({
     solidWall(dishSouthW, WALL_T, (frontHx + kEast) / 2, kSouth, true)
   }
 
-  putTag('BACK', (backDoorX0 + backDoorX1) / 2, 2.55, kNorth + WALL_T + 0.08, { sx: 0.75, sy: 0.75 })
+  putTag('BACK', -2.806, 2.699, -11.65, { sx: 0.75, sy: 0.75 })
 
   // —— Prep counter (north wall). Starts east of the back door so the
   // west aisle stays a walk-through to the staff corridor / pass gap. ——
@@ -324,7 +324,7 @@ export async function createKitchen({
   box(cookLen + 0.1, 0.08, RANGE_W + 0.18, greyMat, cookX, 2.62, rZ)
   box(cookLen * 0.45, 0.85, RANGE_W * 0.55, greyMat, cookX, 2.62 + 0.46, rZ)
 
-  putTag('RANGE', boardX, 1.55, kSouth - WALL_T / 2 - 0.02, { sx: 1.25, sy: 1.25, yaw: Math.PI })
+  putTag('RANGE', -1.397, 1.55, kSouth - WALL_T / 2 - 0.02, { sx: 1.25, sy: 1.25, yaw: Math.PI })
 
   // —— Order board: NE corner of the galley, 45° into the aisle ——
   const orderBoard = await makeOrderScreen()

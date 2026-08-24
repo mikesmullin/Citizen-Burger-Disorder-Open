@@ -193,6 +193,7 @@ export function createScaler({
     }
     if (onScale) onScale(rec)
     if (onTransform) onTransform(rec)
+    if (typeof rec.sync === 'function') rec.sync()
   }
 
   function logScale(rec, start, handle = 'center') {
@@ -223,6 +224,7 @@ export function createScaler({
     console.log(payload)
     console.log(`[scale] copy: tag.scale.set(${after.x}, ${after.y}, ${after.z})`)
     if (pos) console.log(`[scale] copy: tag.position.set(${pos.x}, ${pos.y}, ${pos.z})`)
+    logPutTag(rec, pos, after)
   }
 
   function logTransform(rec, start) {
@@ -245,6 +247,29 @@ export function createScaler({
     if (payload.scale) {
       console.log(`[transform] copy: tag.scale.set(${payload.scale.x}, ${payload.scale.y}, ${payload.scale.z})`)
     }
+    logPutTag(rec, after, payload.scale)
+  }
+
+  function logPutTag(rec, pos, scale) {
+    if (!rec || !pos) return
+    const yaw = rec.display ? r3(rec.display.rotation.y) : 0
+    if (rec.kind === 'poster') {
+      const w = scale ? r3(scale.x) : r3(rec.size?.x || 1)
+      const h = scale ? r3(scale.y) : r3(rec.size?.y || 1)
+      const id = rec.posterId || rec.caption || rec.label
+      console.log(`[${tool}] copy: { id: '${id}', x: ${pos.x}, y: ${pos.y}, z: ${pos.z}, yaw: ${yaw}, w: ${w}, h: ${h} }`)
+      return
+    }
+    if (rec.kind !== 'label') return
+    const ts = rec.tagSize
+    const sx = ts && scale ? r3(scale.x / ts.w) : 1
+    const sy = ts && scale ? r3(scale.y / ts.h) : 1
+    const bits = []
+    if (Math.abs(sx - 1) > 1e-4 || Math.abs(sy - 1) > 1e-4) bits.push(`sx: ${sx}`, `sy: ${sy}`)
+    if (Math.abs(yaw) > 1e-4) bits.push(`yaw: ${yaw}`)
+    const extra = bits.length ? `, { ${bits.join(', ')} }` : ''
+    const name = rec.caption || rec.label || rec.slug
+    console.log(`[${tool}] copy: putTag('${name}', ${pos.x}, ${pos.y}, ${pos.z}${extra})`)
   }
 
   function setMuzzle(hex) {
@@ -378,6 +403,7 @@ export function createScaler({
     let best = null, bestD = RANGE
     for (const rec of exhibits) {
       if (!rec.display) continue
+      if (rec.kind === 'label' || rec.kind === 'poster') continue
       const dx = rec.x - _pos.x
       const dy = pedestalH + 0.2 - _pos.y
       const dz = rec.z - _pos.z
@@ -439,6 +465,7 @@ export function createScaler({
       if (!rec.virtual) reseat(rec)
     }
     if (onScale) onScale(rec)
+    if (typeof rec.sync === 'function') rec.sync()
   }
 
   function applyScale(rec, dpx) {
@@ -471,6 +498,7 @@ export function createScaler({
     obj.position.sub(_pin)
     if (!rec.virtual && !dragPivot.x && !dragPivot.y && !dragPivot.z) reseat(rec)
     if (onScale) onScale(rec)
+    if (typeof rec.sync === 'function') rec.sync()
   }
 
   function applyPos(rec, dpx, dpy) {
@@ -511,6 +539,7 @@ export function createScaler({
       t.position.copy(next)
     }
     if (onTransform) onTransform(rec)
+    if (typeof rec.sync === 'function') rec.sync()
   }
 
   function highlight(rec) {
@@ -773,6 +802,8 @@ export function createScaler({
       hovering: hover ? hover.slug : null,
       dragging: drag ? drag.slug : null,
       exhibits: rows,
+      labels: exhibits.filter(e => e.kind === 'label').map(row),
+      posters: exhibits.filter(e => e.kind === 'poster').map(row),
       wainscots,
       wainChanged,
       changed,

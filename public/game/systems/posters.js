@@ -25,6 +25,8 @@ const PW = 1.05
 const PH = 1.45
 const RADIUS = 0.72
 const PRESS_RANGE = 6.5
+const PICK_GEO = new THREE.PlaneGeometry(1, 1)
+const PICK_MAT = new THREE.MeshBasicMaterial({ visible: false })
 
 function loadMap(url) {
   const t = new THREE.TextureLoader().load(url)
@@ -66,32 +68,69 @@ function loadAtlasMeta() {
   return _atlasMeta
 }
 
-/** Wall-mounted posters as one atlas InstancedMesh (dining + pass). */
+function makePosterDummy(m, i, parent) {
+  const dummy = new THREE.Mesh(PICK_GEO, PICK_MAT)
+  dummy.name = 'WallPoster:' + m.id
+  dummy.frustumCulled = false
+  dummy.castShadow = false
+  dummy.receiveShadow = false
+  dummy.position.set(m.x, m.y, m.z)
+  dummy.rotation.set(0, m.yaw || 0, 0)
+  dummy.scale.set(m.w, m.h, 1)
+  dummy.userData.noGrab = true
+  dummy.userData.slot = i
+  dummy.userData.wallPoster = m
+  parent.add(dummy)
+  return dummy
+}
+
+function posterField(mesh, items, byInstance) {
+  function setFromObject(i, object) {
+    if (!mesh || i == null || i < 0 || i >= mesh.count || !object) return
+    object.updateMatrix()
+    mesh.setMatrixAt(i, object.matrix)
+    mesh.instanceMatrix.needsUpdate = true
+  }
+  function sync(dummy) {
+    if (!dummy) return
+    setFromObject(dummy.userData.slot, dummy)
+  }
+  return { mesh, items, byInstance, setFromObject, sync }
+}
+
+/** Wall-mounted posters as one atlas InstancedMesh (dining + kitchen). */
 export async function mountWallPosters(parent, mounts) {
   if (!mounts || !mounts.length) return null
+  const items = []
+  const byInstance = []
   let meta
   try {
     meta = await loadAtlasMeta()
   } catch (err) {
     console.warn('[posters] wall atlas missing', err)
-    for (const m of mounts) {
+    for (let i = 0; i < mounts.length; i++) {
+      const m = mounts[i]
       const map = loadMap(m.file || `./assets/textures/posters/${m.id}.png`)
       const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(m.w, m.h),
+        new THREE.PlaneGeometry(1, 1),
         new THREE.MeshStandardMaterial({ map, color: 0xffffff, roughness: 0.72 }),
       )
       mesh.position.set(m.x, m.y, m.z)
       mesh.rotation.y = m.yaw || 0
+      mesh.scale.set(m.w, m.h, 1)
       mesh.castShadow = true
+      mesh.userData.noGrab = true
+      mesh.userData.slot = i
+      mesh.userData.wallPoster = m
       parent.add(mesh)
+      items.push(mesh)
     }
-    return null
+    return posterField(null, items, byInstance)
   }
   const n = mounts.length
   const map = loadMap(meta.image)
   const geo = new THREE.PlaneGeometry(1, 1)
   const uv = new Float32Array(n * 4)
-  const dummy = new THREE.Object3D()
   for (let i = 0; i < n; i++) {
     const f = meta.frames[mounts[i].id]
     if (!f) continue
@@ -106,18 +145,20 @@ export async function mountWallPosters(parent, mounts) {
   mesh.count = n
   mesh.castShadow = true
   mesh.frustumCulled = false
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  mesh.userData.byInstance = byInstance
+  mesh.userData.noGrab = true
   parent.add(mesh)
   for (let i = 0; i < n; i++) {
-    const m = mounts[i]
-    dummy.position.set(m.x, m.y, m.z)
-    dummy.rotation.set(0, m.yaw || 0, 0)
-    dummy.scale.set(m.w, m.h, 1)
+    const dummy = makePosterDummy(mounts[i], i, parent)
     dummy.updateMatrix()
     mesh.setMatrixAt(i, dummy.matrix)
+    items.push(dummy)
+    byInstance[i] = { dummy, editRoot: dummy, exhibit: dummy.userData.exhibit || null }
   }
   mesh.instanceMatrix.needsUpdate = true
   mesh.computeBoundingSphere()
-  return mesh
+  return posterField(mesh, items, byInstance)
 }
 
 export function createPosters({ scene, player, foodWorld, x = 0, z = 0 } = {}) {

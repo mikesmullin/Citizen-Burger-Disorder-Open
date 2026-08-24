@@ -4,14 +4,15 @@
 import * as THREE from 'three'
 import { atlasUvMaterial } from './atlasUv.js'
 
-const TAG_W = 1.15
-const TAG_H = 0.28
-const PLAQUE_W = 1.45
-const PLAQUE_H = 0.41
+export const TAG_W = 1.15
+export const TAG_H = 0.28
+export const PLAQUE_W = 1.45
+export const PLAQUE_H = 0.41
 const CELL_W = 512
 const CELL_H = 192
 
-const _dummy = new THREE.Object3D()
+const PICK_GEO = new THREE.PlaneGeometry(1, 1)
+const PICK_MAT = new THREE.MeshBasicMaterial({ visible: false })
 
 function drawTag(g, w, h, text) {
   g.fillStyle = '#14110e'
@@ -44,6 +45,7 @@ function drawPlaque(g, w, h, title, sub) {
 
 export function createLabelField({ scene, max = 192 } = {}) {
   const pending = []
+  const byInstance = []
   let mesh = null
 
   function place({
@@ -51,19 +53,37 @@ export function createLabelField({ scene, max = 192 } = {}) {
     x = 0, y = 0, z = 0, yaw = 0, pitch = 0,
     sx = 1, sy = 1, parent,
   } = {}) {
-    const dummy = new THREE.Object3D()
+    const dummy = new THREE.Mesh(PICK_GEO, PICK_MAT)
+    dummy.name = 'Label:' + String(text || kind)
+    dummy.frustumCulled = false
+    dummy.castShadow = false
+    dummy.receiveShadow = false
     dummy.position.set(x, y, z)
     dummy.rotation.order = 'YXZ'
     dummy.rotation.set(pitch, yaw, 0)
     const bw = kind === 'plaque' ? PLAQUE_W : TAG_W
     const bh = kind === 'plaque' ? PLAQUE_H : TAG_H
     dummy.scale.set(bw * sx, bh * sy, 1)
-    dummy.userData.label = { text, sub, kind }
-    dummy.raycast = () => {}
+    dummy.userData.label = { text, sub, kind, w: bw, h: bh }
+    dummy.userData.noGrab = true
+    dummy.userData.slot = pending.length
     if (parent) parent.add(dummy)
     else scene.add(dummy)
     pending.push(dummy)
     return dummy
+  }
+
+  function setFromObject(i, object) {
+    if (!mesh || i == null || i < 0 || !object) return
+    object.updateMatrixWorld(true)
+    mesh.setMatrixAt(i, object.matrixWorld)
+    mesh.instanceMatrix.needsUpdate = true
+  }
+
+  function sync(dummy) {
+    if (!dummy) return
+    const i = dummy.userData.slot
+    setFromObject(i, dummy)
   }
 
   function finalize() {
@@ -102,16 +122,22 @@ export function createLabelField({ scene, max = 192 } = {}) {
     mesh.name = 'LabelInst'
     mesh.count = n
     mesh.frustumCulled = false
-    mesh.raycast = () => {}
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    mesh.userData.byInstance = byInstance
+    mesh.userData.noGrab = true
     scene.add(mesh)
     for (let i = 0; i < n; i++) {
       const dummy = pending[i]
       dummy.updateMatrixWorld(true)
       mesh.setMatrixAt(i, dummy.matrixWorld)
+      byInstance[i] = { dummy, editRoot: dummy, exhibit: dummy.userData.exhibit || null }
     }
     mesh.instanceMatrix.needsUpdate = true
     mesh.computeBoundingSphere()
   }
 
-  return { place, finalize, get mesh() { return mesh } }
+  return {
+    place, finalize, setFromObject, sync, items: pending, byInstance,
+    get mesh() { return mesh },
+  }
 }

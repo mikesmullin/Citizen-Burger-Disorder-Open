@@ -376,6 +376,11 @@ The grey NameTag cube matches the sticker's width/height (visible from the
 side or back). Scale gun (Digit1) and transform gun (Digit2) both pick the
 badge; transform-gun X/Y/Z lock parent-local axes, then LMB-drag moves it
 and `console.log`s `tag.position.set(...)` / `tag.scale.set(...)`.
+Booth/galley placards (`ui/Tag/RANGE`, `ui/Tag/KITCHEN`, `ui/Tag/BACK`,
+`ui/Tag/PREP`, …) pick the same way. The log also prints a `putTag(...)`
+line in parent-local coordinates. Dining/kitchen wall posters
+(`ui/Poster/CoverYourBurger`, `ui/Poster/Poster2`, `ui/Poster/StaffMenu`, …)
+print a mount line `{ id, x, y, z, yaw, w, h }`.
 
 ### 7. Front of house (customers, orders, serve, tips)
 

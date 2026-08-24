@@ -19,7 +19,7 @@ import { createDelivery, BOX_SIZE, prepareClosedBox } from '../systems/delivery.
 import { createScaler } from '../systems/scaler.js'
 import { createSwatches } from '../systems/swatches.js'
 import { createPedestalField, PEDESTAL_H, PEDESTAL_W } from '../systems/pedestals.js'
-import { createPosters } from '../systems/posters.js'
+import { createPosters, POSTERS } from '../systems/posters.js'
 import { createKitchen } from '../systems/kitchen.js'
 import { createFront } from '../systems/front.js'
 import { createSwitchSet, SWITCH_Y } from '../systems/lightSwitch.js'
@@ -931,6 +931,49 @@ async function boot() {
       x: BOOTHS.front.x, z: BOOTHS.front.z, facingY: 0,
     })
     posKiosk = front.posKiosk || null
+    {
+      const field = front.wallPosters
+      const items = field && field.items || []
+      const byInstance = field && field.byInstance || []
+      for (let i = 0; i < items.length; i++) {
+        const dummy = items[i]
+        const m = dummy.userData.wallPoster || {}
+        const id = String(m.id || 'Poster')
+        const spec = POSTERS.find(s => s.id === id)
+        const rec = {
+          slug: 'ui/Poster/' + id,
+          caption: m.caption || (spec && spec.caption) || id,
+          label: id,
+          posterId: id,
+          group: 'ui',
+          kind: 'poster',
+          virtual: true,
+          editMul: 1,
+          display: dummy,
+          x: dummy.position.x,
+          z: dummy.position.z,
+          size: { x: dummy.scale.x, y: dummy.scale.y, z: dummy.scale.z },
+          sync: () => field.sync(dummy),
+        }
+        dummy.userData.exhibit = rec
+        dummy.userData.editRoot = dummy
+        dummy.userData.noGrab = true
+        dummy.userData.slot = i
+        dummy.traverse(o => {
+          o.userData.exhibit = rec
+          o.userData.editRoot = dummy
+          o.userData.noGrab = true
+        })
+        if (byInstance[i]) {
+          byInstance[i].exhibit = rec
+          byInstance[i].editRoot = dummy
+          byInstance[i].dummy = dummy
+        } else {
+          byInstance[i] = { exhibit: rec, editRoot: dummy, dummy }
+        }
+        exhibits.push(rec)
+      }
+    }
     exhibits.push({
       slug: 'front/Front',
       label: 'Front',
@@ -1162,6 +1205,47 @@ async function boot() {
 
   if (pedestals) pedestals.finalize()
   labels.finalize()
+  {
+    const used = new Map()
+    const items = labels.items || []
+    const byInstance = labels.byInstance || []
+    for (let i = 0; i < items.length; i++) {
+      const dummy = items[i]
+      const meta = dummy.userData.label || {}
+      const text = String(meta.text || 'Tag')
+      const kind = meta.kind === 'plaque' ? 'Plaque' : 'Tag'
+      const base = `ui/${kind}/${text}`
+      const n = (used.get(base) || 0) + 1
+      used.set(base, n)
+      const rec = {
+        slug: n === 1 ? base : base + n,
+        caption: text,
+        label: text,
+        group: 'ui',
+        kind: 'label',
+        virtual: true,
+        editMul: 1,
+        display: dummy,
+        tagSize: { w: meta.w || 1.15, h: meta.h || 0.28 },
+        x: dummy.position.x,
+        z: dummy.position.z,
+        size: { x: dummy.scale.x, y: dummy.scale.y, z: dummy.scale.z },
+        sync: () => labels.sync(dummy),
+      }
+      dummy.userData.exhibit = rec
+      dummy.userData.editRoot = dummy
+      dummy.userData.noGrab = true
+      dummy.userData.slot = i
+      if (byInstance[i]) {
+        byInstance[i].exhibit = rec
+        byInstance[i].editRoot = dummy
+        byInstance[i].dummy = dummy
+      } else {
+        byInstance[i] = { exhibit: rec, editRoot: dummy, dummy }
+      }
+      exhibits.push(rec)
+    }
+  }
 
   setStatus('')
   $('loader').dataset.ready = '1'

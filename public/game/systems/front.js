@@ -23,7 +23,6 @@ import * as Speech from './speech.js'
 import * as View from './view.js'
 import { createPosKiosk } from './posKiosk.js'
 import { setPosOpen, posClicksBlocked } from './touch.js'
-import { boundsOf } from '../common/unityScene.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
 import { createKit, addTiledFloor, WALL_T, WAINSCOT, RAIL, WAINSCOT_T, COUNTER_Y } from '../common/kit.js'
 import { mountWallPosters } from './posters.js'
@@ -456,26 +455,12 @@ export async function createFront({
   const compX = 0.15
 
   // Staff menu on the dining face of the pass wall, east of the order
-  // window. Staff at the till face +Z (guests); their left is +X, so
-  // this board is a left turn. Guests at checkout see it to the right
-  // of the pass.
-  const menuLongest = Math.min(1.70, (hx - WALL_T - winX1) - 0.16)
-  const menuX = winX1 + 0.12 + menuLongest / 2
-  const menuY = 2.05
-  const menuZ = winZ + WALL_T / 2 + 0.03
-  if (foodProtos && foodProtos['ui/StaffMenu']) {
-    const menu = foodProtos['ui/StaffMenu'].clone(true)
-    menu.name = 'StaffMenu'
-    menu.updateMatrixWorld(true)
-    const mb = boundsOf(menu)
-    if (!mb.isEmpty()) {
-      const ms = mb.getSize(new THREE.Vector3())
-      menu.scale.multiplyScalar(menuLongest / Math.max(ms.x, ms.y, ms.z, 1e-4))
-    }
-    menu.position.set(menuX, menuY, menuZ)
-    menu.rotation.set(0, 0, 0)  // local +Z toward dining / guests
-    object.add(menu)
-  }
+  // window. Same gun path as the other wall posters (not the Unity prefab).
+  const menuW = 2.508
+  const menuH = 1.672
+  const menuX = 4.382
+  const menuY = 2.288
+  const menuZ = -5.36
   const posKiosk = createPosKiosk({
     scene, player,
     parent: object,
@@ -544,16 +529,52 @@ export async function createFront({
   ]
 
   const kLayout = kitchen && kitchen.layout
-  await mountWallPosters(object, [
-    { id: 'CoverYourBurger', x: divideX0 + divideW * 0.38, y: 1.85, z: divideZ - WALL_T / 2 - 0.02, yaw: Math.PI, w: 1.1, h: 1.1 },
+  const wallPosters = await mountWallPosters(object, [
+    { id: 'CoverYourBurger', x: -4.361, y: 2.341, z: -2.24, yaw: Math.PI, w: 2.014, h: 2.014 },
     kLayout
-      ? { id: 'Poster2', x: (kLayout.partX + kLayout.east) / 2, y: 1.80, z: kLayout.north + WALL_T + 0.02, yaw: 0, w: 1.1, h: 1.1 }
+      ? { id: 'Poster2', x: 6.542, y: 2.328, z: -11.71, yaw: 0, w: 1.983, h: 1.983 }
       : { id: 'Poster2', x: hx - WALL_T - 0.02, y: 1.80, z: -7.2, yaw: -Math.PI / 2, w: 1.1, h: 1.1 },
-    { id: 'jTZL8p0', x: -hx + WALL_T + 0.04, y: 2.0, z: 3.2, yaw: Math.PI / 2, w: 1.8, h: 1.35 },
-    { id: 'n0kvMQ6', x: -hx + WALL_T + 0.04, y: 2.0, z: 1.05, yaw: Math.PI / 2, w: 1.8, h: 1.35 },
-    { id: 'BLCkYpI', x: hx - WALL_T - 0.04, y: 2.0, z: 3.2, yaw: -Math.PI / 2, w: 1.8, h: 1.35 },
-    { id: 'VF9IcfX', x: hx - WALL_T - 0.04, y: 2.0, z: 1.0, yaw: -Math.PI / 2, w: 1.8, h: 1.35 },
+    { id: 'jTZL8p0', x: -5.84, y: 2.253, z: 3.413, yaw: Math.PI / 2, w: 2.671, h: 2.003 },
+    { id: 'n0kvMQ6', x: -5.84, y: 2.26, z: -0.014, yaw: Math.PI / 2, w: 2.723, h: 2.042 },
+    { id: 'BLCkYpI', x: 5.84, y: 2.319, z: 2.915, yaw: -Math.PI / 2, w: 2.896, h: 2.172 },
+    { id: 'VF9IcfX', x: 5.84, y: 2.314, z: -0.608, yaw: -Math.PI / 2, w: 2.868, h: 2.151 },
   ])
+  {
+    const map = loadMap('./assets/textures/ui/StaffMenu.png')
+    // StaffMenu.bin front-quad UVs (white menu). The red STAFF back lives
+    // in the bottom of the same PNG (v ≲ 0.29) and must not show.
+    map.offset.set(0.009, 0.355)
+    map.repeat.set(0.977, 0.636)
+    const sheet = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshStandardMaterial({ map, color: 0xffffff, roughness: 0.72, metalness: 0.02 }),
+    )
+    sheet.name = 'WallPoster:StaffMenu'
+    sheet.position.set(menuX, menuY, menuZ)
+    sheet.rotation.set(0, 0, 0)
+    sheet.scale.set(menuW, menuH, 1)
+    sheet.castShadow = true
+    sheet.receiveShadow = true
+    const back = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88, metalness: 0 }),
+    )
+    back.name = 'StaffMenuBack'
+    back.rotation.y = Math.PI
+    back.position.z = -0.01
+    back.raycast = () => {}
+    sheet.add(back)
+    sheet.userData.noGrab = true
+    sheet.userData.wallPoster = {
+      id: 'StaffMenu', caption: 'Staff menu',
+      x: menuX, y: menuY, z: menuZ, yaw: 0, w: menuW, h: menuH,
+    }
+    object.add(sheet)
+    if (wallPosters && wallPosters.items) {
+      sheet.userData.slot = wallPosters.items.length
+      wallPosters.items.push(sheet)
+    }
+  }
 
   const lamp = new THREE.PointLight(0xfff1d0, 16, 20, 2)
   lamp.position.set(0, 3.05, 0.6)
@@ -1081,7 +1102,7 @@ export async function createFront({
     confirm: confirmOrder, spawnNow, dropPlated, dump,
     get overlayOpen() { return overlayOpen },
     close: closeOverlay,
-    posKiosk,
+    posKiosk, wallPosters,
     width: BOOTH_W, depth: BOOTH_D, height: BOOTH_H,
     spots: {
       door: doorWpos, street: streetWpos, pos: posWpos, register: regWpos,

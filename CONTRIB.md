@@ -61,14 +61,15 @@ tap again to drop and lower the arm. Drive it from an agent with
 **Scale and transform guns** are for humans to measure a pose, then paste
 the numbers to the coding agent so it can encode them. They are not
 gameplay. `0` puts the gun away (empty hands). `1` equips the **scale
-gun**: aim at an exhibit or a player nametag, hold LMB, drag right to
+gun**: aim at an exhibit, a player nametag, a wainscot, a booth
+placard (RANGE, KITCHEN, BACK, PREP, …), or a wall poster, hold LMB, drag right to
 enlarge and left to shrink. `2` equips the **transform gun**: tap `X` /
 `Y` / `Z` to lock the axes you want (none are on until you tap one), aim,
 hold LMB, and drag. On mouse-up the console prints a copy-paste line such
 as `tag.position.set(0.502, 0.372, -0.162)` or
 `tag.scale.set(0.573, 0.238, 0.038)`. Copy that log (or the JSON object
 above it) into the agent chat and ask it to bake the values into the
-prefab / `seatNameTag` / `EXHIBIT_LONGEST`.
+prefab / `seatNameTag` / `EXHIBIT_LONGEST` / `putTag(...)` / wall-poster `{ id, x, y, z, yaw, w, h }`.
 
 Food exhibits clone into the hand; the pedestal stays. Dropped cheese /
 patty / bacon / tomato / tip can be stolen by rats. NPCs wander and look at you
