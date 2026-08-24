@@ -8,7 +8,7 @@
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { layoutFood, FOOD_SIZE } from './food.js'
-import { floorY } from '../common/kit.js'
+import { floorY, UNIT_BOX } from '../common/kit.js'
 
 export const Contents = {
   meat: 'PattMcRat',
@@ -235,6 +235,166 @@ function sampleCargoFloor(root, openZ, x0, x1, bodyMinY, bodyMaxY) {
   return null
 }
 
+// FMVSS 108 / 49 CFR 393.11 outline lamps. MeshBasicMaterial so they ignore
+// hall lighting and stay full color at night. One InstancedMesh per color.
+const LAMP_WHITE = 0xfff4cc
+const LAMP_AMBER = 0xffb010
+const LAMP_RED = 0xff1e0a
+const HEAD_I = 16
+const CARGO_I = 10
+
+function unlitLampMat(hex) {
+  return new THREE.MeshBasicMaterial({
+    color: hex,
+    toneMapped: false,
+    fog: false,
+  })
+}
+
+function sampleCabRoof(root, z0, cargoZ0) {
+  // Trailer box is taller and starts ~2 m behind the bumper — do not
+  // pick its roof or the 3-across ID cluster floats in the sky.
+  const zHi = Math.min(z0 + 1.5, cargoZ0 - 0.4)
+  let maxy = -Infinity
+  let zAt = z0
+  worldVerts(root, (_x, wy, wz) => {
+    if (wz < z0 - 0.08 || wz > zHi) return
+    if (wy > maxy) {
+      maxy = wy
+      zAt = wz
+    }
+  })
+  return Number.isFinite(maxy) ? { y: maxy, z: zAt } : null
+}
+
+function adornTruckLights(root, {
+  x0, x1, cx, z0, z1, y0, y1, bedY, cargoZ0,
+} = {}) {
+  const group = new THREE.Group()
+  group.name = 'TruckLights'
+  const dummy = new THREE.Object3D()
+  const T = 0.05
+  const proud = 0.02
+
+  function batch(name, hex, max) {
+    const mesh = new THREE.InstancedMesh(UNIT_BOX, unlitLampMat(hex), max)
+    mesh.name = name
+    mesh.count = 0
+    mesh.castShadow = false
+    mesh.receiveShadow = false
+    mesh.frustumCulled = false
+    mesh.raycast = () => {}
+    mesh.userData.noGrab = true
+    group.add(mesh)
+    return mesh
+  }
+  const white = batch('TruckLampWhite', LAMP_WHITE, 8)
+  const amber = batch('TruckLampAmber', LAMP_AMBER, 24)
+  const red = batch('TruckLampRed', LAMP_RED, 24)
+
+  function lamp(mesh, w, h, d, x, y, z) {
+    dummy.position.set(x, y, z)
+    dummy.rotation.set(0, 0, 0)
+    dummy.scale.set(w, h, d)
+    dummy.updateMatrix()
+    const i = mesh.count
+    mesh.setMatrixAt(i, dummy.matrix)
+    mesh.count = i + 1
+  }
+
+  const width = x1 - x0
+  const length = z1 - z0
+  const cab = sampleCabRoof(root, z0, cargoZ0)
+  const cabRoof = cab ? cab.y : y0 + 2.35
+  const frontZ = z0 - proud - T * 0.5
+  const rearZ = z1 + proud + T * 0.5
+  const leftX = x0 - proud - T * 0.5
+  const rightX = x1 + proud + T * 0.5
+  const idSpan = 0.22
+  const headY = y0 + 0.38
+  const turnY = y0 + 0.32
+  const tailY = Math.min(bedY - 0.18, y0 + 0.42)
+  const sideY = y0 + 0.52
+  const cabIdH = 0.06
+  const cabIdY = cabRoof + cabIdH * 0.5 + 0.01
+  const cabIdZ = Math.max(z0 + 0.08, (cab && cab.z) || z0 + 0.1)
+  const roofY = y1 - 0.08
+  const outerX = width * 0.42
+  const headX = width * 0.28
+
+  // Front (facing −Z): headlights, turns, clearance. ID sits on the cab roof.
+  lamp(white, 0.42, 0.16, T, cx - headX, headY, frontZ)
+  lamp(white, 0.42, 0.16, T, cx + headX, headY, frontZ)
+  lamp(amber, 0.15, 0.08, T, cx - outerX, turnY, frontZ)
+  lamp(amber, 0.15, 0.08, T, cx + outerX, turnY, frontZ)
+  lamp(amber, 0.11, cabIdH, 0.08, cx - outerX, cabIdY, cabIdZ)
+  lamp(amber, 0.11, cabIdH, 0.08, cx + outerX, cabIdY, cabIdZ)
+  lamp(amber, 0.10, cabIdH, 0.08, cx - idSpan, cabIdY, cabIdZ)
+  lamp(amber, 0.10, cabIdH, 0.08, cx, cabIdY, cabIdZ)
+  lamp(amber, 0.10, cabIdH, 0.08, cx + idSpan, cabIdY, cabIdZ)
+
+  // Rear (facing +Z): tails, clearance, 3-across ID, license lamp.
+  lamp(red, 0.30, 0.13, T, cx - outerX, tailY, rearZ)
+  lamp(red, 0.30, 0.13, T, cx + outerX, tailY, rearZ)
+  lamp(red, 0.10, 0.055, T, cx - outerX, roofY, rearZ)
+  lamp(red, 0.10, 0.055, T, cx + outerX, roofY, rearZ)
+  lamp(red, 0.09, 0.05, T, cx - idSpan, roofY, rearZ)
+  lamp(red, 0.09, 0.05, T, cx, roofY, rearZ)
+  lamp(red, 0.09, 0.05, T, cx + idSpan, roofY, rearZ)
+  lamp(white, 0.16, 0.035, T, cx, tailY + 0.12, rearZ)
+
+  // Sides (thin in X): amber toward cab/front of trailer, red toward the door.
+  const cabSideZ = z0 + length * 0.14
+  const trailAmberZ = cargoZ0 + 0.40
+  const trailRedZ = z1 - 0.28
+  const midAmberZ = cargoZ0 + (z1 - cargoZ0) * 0.42
+  for (const sx of [leftX, rightX]) {
+    lamp(amber, T, 0.09, 0.20, sx, sideY, cabSideZ)
+    lamp(amber, T, 0.07, 0.18, sx, roofY, trailAmberZ)
+    lamp(amber, T, 0.09, 0.20, sx, sideY, midAmberZ)
+    lamp(red, T, 0.09, 0.20, sx, sideY, trailRedZ)
+    lamp(red, T, 0.07, 0.18, sx, roofY, trailRedZ)
+  }
+
+  white.instanceMatrix.needsUpdate = true
+  amber.instanceMatrix.needsUpdate = true
+  red.instanceMatrix.needsUpdate = true
+
+  // Exactly two point lights (no shadows): ground pool in front of the
+  // bumper, cargo work light under the trailer roof at the open door.
+  const head = new THREE.PointLight(0xfff1c4, 0, 8, 2)
+  head.name = 'TruckHeadLight'
+  head.position.set(cx, 0.48, z0 - 2.05)
+  head.castShadow = false
+  head.visible = false
+  head.userData.baseIntensity = HEAD_I
+  group.add(head)
+
+  const cargo = new THREE.PointLight(0xfff3e4, 0, 8, 2)
+  cargo.name = 'TruckCargoLight'
+  cargo.position.set(cx, y1 - 0.48, z1 - 1.25)
+  cargo.castShadow = false
+  cargo.visible = false
+  cargo.userData.baseIntensity = CARGO_I
+  group.add(cargo)
+
+  function setDay(t, dusk = 0) {
+    const nightAmt = Math.max(0, Math.max(1 - t, dusk * 0.9))
+    for (const p of [head, cargo]) {
+      const base = p.userData.baseIntensity || 1
+      p.intensity = base * nightAmt
+      p.visible = nightAmt > 0.03
+    }
+  }
+
+  // World-space stamps, then reparent so they follow the truck.
+  root.parent.add(group)
+  root.attach(group)
+  setDay(1, 0)
+
+  return { group, head, cargo, setDay }
+}
+
 async function loadTireGeometry() {
   const meta = await fetch('./assets/models/Tire.json').then(r => {
     if (!r.ok) throw new Error('Tire.json ' + r.status)
@@ -428,6 +588,10 @@ export async function createDelivery({
     mat: 'truck',
   })
 
+  const lights = adornTruckLights(root, {
+    x0, x1, cx, z0, z1, y0: box.min.y, y1: box.max.y, bedY, cargoZ0,
+  })
+
   let boxTex = null
   const boxProto = (await loader.load('items/Box')).root
   hideTriggers(boxProto)
@@ -511,6 +675,8 @@ export async function createDelivery({
     openBox,
     boxTex,
     prepareClosedBox: item => prepareClosedBox(item, { scene, player, foodWorld, foodProtos, boxTex }),
+    lights,
+    setDay: (t, dusk) => lights && lights.setDay(t, dusk),
     x, z,
     bedY,
     size,

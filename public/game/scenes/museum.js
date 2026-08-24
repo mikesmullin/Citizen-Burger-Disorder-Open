@@ -191,6 +191,7 @@ function applyHallIllum(t) {
   mixIllumColor(hallLit.fill.color, night.fillColor, day.fillColor, twi.fillColor, t, dusk)
   mixIllumColor(scene.background, SKY_FOG_NIGHT, SKY_FOG_DAY, SKY_FOG_DUSK, t, dusk)
   if (scene.fog) mixIllumColor(scene.fog.color, SKY_FOG_NIGHT, SKY_FOG_DAY, SKY_FOG_DUSK, t, dusk)
+  if (delivery && delivery.setDay) delivery.setDay(t, dusk)
 }
 
 const loader = createUnityLoader({ base: './assets' })
@@ -997,6 +998,7 @@ async function boot() {
       pitch: -lean,
       parent: scene,
     })
+    if (skybox && delivery.setDay) delivery.setDay(skybox.day, skybox.dusk)
   } catch (err) {
     console.warn('[museum] delivery truck skipped', err)
   }
