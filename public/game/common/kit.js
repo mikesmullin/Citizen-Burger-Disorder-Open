@@ -8,8 +8,50 @@
 
 import * as THREE from 'three'
 
+// r185 Texture.copy() always sets needsUpdate, so a clone of a TextureLoader
+// result warns "no image data found" until the PNG arrives. Hold version at 0
+// until source.data exists, then mark the clone for upload.
+const _texCopy = THREE.Texture.prototype.copy
+THREE.Texture.prototype.copy = function (source) {
+  _texCopy.call(this, source)
+  if (this.image) return this
+  this.version = 0
+  const src = source
+  let n = 0
+  const arm = () => {
+    if (this.image || src.image) {
+      this.needsUpdate = true
+      return
+    }
+    if (++n > 180) return
+    requestAnimationFrame(arm)
+  }
+  arm()
+  return this
+}
+
 export const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1)
 export const UNIT_PLANE = new THREE.PlaneGeometry(1, 1)
+
+/** Clone a map for unique wrap/repeat. Texture.copy() always sets
+ *  needsUpdate, which makes r185 warn if the loader hasn't filled the
+ *  image yet. Hold version at 0 until source.data exists. */
+export function cloneMap(map) {
+  if (!map) return map
+  const t = map.clone()
+  if (t.image) return t
+  t.version = 0
+  const src = map
+  const arm = () => {
+    if (src.image) {
+      t.needsUpdate = true
+      return
+    }
+    requestAnimationFrame(arm)
+  }
+  arm()
+  return t
+}
 
 export const WALL_T = 0.12
 export const WAINSCOT = 1.08
@@ -94,7 +136,7 @@ export function addTiledFloor(kit, {
 } = {}) {
   let tex = map
   if (tex) {
-    tex = tex.clone()
+    tex = cloneMap(tex)
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping
     tex.repeat.set(Math.max(0.01, w / tile), Math.max(0.01, d / tile))
   }

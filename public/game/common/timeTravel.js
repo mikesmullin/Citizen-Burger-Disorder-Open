@@ -10,7 +10,7 @@ export function createTimeTravel({ dt = STEP_DT, maxSteps = 6000 } = {}) {
   let T = 0
   let frozen = false
   let frames = 0
-  const clock = new THREE.Clock()
+  const timer = new THREE.Timer()
   let tickFn = () => {}
   let renderFn = () => {}
 
@@ -31,7 +31,8 @@ export function createTimeTravel({ dt = STEP_DT, maxSteps = 6000 } = {}) {
 
   // Consume wall-clock delta. Returns dt to tick, or 0 when frozen.
   function advance() {
-    const wall = Math.min(clock.getDelta(), 0.1)
+    timer.update()
+    const wall = Math.min(timer.getDelta(), 0.1)
     if (frozen) return 0
     T += wall
     frames++
@@ -39,7 +40,7 @@ export function createTimeTravel({ dt = STEP_DT, maxSteps = 6000 } = {}) {
   }
 
   function freeze(v = true) {
-    clock.getDelta()
+    timer.update()
     frozen = !!v
     renderFn()
     return info()
@@ -72,7 +73,7 @@ export function createTimeTravel({ dt = STEP_DT, maxSteps = 6000 } = {}) {
   function resetT() {
     T = 0
     frames = 0
-    clock.getDelta()
+    timer.update()
     renderFn()
     return info()
   }

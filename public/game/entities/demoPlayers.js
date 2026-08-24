@@ -3,6 +3,7 @@
 // so from our 1.6 eye camera they look like the original FPS screenshot.
 
 import * as THREE from 'three'
+import { cloneMap } from '../common/kit.js'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
 import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
 import { createBadgeField, BADGE_W, BADGE_H } from '../common/badgeField.js'
@@ -62,10 +63,9 @@ function alignDefaultFace(root) {
     if (o.name === 'NameTag' || o.name === 'NameTagTop' || o.name === 'NameText') return
     if (!o.material || !o.material.map) return
     o.material = o.material.clone()
-    const map = o.material.map.clone()
+    const map = cloneMap(o.material.map)
     map.wrapS = THREE.RepeatWrapping
     map.offset.x = FEAC_FACE_OFFSET_U
-    map.needsUpdate = true
     o.material.map = map
     o.material.needsUpdate = true
   })

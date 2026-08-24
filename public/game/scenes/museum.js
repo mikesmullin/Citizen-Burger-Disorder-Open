@@ -146,7 +146,9 @@ const renderer = new THREE.WebGLRenderer({ antialias: !gecko })
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+// r185 PCFShadowMap uses LINEAR depth-compare; Firefox warns that
+// filtering is implementation-defined. Basic samples NEAREST.
+renderer.shadowMap.type = THREE.BasicShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 1.2
 document.body.appendChild(renderer.domElement)

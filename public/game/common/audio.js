@@ -15,10 +15,21 @@ function flush() {
   for (const fn of q) fn(listener)
 }
 
+function inGesture(e) {
+  if (e && e.isTrusted === false) return false
+  const ua = navigator.userActivation
+  if (ua && !ua.isActive) return false
+  return true
+}
+
 function unlock() {
   if (!listener && camera) {
     listener = camera.children.find(c => c.type === 'AudioListener') || null
     if (!listener) {
+      // Create the native context in this call stack (must be a user
+      // gesture) and hand it to three so AudioListener does not `new` one.
+      const AC = window.AudioContext || window.webkitAudioContext
+      if (AC) THREE.AudioContext.setContext(new AC())
       listener = new THREE.AudioListener()
       camera.add(listener)
     }
@@ -37,14 +48,16 @@ export function bindAudio(cam) {
   if (armed) return
   armed = true
   const opts = { capture: true }
-  const kick = () => {
-    window.removeEventListener('pointerdown', kick, opts)
-    window.removeEventListener('keydown', kick, opts)
+  // Firefox: pointerdown is not a transient user activation. Creating or
+  // resuming AudioContext there logs "prevented from starting automatically".
+  // click / touchend are.
+  const kick = e => {
+    if (!inGesture(e)) return
+    window.removeEventListener('click', kick, opts)
     window.removeEventListener('touchend', kick, opts)
     unlock()
   }
-  window.addEventListener('pointerdown', kick, opts)
-  window.addEventListener('keydown', kick, opts)
+  window.addEventListener('click', kick, opts)
   window.addEventListener('touchend', kick, opts)
 }
 
