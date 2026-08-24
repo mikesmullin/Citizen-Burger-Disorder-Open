@@ -2,27 +2,21 @@
 // A random one-shot from a small set, played positionally, with a short
 // per-type cooldown so a plate can clatter but never machine-gun.
 //
-// Kritz's layering: wet = bacon/cheese/patty/tomato, dry = everything else,
-// and a dedicated plate-collision set (clank / clatter) when a Plate touches.
+// Clip lists match the Player.prefab AudioLibrary inspector (wet + plate)
+// and !Knife.prefab choppingSFX. SFXdryCollisions was empty in the dump;
+// we still play the unused dry-drop clips so lettuce/buns are not silent.
 
 import * as THREE from 'three'
 import { whenAudio, safePlay } from '../common/audio.js'
 
 const SETS = {
-  plate: [
-    'PlateCollision.mp3',
-    'PlateCollision01.mp3', 'PlateCollision02.mp3', 'PlateCollision03.mp3',
-    'PlateCollision04.mp3', 'PlateCollision05.mp3', 'PlateCollision06.mp3',
-    'PlateCollision07.mp3', 'PlateCollision08.mp3',
-  ],
-  wet: [
-    'WetDropping01.mp3', 'WetDropping02.mp3',
-    'MeatDropping.mp3', 'SoftMeat.mp3',
-  ],
+  plate: ['Plate03.mp3', 'Plate02.mp3', 'Plate01.mp3'],
+  wet: ['MeatSlap.mp3', 'MeatDropping.mp3', 'SoftMeat.mp3'],
   dry: [
     'DryDropping01.mp3',
     'FoodDroppingPlate01.mp3', 'FoodDroppingPlate02.mp3',
   ],
+  chop: ['Chopping.mp3', 'Chopping02.mp3'],
 }
 const BASE = './assets/audio/sfx/'
 
@@ -103,6 +97,12 @@ export function createImpactSfx({ player, scene } = {}) {
     playAt(pick(set, time), item.position, vol)
   }
 
+  function chop(pos) {
+    const p = pos || (player && player.position)
+    if (!p) return
+    playAt(pick('chop'), p, 0.9)
+  }
+
   function dump() {
     return {
       loaded: buffers.size,
@@ -110,5 +110,5 @@ export function createImpactSfx({ player, scene } = {}) {
     }
   }
 
-  return { impact, impactSet, dump }
+  return { impact, chop, impactSet, dump }
 }

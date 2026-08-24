@@ -572,26 +572,29 @@ export async function createKitchen({
 
   function setGrillSound(item, on) {
     if (!item || !item.object) return
+    // Grill.cs OnTriggerEnter: one-shot sfxMeatCooking (patty.mp3), not a loop.
     if (on) {
-      listener = listener || getListener()
-      if (!item.cookAudio && pattyBuf && listener) {
-        const a = new THREE.PositionalAudio(listener)
-        a.setBuffer(pattyBuf)
-        a.setLoop(true)
-        a.setRefDistance(2.2)
-        a.setMaxDistance(18)
-        a.setRolloffFactor(1)
-        a.setVolume(0.75)
-        item.object.add(a)
-        item.cookAudio = a
+      if (!item.onGrill) {
+        item.onGrill = true
+        listener = listener || getListener()
+        if (pattyBuf && listener) {
+          const a = new THREE.PositionalAudio(listener)
+          a.setBuffer(pattyBuf)
+          a.setLoop(false)
+          a.setRefDistance(2.2)
+          a.setMaxDistance(18)
+          a.setRolloffFactor(1)
+          a.setVolume(0.75)
+          item.object.add(a)
+          item.cookAudio = a
+          safePlay(a)
+          const drop = () => { if (a.parent) a.parent.remove(a) }
+          a.addEventListener('ended', drop)
+          if (pattyBuf.duration) setTimeout(drop, pattyBuf.duration * 1000 + 200)
+        }
       }
-      if (item.cookAudio && pattyBuf) safePlay(item.cookAudio)
-      item.onGrill = true
     } else if (item.onGrill) {
       item.onGrill = false
-      if (item.cookAudio && item.cookAudio.isPlaying) {
-        try { item.cookAudio.stop() } catch (_) { /* ignore */ }
-      }
     }
   }
 

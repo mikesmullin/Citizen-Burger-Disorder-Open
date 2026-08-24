@@ -528,6 +528,6 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
 
   return {
     items, spawners, spawn, destroy, forget, watch, addSpawner, foodOnFloor, update,
-    instancer, SPAWN_EVERY,
+    instancer, sfx, SPAWN_EVERY,
   }
 }

@@ -337,7 +337,11 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
   const knifeCd = { t: 0 }
   const spatulaHit = new Set()
 
-  function playChop() {
+  function playChop(pos) {
+    if (foodWorld && foodWorld.sfx && foodWorld.sfx.chop) {
+      foodWorld.sfx.chop(pos)
+      return
+    }
     try { new Audio('./assets/audio/sfx/Chopping.mp3').play() } catch (_) { /* ignore */ }
   }
 
@@ -362,7 +366,7 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
   function chopLettuce(item) {
     const pos = item.object.position
     if (item.type === 'lettuceHead') {
-      playChop()
+      playChop(pos)
       const proto = foodProtos['items/LettucePart']
       if (proto) {
         for (let i = 0; i < 2; i++) {
@@ -378,7 +382,7 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
       return
     }
     if (item.type === 'lettucePart') {
-      playChop()
+      playChop(pos)
       const proto = foodProtos['items/Lettuce']
       if (proto) {
         for (let i = 0; i < 3; i++) {
