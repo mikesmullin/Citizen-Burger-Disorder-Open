@@ -130,9 +130,8 @@ function makeNumberTent(n) {
     g.textBaseline = 'middle'
     g.fillText(String(n), w / 2, h / 2 + 6)
   })
-  // Unlit: a printed tent card, readable under the booth lamps or in shadow.
-  const roof = new THREE.MeshBasicMaterial({ map })
-  const ends = new THREE.MeshBasicMaterial({ color: 0xffffff })
+  const roof = mat(0xffffff, { map, roughness: 0.86, metalness: 0 })
+  const ends = mat(0xffffff, { roughness: 0.86, metalness: 0 })
   const mesh = new THREE.Mesh(TENT_GEO, [roof, ends])
   mesh.name = 'TableNumber' + n
   mesh.receiveShadow = true
