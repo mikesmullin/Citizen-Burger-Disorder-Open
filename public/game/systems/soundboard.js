@@ -1,7 +1,7 @@
 // Free-standing audio booth among the museum pedestals: a walk-in
 // trade-show exhibit with a button wall at the back. Music toggles
-// (loop, one at a time); SFX are one-shots that stack and restart
-// on re-press.
+// (loop, one at a time) as a non-positional bed that follows the
+// listener; SFX are one-shots that stack and restart on re-press.
 //
 // Draws: kit greybox (panel/frame/grill) + one face canvas + two
 // InstancedMeshes (bodies, LEDs). Labels live on the canvas so a
@@ -465,8 +465,8 @@ export async function createSoundboard({
     if (!hovered.ready) return hovered.label + ' · loading'
     if (hovered.kind === 'music') {
       return musicId === hovered.id
-        ? `music · ${hovered.label} · looping  · click to stop`
-        : `music · ${hovered.label} · click to loop`
+        ? `music · ${hovered.label} · looping everywhere  · click to stop`
+        : `music · ${hovered.label} · click to loop everywhere`
     }
     return `sfx · ${hovered.label} · click to play`
   }
@@ -544,14 +544,21 @@ export async function createSoundboard({
   whenAudio(lis => {
     listener = lis
     for (const b of buttons) {
-      const audio = new THREE.PositionalAudio(lis)
-      audio.setRefDistance(8)
-      audio.setMaxDistance(48)
-      audio.setRolloffFactor(1)
-      audio.setDistanceModel('linear')
-      audio.setVolume(b.kind === 'music' ? 0.5 : 0.9)
-      audio.setLoop(b.kind === 'music')
-      b.object.add(audio)
+      let audio
+      if (b.kind === 'music') {
+        audio = new THREE.Audio(lis)
+        audio.setVolume(0.5)
+        audio.setLoop(true)
+        lis.add(audio)
+      } else {
+        audio = new THREE.PositionalAudio(lis)
+        audio.setRefDistance(8)
+        audio.setMaxDistance(48)
+        audio.setRolloffFactor(1)
+        audio.setDistanceModel('linear')
+        audio.setVolume(0.9)
+        b.object.add(audio)
+      }
       b.audio = audio
       if (!b.raw) continue
       lis.context.decodeAudioData(b.raw.slice(0)).then(buf => {
