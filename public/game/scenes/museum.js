@@ -8,7 +8,8 @@ import { createUnityLoader, fitOnFloor, fitLongest, fitOnFloorNative, fitLongest
 import { createFirstPersonPlayer } from '../systems/player.js'
 import { createTouchControls, posClicksBlocked } from '../systems/touch.js'
 import { createCrowd } from '../systems/npc.js'
-import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG } from '../systems/food.js'
+import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG, applyCookLook, COOK_RGB } from '../systems/food.js'
+import { addToBurger, plateBurger, layoutStack, layoutPlate } from '../systems/stacking.js'
 import { createFoodKiosk, FOOD_HALL_SKIP } from '../systems/foodKiosk.js'
 import { createHands } from '../systems/hands.js'
 import { createRatDen, RAT_SIZE } from '../systems/rats.js'
@@ -1350,6 +1351,135 @@ function teleport(slug) {
   return e.caption || e.label
 }
 
+const DBG_BURGERS = {
+  goodburger: [
+    ['items/Patty', 'patty'],
+    ['items/Cheese', 'cheese'],
+    ['items/Patty', 'patty'],
+    ['items/Bacon', 'bacon'],
+    ['items/Bacon', 'bacon'],
+  ],
+  nothingburger: [],
+}
+const DBG_BURGER_ALIAS = {
+  good: 'goodburger',
+  nothing: 'nothingburger',
+}
+
+const _spawnRay = new THREE.Raycaster()
+const _spawnNdc = new THREE.Vector2()
+const _spawnRight = new THREE.Vector3()
+const _spawnFwd = new THREE.Vector3()
+
+function cursorGroundHit() {
+  if (!player || !player.camera) return null
+  const aim = player.aimNdc
+  _spawnNdc.set(
+    aim && Number.isFinite(+aim.x) ? +aim.x : 0,
+    aim && Number.isFinite(+aim.y) ? +aim.y : 0,
+  )
+  _spawnRay.setFromCamera(_spawnNdc, player.camera)
+  const hits = _spawnRay.intersectObject(scene, true)
+  for (const h of hits) {
+    let o = h.object
+    let skip = false
+    while (o) {
+      if (o === player.camera || o.parent === player.camera) { skip = true; break }
+      if (o.userData && (o.userData.food || o.userData.frontNpc || o.userData.noGrab)) {
+        skip = true
+        break
+      }
+      if (o.name === 'DropReticle' || /-arm$/.test(o.name || '') || /-shoulder$/.test(o.name || '')) {
+        skip = true
+        break
+      }
+      o = o.parent
+    }
+    if (skip || !h.point) continue
+    if (h.face && h.object) {
+      const n = h.face.normal.clone()
+      n.transformDirection(h.object.matrixWorld)
+      if (n.y < 0.2) continue
+    }
+    const surf = player.surfaceAt
+      ? player.surfaceAt(h.point.x, h.point.z, h.point.y + 0.25)
+      : { y: player.groundY ? player.groundY(h.point.x, h.point.z) : 0 }
+    return { x: h.point.x, y: surf.y, z: h.point.z }
+  }
+  player.camera.getWorldPosition(_spawnFwd)
+  const origin = _spawnFwd.clone()
+  player.camera.getWorldDirection(_spawnFwd)
+  for (let t = 0.4; t < 28; t += 0.2) {
+    const x = origin.x + _spawnFwd.x * t
+    const y = origin.y + _spawnFwd.y * t
+    const z = origin.z + _spawnFwd.z * t
+    const gy = player.groundY ? player.groundY(x, z) : 0
+    if (y <= gy + 0.08) return { x, y: gy, z }
+  }
+  return null
+}
+
+function spawnPlatedBurger(kind, x, z, y) {
+  const bunP = foodProtos['items/BunBottom']
+  const topP = foodProtos['items/BunTop']
+  const plateP = foodProtos['items/Plate']
+  if (!bunP || !topP || !plateP) return { error: 'missing food protos' }
+  const layers = DBG_BURGERS[kind] || []
+  const bun = foodWorld.spawn({ proto: bunP, type: 'bun', slug: 'items/BunBottom', x, z, y, onFloor: false })
+  bun.dropped = true
+  for (const [slug, type] of layers) {
+    const proto = foodProtos[slug]
+    if (!proto) continue
+    const f = foodWorld.spawn({ proto, type, slug, x, z, y: y + 0.1, onFloor: false })
+    f.dropped = true
+    if (type === 'patty' || type === 'bacon') {
+      f.cooked = 1
+      applyCookLook(f.object, { cooked: 1, cookedRGB: COOK_RGB[type] || COOK_RGB.default })
+    }
+    addToBurger(bun, f)
+  }
+  const top = foodWorld.spawn({
+    proto: topP, type: 'topBun', slug: 'items/BunTop',
+    x, z, y: y + 0.2, onFloor: false,
+  })
+  top.dropped = true
+  addToBurger(bun, top)
+  const plate = foodWorld.spawn({ proto: plateP, type: 'plate', slug: 'items/Plate', x, z, y, onFloor: false })
+  plate.dropped = true
+  plateBurger(plate, bun)
+  layoutStack(bun)
+  layoutPlate(plate)
+  return { kind, complete: !!bun.complete, plated: !!plate.plated, stack: (bun.stack || []).map(f => f.type) }
+}
+
+function spawnDbgFood(kind, qty = 1) {
+  if (!foodWorld) return { error: 'food world not ready' }
+  const key = DBG_BURGER_ALIAS[String(kind || '').toLowerCase()] || String(kind || '').toLowerCase()
+  if (!DBG_BURGERS[key]) {
+    return { error: 'unknown kind', kinds: Object.keys(DBG_BURGERS) }
+  }
+  const n = Math.max(1, Math.min(12, qty == null ? 1 : qty | 0))
+  const hit = cursorGroundHit()
+  if (!hit) return { error: 'no ground under cursor' }
+  player.camera.getWorldDirection(_spawnFwd)
+  _spawnRight.set(_spawnFwd.z, 0, -_spawnFwd.x)
+  if (_spawnRight.lengthSq() < 1e-6) _spawnRight.set(1, 0, 0)
+  else _spawnRight.normalize()
+  const spawned = []
+  for (let i = 0; i < n; i++) {
+    const x = hit.x + _spawnRight.x * i * 0.62
+    const z = hit.z + _spawnRight.z * i * 0.62
+    const y = (player.groundY ? player.groundY(x, z) : hit.y) + 0.08
+    spawned.push(spawnPlatedBurger(key, x, z, y))
+  }
+  return {
+    kind: key,
+    qty: spawned.length,
+    at: { x: +hit.x.toFixed(2), y: +hit.y.toFixed(2), z: +hit.z.toFixed(2) },
+    spawned,
+  }
+}
+
 function dumpExtras() {
   return {
     playing,
@@ -1404,7 +1534,10 @@ const harness = installHarness({
   getExhibits: () => exhibits,
   teleport,
   dumpExtras,
-  extraDbg: { scaler, requestDrawCensus, get lastDrawCensus() { return lastDrawCensus } },
+  extraDbg: {
+    scaler, requestDrawCensus, get lastDrawCensus() { return lastDrawCensus },
+    spawn: (kind, qty) => spawnDbgFood(kind, qty),
+  },
   hudSelectors: ['#hud', '#fpsHud', '#look', '#cross', '#help', '#loader', '#dbgPanel', '#dbgToggle', '#touch-ui'],
 })
 

@@ -12,8 +12,19 @@ import { isTool, applyCookState, setPlateDirty } from './food.js'
 import { grabStackWith, layoutStack, layoutPlate, layoutDishStack, plateGrabTarget } from './stacking.js'
 import { createSpray } from './spray.js'
 
-const ARM_EXTRA = 1.2
 const MAX_PITCH = 86
+// Camera-local +Z pull as |pitch| goes 0..MAX. 0.58 clears the floor/sky;
+// Z_DROP_SENSITIVITY scales that so mouselook also trims drop-reticle distance.
+const ARM_RETRACT = 0.58
+const Z_DROP_SENSITIVITY = 1.375
+// Mix linear look with smootherstep so mouse travel in the 0.25–0.75 pitch
+// band (counter / burger aiming) moves drop Z more than the same delta
+// near the horizon or the pitch stops.
+const RETRACT_MID_BIAS = 0.88
+// Camera-local +Z is mostly world-Y at steep pitch, so it barely moves the
+// reticle. This fraction of `pull` is also applied in yaw-space +Z (back
+// toward the player) so Z_DROP_SENSITIVITY is felt on drop XZ.
+const DROP_XZ = 0.2
 const GRAB_RANGE = 4.75
 const ARM_POS_LERP = 25
 const ARM_ROT_LERP = 20
@@ -40,7 +51,7 @@ const HOLD_OFFSET = {
   fire: { x: 0, y: 1, z: 1 },
 }
 // Camera-local rest pose. Forward is −Z. Keep the shoulder close enough
-// that looking down does not drive the hands through the floor.
+// that looking down or up does not drive the hands through the floor / sky.
 const CAM_X = 0.58
 const CAM_Y = -0.48
 const CAM_Z = -0.32
@@ -232,25 +243,30 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
     }
   }
 
-  function camPitch() {
-    return player.pitch
-  }
-
-  function armReach() {
-    return ARM_EXTRA * Math.min(1, Math.abs(camPitch()) / MAX_PITCH)
+  function retractFromLook(look) {
+    const t = Math.max(0, Math.min(1, look))
+    // Quintic smootherstep: derivative peaks in the 0.25–0.75 working band.
+    const smooth = t * t * t * (t * (t * 6 - 15) + 10)
+    const shaped = t * (1 - RETRACT_MID_BIAS) + smooth * RETRACT_MID_BIAS
+    return shaped * ARM_RETRACT * Z_DROP_SENSITIVITY
   }
 
   function placeArm(arm, dt, active) {
     const sign = arm.side === 'left' ? -1 : 1
-    const extra = armReach()
     // Negative pitch is look-down (MouseLook). Pull the shoulder toward the
-    // camera so the hands stay above the floor instead of along the look ray.
+    // camera (local +Z) so looking down does not drive the hands through the
+    // floor, and looking up does not fill the sky with arms. Extra pull in
+    // the mid-pitch band is what trims drop-reticle distance.
     const lookDown = Math.max(0, -player.pitch / MAX_PITCH)
-    const lookUp = Math.max(0, player.pitch / MAX_PITCH)
+    const look = Math.abs(player.pitch) / MAX_PITCH
+    const pull = retractFromLook(look)
+    const pRad = THREE.MathUtils.degToRad(player.pitch)
+    const s = Math.sin(pRad)
+    const xzPull = pull * Math.abs(s) * DROP_XZ
     arm.pivot.position.set(
       sign * CAM_X,
-      CAM_Y + lookDown * 0.12,
-      CAM_Z + lookDown * 0.58 - lookUp * extra * 0.45,
+      CAM_Y + lookDown * 0.12 + xzPull * s,
+      CAM_Z + pull + xzPull * Math.cos(pRad),
     )
     const upX = THREE.MathUtils.degToRad(CAM_PITCH)
     const downX = THREE.MathUtils.degToRad(CAM_PITCH - 105)
@@ -619,17 +635,42 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
     }
   }
 
+  function spatulaLaunchY(item) {
+    // Peak slightly above the player's head (capsule top), from current height.
+    const headY = player.position.y + 1
+    const peakY = headY + 0.28
+    const y = item.object ? item.object.position.y : (item.position.y || 0)
+    const h = Math.max(0.12, peakY - y)
+    return Math.sqrt(2 * 9.81 * h)
+  }
+
   function trySpatula(arm) {
     const o = toolOrigin(arm)
+    player.camera.getWorldDirection(_fwd)
+    _right.crossVectors(_up, _fwd).setY(0)
+    if (_right.lengthSq() < 1e-6) _right.set(1, 0, 0)
+    else _right.normalize()
     for (const item of nearbyFood(o, 0.7)) {
-      if (item.type === 'plate' || isTool(item.type)) continue
+      if (item.type === 'plate' || isTool(item.type) || item.type === 'box') continue
+      if (item.kind === 'rat' || item.type === 'rat') continue
       const id = item
       if (spatulaHit.has(id)) continue
       spatulaHit.add(id)
-      // SpatulaTrigger: up * 900 - forward * 500
-      item.vel.y += 7.5
-      item.vel.x += _fwd.x * -4
-      item.vel.z += _fwd.z * -4
+      if (!item.vel) item.vel = new THREE.Vector3()
+      // Straight up (world Y). No forward toss — the old −forward * 4
+      // sent food in an arc over the shoulder.
+      item.vel.x = 0
+      item.vel.z = 0
+      item.vel.y = spatulaLaunchY(item)
+      item.onFloor = false
+      item.dropped = true
+      item.kinematic = false
+      item.spatulaFlip = {
+        phase: 'up',
+        t: 0,
+        axis: { x: _right.x, y: 0, z: _right.z },
+        q0: item.object.quaternion.clone(),
+      }
       setTimeout(() => spatulaHit.delete(id), 400)
     }
   }

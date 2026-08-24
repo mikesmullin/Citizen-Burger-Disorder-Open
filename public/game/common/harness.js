@@ -31,6 +31,8 @@ const HELP = `dbg — time travel
   dbg.scales()            exhibit mul / longest-edge / badge pos dump
   dbg.panel(true|false)   show the on-screen panel
   dbg.draws()             next frame: meshes grouped by name, highest count first
+  dbg.spawn(kind, qty=1)  plated burger at the look/cursor ground hit
+                          'goodburger' (Boss, cooked) / 'nothingburger' (buns only)
   dbg.help()
 
 touch (phones, or ?touch on the URL)
@@ -246,6 +248,10 @@ export function installHarness({
       return req()
     },
     get lastDraws() { return extraDbg && extraDbg.lastDrawCensus },
+    spawn(kind, qty = 1) {
+      if (extraDbg && extraDbg.spawn) return extraDbg.spawn(kind, qty)
+      return { error: 'no spawn' }
+    },
     help: () => HELP,
     get T() { return time.T },
     get frozen() { return time.frozen },

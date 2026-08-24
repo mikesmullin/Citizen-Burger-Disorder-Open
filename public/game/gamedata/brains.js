@@ -55,7 +55,7 @@ export function Npc__think(world, eid, ctx) {
       if (!food._eatScale) food._eatScale = food.object.scale.x || 1
       food.object.scale.setScalar(food._eatScale * pulse)
     }
-    if (!think.waitUntil) think.waitUntil = T + 4
+    if (!think.waitUntil) think.waitUntil = T + 1.45
     if (T >= think.waitUntil) {
       if (food && ctx.foodWorld) ctx.foodWorld.destroy(food)
       if (food && food.stack && ctx.foodWorld) {

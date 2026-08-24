@@ -14,6 +14,7 @@ import * as Queue from './queue.js'
 import * as OrderTake from './orderTake.js'
 import * as TableAssign from './tableAssign.js'
 import * as SeatArrive from './seatArrive.js'
+import * as WaitLook from './waitLook.js'
 import * as Patience from './patience.js'
 import * as Think from './think.js'
 import * as Serve from './serve.js'
@@ -900,6 +901,8 @@ export async function createFront({
           queueSlot: cust.queueSlot,
           tableId: cust.tableId,
           skin: cust.skin,
+          ry: +tf.ry.toFixed(1),
+          restRy: think.restRy == null ? null : +think.restRy.toFixed(1),
           pos: { x: +tf.x.toFixed(2), y: +tf.y.toFixed(2), z: +tf.z.toFixed(2) },
         })
       }
@@ -1088,6 +1091,7 @@ export async function createFront({
     OrderTake.update(world)
     TableAssign.update(world)
     SeatArrive.update(world)
+    WaitLook.update(world, dt, c)
     Patience.update(world, dt, c)
     Think.update(world, dt, c)
     Serve.update(world, c)

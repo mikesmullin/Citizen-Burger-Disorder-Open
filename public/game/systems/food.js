@@ -473,11 +473,33 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
 
   const _flatE = new THREE.Euler()
   const _flatQ = new THREE.Quaternion()
+  const _flipA = new THREE.Vector3()
+  const _flipQ = new THREE.Quaternion()
   function sitFlat(item) {
     if (!item || !item.object || item.planted) return
     const obj = item.object
     _flatE.setFromQuaternion(obj.quaternion, 'YXZ')
     obj.quaternion.setFromEuler(_flatE.set(0, _flatE.y, 0, 'YXZ'))
+  }
+
+  // 180° burger-flip around a world-horizontal axis, timed to the hop apex.
+  const FLIP_SECS = 0.16
+  function tickSpatulaFlip(item, dt) {
+    const f = item.spatulaFlip
+    if (!f || !item.object) return
+    if (f.phase === 'up' && item.vel.y <= 0) {
+      f.phase = 'spin'
+      f.t = 0
+    }
+    if (f.phase !== 'spin') return
+    f.t = Math.min(1, (f.t || 0) + dt / FLIP_SECS)
+    const s = f.t * f.t * (3 - 2 * f.t)
+    _flipA.set(f.axis.x, f.axis.y, f.axis.z)
+    if (_flipA.lengthSq() < 1e-6) _flipA.set(1, 0, 0)
+    else _flipA.normalize()
+    _flipQ.setFromAxisAngle(_flipA, Math.PI * s)
+    item.object.quaternion.copy(f.q0).premultiply(_flipQ)
+    if (f.t >= 1) f.phase = 'done'
   }
 
   function update(dt, time) {
@@ -501,6 +523,7 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
       const prevFeet = py - half
 
       item.vel.y -= 9.81 * dt
+      if (item.spatulaFlip) tickSpatulaFlip(item, dt)
       const nx = px + item.vel.x * dt
       const ny = py + item.vel.y * dt
       const nz = pz + item.vel.z * dt
@@ -530,12 +553,24 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
         // counter, grill, or trailer bed is resting, not dropped.
         item.foodBeenOnFloor = surf.y <= 0.08
         let stacked = false
-        if (wasAir && item.dropped) sitFlat(item)
+        if (wasAir && item.dropped) {
+          if (item.spatulaFlip) {
+            if (item.spatulaFlip.phase === 'spin') {
+              item.spatulaFlip.t = 1
+              tickSpatulaFlip(item, 0)
+            }
+            item.spatulaFlip = null
+          } else {
+            sitFlat(item)
+          }
+        }
         if (wasAir && item.dropped) {
           landed.push(item)
           stacked = !!tryLandStack(item, items)
         }
-        if (stacked && item.type === 'plate') sfx.plateStack(item)
+        if (wasAir && item.dropped && item.type === 'plate' && item.restingMat === 'sink') {
+          sfx.splash(item)
+        } else if (stacked && item.type === 'plate') sfx.plateStack(item)
         else if (impact > 0.5) sfx.impact(item, impact, time)
       } else {
         // Airborne: free projectile (no drag — it should fly).

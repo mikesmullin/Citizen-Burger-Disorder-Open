@@ -8,6 +8,7 @@ import { setPlateDirty } from './food.js'
 const SKINS = ['Npc1', 'Npc2', 'Npc3', 'Npc4', 'Npc5', 'Npc6']
 const EASTER = ['Jorji', 'CookServe']
 const MAX = 10
+const QUEUE_CAP = 4
 const MIN_DELAY = 8
 const HEIGHT = 1.85
 const RADIUS = 0.42
@@ -117,6 +118,21 @@ function countCustomers(world) {
   let n = 0
   for (const _ of world.query(C.Customer)) n++
   return n
+}
+
+function countInQueue(world) {
+  let n = 0
+  for (const [, cust, think] of world.query(C.Customer, C.Thinker)) {
+    if (cust.queueSlot >= 0) n++
+    else if (think.want === 'enter' || think.want === 'queue' || think.want === 'order') n++
+  }
+  return n
+}
+
+function queueCap(world) {
+  let n = 0
+  for (const _ of world.query(C.QueueSlot)) n++
+  return n || QUEUE_CAP
 }
 
 let nextAt = 0
@@ -245,6 +261,7 @@ export function update(world, dt, ctx) {
   if (T < nextAt) return
   nextAt = T + MIN_DELAY + Math.random() * 6
   if (countCustomers(world) >= MAX) return
+  if (countInQueue(world) >= queueCap(world)) return
   if (!ctx.proto || !ctx.street) return
   spawnGroup(world, {
     size: groupSize(),

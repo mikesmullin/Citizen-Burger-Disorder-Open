@@ -128,6 +128,7 @@ away under the studio).
 | `dbg.axes('x'\|'y'\|'z')` | scale dump | toggle a transform-gun axis (all off by default) |
 | `dbg.panel(true)` | `{ panel }` | on-screen HUD. `?debug` in the URL does this |
 | `dbg.draws()` | Promise | next frame only: meshes grouped by name, highest count first. Also `dbg.lastDraws` |
+| `dbg.spawn(kind, qty=1)` | spawn dump | plated burger on the ground under the look ray. `'goodburger'` (Boss, cooked) or `'nothingburger'` (buns only) |
 | `dbg.T` / `dbg.frozen` | number / bool | |
 | `dbg.help()` | string | |
 

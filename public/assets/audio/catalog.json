@@ -169,6 +169,30 @@
    "label": "Ka-Ching 2",
    "src": "audio/sfx/KaChing2.mp3",
    "source": "ka-ching2.mp3"
+  },
+  {
+   "id": "DishSplash1",
+   "label": "Dish Splash 1",
+   "src": "audio/sfx/DishSplash1.mp3",
+   "source": "dish-splash1.mp3"
+  },
+  {
+   "id": "DishSplash2",
+   "label": "Dish Splash 2",
+   "src": "audio/sfx/DishSplash2.mp3",
+   "source": "dish-splash2.mp3"
+  },
+  {
+   "id": "Nom",
+   "label": "Nom",
+   "src": "audio/sfx/Nom.mp3",
+   "source": "nom.mp3"
+  },
+  {
+   "id": "Slurp",
+   "label": "Slurp",
+   "src": "audio/sfx/Slurp.mp3",
+   "source": "slurp.mp3"
   }
  ]
 }

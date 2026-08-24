@@ -44,7 +44,7 @@ export function update(world, ctx) {
     if (speech.icon) {
       const want = think && think.want
       if (want === 'order') show = cust && cust.queueSlot === 1
-      else if (want === 'waitFood') show = dist < 7
+      else if (want === 'waitFood') show = dist < 7 // waitLook NOTICE
     }
     const slot = view.object && view.object.userData.bubbleSlot
     if (slot >= 0 && bubbles) {

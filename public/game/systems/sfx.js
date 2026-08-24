@@ -6,6 +6,7 @@
 // and !Knife.prefab choppingSFX. SFXdryCollisions was empty in the dump;
 // we still play the unused dry-drop clips so lettuce/buns are not silent.
 // Plate02 is reserved for adding a plate to a dish stack.
+// DishSplash1/2 play when a plate hits the dish-pit basin water.
 
 import * as THREE from 'three'
 import { whenAudio, safePlay } from '../common/audio.js'
@@ -19,6 +20,9 @@ const SETS = {
   ],
   chop: ['Chopping.mp3', 'Chopping02.mp3'],
   till: ['KaChing1.mp3', 'KaChing2.mp3'],
+  splash: ['DishSplash1.mp3', 'DishSplash2.mp3'],
+  nom: ['Nom.mp3'],
+  slurp: ['Slurp.mp3'],
 }
 const BASE = './assets/audio/sfx/'
 const PLATE_STACK = BASE + 'Plate02.mp3'
@@ -113,6 +117,20 @@ export function createImpactSfx({ player, scene } = {}) {
     playAt(pick('till'), p, 0.9)
   }
 
+  function nom(pos) {
+    const p = pos || (player && player.position)
+    if (!p) return
+    lastNom = pick('nom')
+    playAt(lastNom, p, 0.95)
+  }
+
+  function slurp(pos) {
+    const p = pos || (player && player.position)
+    if (!p) return
+    lastSlurp = pick('slurp')
+    playAt(lastSlurp, p, 0.95)
+  }
+
   function plateStack(itemOrPos) {
     const p = itemOrPos && itemOrPos.object
       ? itemOrPos.object.position
@@ -121,12 +139,31 @@ export function createImpactSfx({ player, scene } = {}) {
     playAt(PLATE_STACK, p, 0.85)
   }
 
+  let splashGate = -1
+  let lastSplash = null
+  let lastNom = null
+  let lastSlurp = null
+  function splash(itemOrPos) {
+    const p = itemOrPos && itemOrPos.object
+      ? itemOrPos.object.position
+      : (itemOrPos && itemOrPos.position) || itemOrPos
+    if (!p) return
+    const now = performance.now()
+    if (now - splashGate < 140) return
+    splashGate = now
+    lastSplash = pick('splash')
+    playAt(lastSplash, p, 0.9)
+  }
+
   function dump() {
     return {
       loaded: buffers.size,
       sets: Object.fromEntries(Object.entries(SETS).map(([k, v]) => [k, v.length])),
+      lastSplash,
+      lastNom,
+      lastSlurp,
     }
   }
 
-  return { impact, chop, kaching, plateStack, impactSet, dump }
+  return { impact, chop, kaching, nom, slurp, plateStack, splash, impactSet, dump }
 }

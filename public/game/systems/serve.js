@@ -1,7 +1,11 @@
 import { C } from '../common/ecs.js'
 import { scoreFood } from '../gamedata/menu.js'
+import { setPlateDirty } from './food.js'
 
 const MAT_R = 1.2
+// Chew long enough to see the burger over the head and the plate drop;
+// tips fire at 1 s, then the diner walks out.
+const EAT_SECS = 1.45
 
 function detachPlate(plate) {
   const bun = plate.plated
@@ -29,12 +33,14 @@ export function update(world, ctx) {
       const score = scoreFood(cust.desiredFood || 'Citizen', bun)
       think.prevWant = think.want
       think.want = 'eat'
-      think.waitUntil = 0
+      think.waitUntil = (ctx.T || 0) + EAT_SECS
       bun.held = true
       if (bun.vel) bun.vel.set(0, 0, 0)
       cust.holding = 1
       cust.holdingFood = bun
       cust.servedPlate = plate
+      setPlateDirty(plate)
+      if (foodWorld.sfx && foodWorld.sfx.nom) foodWorld.sfx.nom(tf)
       const speech = world.field(custEid, C.Speech)
       if (speech) speech.icon = ''
       world.emit('FoodServed', {

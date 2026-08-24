@@ -35,6 +35,7 @@ export function Thinker(o = {}) {
     prevWant: o.want ?? 'wander',
     waitUntil: 0,
     angerTickAt: 0,
+    restRy: o.restRy ?? null,
   }
 }
 

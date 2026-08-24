@@ -428,8 +428,9 @@ export async function createKitchen({
   box(rim, rimH, basinW, greyMat, sinkX - sinkD / 2 + rim / 2, basinFloorY + rimH / 2, basinZ)
   box(sinkD - rim * 2, rimH, rim, greyMat, sinkX, basinFloorY + rimH / 2, basinZ - basinW / 2 + rim / 2)
   box(sinkD - rim * 2, rimH, rim, greyMat, sinkX, basinFloorY + rimH / 2, basinZ + basinW / 2 - rim / 2)
+  const waterH = 0.05 * 2.5
   const water = new THREE.Mesh(
-    new THREE.BoxGeometry(sinkD - rim * 2 - 0.04, 0.05, basinW - rim * 2 - 0.04),
+    new THREE.BoxGeometry(sinkD - rim * 2 - 0.04, waterH, basinW - rim * 2 - 0.04),
     waterMat,
   )
   water.position.set(sinkX, basinFloorY + 0.16, basinZ)
@@ -653,10 +654,35 @@ export async function createKitchen({
     if (!item) return false
     if (item.type === 'plate') return true
     if (item.onPlate) return true
+    const seen = new Set()
     let p = item.stackedOn
-    while (p) {
+    while (p && !seen.has(p)) {
+      seen.add(p)
       if (p.type === 'plate' || p.onPlate) return true
       p = p.stackedOn
+    }
+    let obj = item.object && item.object.parent
+    for (let i = 0; obj && i < 16; i++, obj = obj.parent) {
+      for (const it of foodWorld.items) {
+        if (it === item) continue
+        if (it.object !== obj && it.carry !== obj) continue
+        if (it.type === 'plate' || it.onPlate) return true
+        break
+      }
+    }
+    // Plate is the thing on the cooktop: food resting on it (not yet glued
+    // to a bun) must not cook or sizzle either.
+    if (item.object) {
+      const ip = foodWorldPos(item)
+      for (const plate of foodWorld.items) {
+        if (plate.type !== 'plate' || plate === item) continue
+        if (!onCooktop(plate)) continue
+        const pp = foodWorldPos(plate)
+        const reach = Math.max(0.28, plate.radius || 0.3) + (item.radius || 0.12) * 0.35
+        if (Math.hypot(ip.x - pp.x, ip.z - pp.z) > reach) continue
+        if (ip.y + 0.04 < pp.y) continue
+        return true
+      }
     }
     return false
   }
@@ -729,10 +755,21 @@ export async function createKitchen({
     const den = getRats && getRats()
     const seen = new Set()
     function consider(item) {
-      if (!item || seen.has(item) || !cookable(item)) return
-      if (item.inFood && item.stackedOn && item.stackedOn.type === 'bun') return
+      if (!item || seen.has(item)) return
       seen.add(item)
+      // Plate (or a burger on a plate) is a shield: nothing in that tree
+      // cooks, and any leftover patty-loop on a topping must die here.
+      // The old inFood/bun early-return skipped this stop, so a patty that
+      // sizzled for a frame then stacked kept looping on the plate forever.
       if (plateProtected(item)) {
+        setGrillSound(item, false)
+        return
+      }
+      if (item.inFood && item.stackedOn && item.stackedOn.type === 'bun') {
+        setGrillSound(item, false)
+        return
+      }
+      if (!cookable(item)) {
         setGrillSound(item, false)
         return
       }
@@ -755,7 +792,12 @@ export async function createKitchen({
       const p = item.object.position
       if (!inBasin(p)) {
         item.soakTime = 0
+        item.inWater = false
         continue
+      }
+      if (!item.inWater) {
+        item.inWater = true
+        if (item.dropped && foodWorld.sfx && foodWorld.sfx.splash) foodWorld.sfx.splash(item)
       }
       if (item.onFire) {
         const fw = getFireWatch && getFireWatch()
