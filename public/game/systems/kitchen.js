@@ -585,7 +585,7 @@ export async function createKitchen({
   const plateProto = foodProtos['items/Plate']
   if (plateProto) {
     let dirtyRoot = null
-    const dryPos = worldOf(dryX, sinkY + 0.08, sinkZ)
+    const dryPos = worldOf(sinkX, sinkY + 0.08, dryZ)
     for (let i = 0; i < 2; i++) {
       const item = foodWorld.spawn({
         proto: plateProto, type: 'plate', slug: 'items/Plate',
