@@ -246,21 +246,64 @@ export function createKit({ parent, max = 192 } = {}) {
     })
   }
 
+  let wainN = 0
   function wainscot(len, x, z, yaw = 0, {
     panel, rail, cap = WAINSCOT_CAP, cap0, cap1, inward = WAINSCOT_IN,
+    name, pos, scale,
   } = {}) {
     const a = cap0 != null ? cap0 : cap
     const b = cap1 != null ? cap1 : cap
     const L = len - a - b
-    if (L < 0.08 || !panel || !rail) return -1
+    if (L < 0.08 || !panel || !rail) return null
     // cap0 trims local −X, cap1 local +X; shift the centre by (a − b) / 2.
     const mid = (a - b) * 0.5
     // Local +Z is into the room for every current caller. Nudge that way so
     // the rail (thicker than the panel) never punches the outer wall face.
     const mx = x + Math.cos(yaw) * mid + Math.sin(yaw) * inward
     const mz = z + Math.sin(yaw) * mid + Math.cos(yaw) * inward
-    box(panel, L, WAINSCOT, WAINSCOT_T, mx, WAINSCOT / 2, mz, yaw)
-    box(rail, L, RAIL, WAINSCOT_T + 0.02, mx, WAINSCOT + RAIL / 2, mz, yaw)
+    // Unique group (not the kit InstancedMesh) so the scale / transform
+    // guns can pick a strip. Local X = along the wall, Y = up, Z = inward.
+    const id = ++wainN
+    const pivot = new THREE.Group()
+    pivot.name = 'Kit:Wainscot'
+    pivot.position.set(mx, 0, mz)
+    pivot.rotation.y = yaw
+    parent.add(pivot)
+    const root = new THREE.Group()
+    root.name = name || ('Wainscot-' + id)
+    pivot.add(root)
+    const panelMesh = new THREE.Mesh(UNIT_BOX, panel)
+    panelMesh.name = 'Kit:WainscotPanel'
+    panelMesh.position.set(0, WAINSCOT / 2, 0)
+    panelMesh.scale.set(L, WAINSCOT, WAINSCOT_T)
+    panelMesh.castShadow = false
+    panelMesh.receiveShadow = true
+    const railMesh = new THREE.Mesh(UNIT_BOX, rail)
+    railMesh.name = 'Kit:WainscotRail'
+    railMesh.position.set(0, WAINSCOT + RAIL / 2, 0)
+    railMesh.scale.set(L, RAIL, WAINSCOT_T + 0.02)
+    railMesh.castShadow = false
+    railMesh.receiveShadow = true
+    root.add(panelMesh, railMesh)
+    if (pos) root.position.set(pos.x || 0, pos.y || 0, pos.z || 0)
+    if (scale) root.scale.set(scale.x ?? 1, scale.y ?? 1, scale.z ?? 1)
+    const booth = parent.name || 'kit'
+    const rec = {
+      slug: `wainscot/${booth}/${id}`,
+      label: name || `${booth} wainscot ${id}`,
+      caption: name || `Wainscot ${id}`,
+      kind: 'wainscot',
+      display: root,
+      virtual: true,
+      editMul: 1,
+      x: mx, z: mz,
+    }
+    for (const o of [pivot, root, panelMesh, railMesh]) {
+      o.userData.exhibit = rec
+      o.userData.editRoot = root
+      o.userData.noGrab = true
+    }
+    return rec
   }
 
   function cladWall(w, d, px, pz, alongX, { lower, rail, upper, h = 3.55 } = {}) {
@@ -272,15 +315,24 @@ export function createKit({ parent, max = 192 } = {}) {
     box(upper, tw, upperH, td, px, WAINSCOT + RAIL + upperH / 2, pz)
   }
 
-  function doorFrame(material, x0, x1, z, h = DOOR_H, extra = {}) {
-    const mid = (x0 + x1) / 2
-    const w = x1 - x0
+  function doorFrame(material, a0, a1, along, h = DOOR_H, extra = {}) {
+    const mid = (a0 + a1) / 2
+    const w = a1 - a0
     const post = extra.post || 0.16
     const lintelH = extra.lintel || 0.28
     const depth = extra.depth || 0.14
-    box(material, post, h, depth, x0, h / 2, z)
-    box(material, post, h, depth, x1, h / 2, z)
-    box(material, w + post * 1.75, lintelH, extra.lintelD || depth + 0.02, mid, h + lintelH / 2, z)
+    const lintelD = extra.lintelD || depth + 0.02
+    // axis 'x' (default): opening along X at z = along.
+    // axis 'z': opening along Z at x = along (N–S partition).
+    if (extra.axis === 'z') {
+      box(material, depth, h, post, along, h / 2, a0)
+      box(material, depth, h, post, along, h / 2, a1)
+      box(material, lintelD, lintelH, w + post * 1.75, along, h + lintelH / 2, mid)
+      return
+    }
+    box(material, post, h, depth, a0, h / 2, along)
+    box(material, post, h, depth, a1, h / 2, along)
+    box(material, w + post * 1.75, lintelH, lintelD, mid, h + lintelH / 2, along)
   }
 
   // Storefront / pass opening: sill + jambs + header. Glass is a separate plane.

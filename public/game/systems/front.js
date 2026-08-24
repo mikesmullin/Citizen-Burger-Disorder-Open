@@ -30,7 +30,13 @@ import { mountWallPosters } from './posters.js'
 export const BOOTH_W = 12
 export const BOOTH_D = 18
 export const BOOTH_H = 3.55
-const STREET_D = 3.6
+export const STREET_D = 3.6
+export const PASS_INSET = 3.55
+export const PASS_X1 = -2.35
+export const WIN_X0 = -0.45
+export const WIN_X1 = 2.85
+export const BACK_DOOR_X0 = -3.55
+export const BACK_DOOR_X1 = -2.05
 const HALF_H = WAINSCOT + RAIL
 const TABLE_Y = 0.76
 // House-roof table tent: triangular prism, numbers on the two roof faces.
@@ -228,7 +234,6 @@ export async function createFront({
   const wallUpper = loadMap('./assets/textures/enviro/DiningUpperWall.png')
   const wallLower = loadMap('./assets/textures/enviro/DiningLowerWall.png')
   const floorTex = loadMap('./assets/textures/enviro/DiningFloor.png')
-  const passTex = loadMap('./assets/entities/tiles/KitchenFloor.png')
   const topTex = loadMap('./assets/textures/enviro/TableMain.png')
   const greyTex = loadMap('./assets/textures/Grey.png')
   const darkTex = loadMap('./assets/textures/GreyDark.png')
@@ -254,19 +259,14 @@ export async function createFront({
   const hz = BOOTH_D / 2
   const doorZ = hz - STREET_D
   const doorH = 2.42
-  const interiorD = BOOTH_D - STREET_D
-  const interiorZ = -hz + interiorD / 2
-  // Partition between empty pass (north / -Z) and dining. West gap is the
-  // staff corridor from the back door; the rest is half-wall order window.
-  const winZ = -hz + 3.55
-  const passZ = (-hz + winZ) / 2
-  const passD = winZ - (-hz)
+  // Partition between kitchen (north / -Z) and dining. West gap is the
+  // staff corridor into the galley; the rest is half-wall order window.
+  const winZ = -hz + PASS_INSET
 
   const diningD = doorZ - winZ
   const diningZ = (winZ + doorZ) / 2
   addTiledFloor(kit, { map: floorTex, w: BOOTH_W, d: diningD, z: diningZ, layer: 1, tile: 1.55 })
-  addTiledFloor(kit, { map: passTex, w: BOOTH_W, d: passD, z: passZ, layer: 1, tile: 1.8 })
-  kit.roof(BOOTH_W, interiorD, 0, BOOTH_H, interiorZ)
+  kit.roof(BOOTH_W, diningD, 0, BOOTH_H, diningZ)
 
   function solidWall(w, d, px, pz, alongX) {
     const tw = alongX ? w : WALL_T
@@ -283,18 +283,13 @@ export async function createFront({
     if (fillH > 0.08) box(w + 0.28, fillH, WALL_T, upperMat, mid, fillStart + fillH / 2, z)
   }
 
-  // Exterior shell. Open +Z is the road. Whole wall is the upper (cream)
-  // color; diner wainscot is a separate interior strip.
-  solidWall(WALL_T, interiorD, -hx + WALL_T / 2, interiorZ, false)
-  solidWall(WALL_T, interiorD, hx - WALL_T / 2, interiorZ, false)
+  // Exterior shell. Open +Z is the road. Side walls stop at the pass —
+  // the kitchen owns everything north of winZ (including the back door).
+  solidWall(WALL_T, diningD, -hx + WALL_T / 2, diningZ, false)
+  solidWall(WALL_T, diningD, hx - WALL_T / 2, diningZ, false)
 
-  const backDoorX0 = -3.55
-  const backDoorX1 = -2.05
-  const backW = backDoorX0 - (-hx)
-  const backE = hx - backDoorX1
-  if (backW > 0.2) solidWall(backW, WALL_T, -hx + backW / 2, -hz + WALL_T / 2, true)
-  if (backE > 0.2) solidWall(backE, WALL_T, hx - backE / 2, -hz + WALL_T / 2, true)
-  doorFrame(backDoorX0, backDoorX1, -hz + WALL_T / 2, 2.2)
+  const backDoorX0 = BACK_DOOR_X0
+  const backDoorX1 = BACK_DOOR_X1
 
   const doorW = 2.65
   const doorX = -1.15
@@ -330,9 +325,9 @@ export async function createFront({
   putTag('FRONT', doorX, doorH + 0.52, doorZ + 0.08, { sx: 1.45, sy: 1.25 })
 
   // Window wall: west staff passage, then solid, half-wall window, solid.
-  const passX1 = -2.35
-  const winX0 = -0.45
-  const winX1 = 2.85
+  const passX1 = PASS_X1
+  const winX0 = WIN_X0
+  const winX1 = WIN_X1
   const solidW1 = winX0 - passX1
   if (solidW1 > 0.2) solidWall(solidW1, WALL_T, passX1 + solidW1 / 2, winZ, true)
   const solidW2 = (hx - WALL_T) - winX1
@@ -342,6 +337,8 @@ export async function createFront({
   box(winW, 0.06, 0.36, topMat, (winX0 + winX1) / 2, HALF_H + 0.03, winZ + 0.22)
 
   putTag('PASS', (winX0 + winX1) / 2, HALF_H - 0.22, winZ + WALL_T / 2 + 0.01, { sx: 0.72, sy: 0.72 })
+  // Dining face of the west pass solid — visible from checkout looking at the kitchen.
+  putTag('KITCHEN', passX1 + solidW1 / 2, 1.55, winZ + WALL_T / 2 + 0.02, { sx: 1.5, sy: 1.25 })
 
   // Checkout: bar running east–west. Staff stand on the -Z side (toward
   // the window); guests queue on the +Z side. West wall closes the pen.
@@ -365,20 +362,42 @@ export async function createFront({
   }
 
   const inset = WALL_T + WAINSCOT_T / 2
+  // Outer-edge walls (hx) use `inset`. Walls whose box is centred on the
+  // plane (pass, divider, storefront) use `face` or the strip sits ~9 cm off.
+  const face = WALL_T / 2 + WAINSCOT_T / 2
   const coat = { panel: lowerMat, rail: railMat }
   const free = { ...coat, cap: 0 }
-  kit.wainscot(interiorD, -hx + inset, interiorZ, Math.PI / 2, coat)
-  kit.wainscot(interiorD, hx - inset, interiorZ, -Math.PI / 2, coat)
-  if (backW > 0.2) kit.wainscot(backW, -hx + backW / 2, -hz + inset, 0, { ...coat, cap1: 0 })
-  if (backE > 0.2) kit.wainscot(backE, hx - backE / 2, -hz + inset, 0, { ...coat, cap0: 0 })
+  kit.wainscot(diningD, -hx + inset, diningZ, Math.PI / 2, {
+    ...coat, pos: { x: 0.037, y: 0, z: 0 }, scale: { x: 1.025, y: 1, z: 1 },
+  })
+  kit.wainscot(diningD, hx - inset, diningZ, -Math.PI / 2, {
+    ...coat, pos: { x: 0.031, y: 0, z: -0.035 }, scale: { x: 1.022, y: 1, z: 1 },
+  })
   const leftWin = doorX0 - (-hx)
-  if (leftWin > 0.2) kit.wainscot(leftWin, -hx + leftWin / 2, doorZ - inset, Math.PI, { ...coat, cap0: 0 })
+  if (leftWin > 0.2) kit.wainscot(leftWin, -hx + leftWin / 2, doorZ - face, Math.PI, {
+    ...coat, cap0: 0, pos: { x: 0.035, y: 0, z: -0.02 }, scale: { x: 0.994, y: 1, z: 1 },
+  })
   const rightWin = hx - doorX1
-  if (rightWin > 0.2) kit.wainscot(rightWin, doorX1 + rightWin / 2, doorZ - inset, Math.PI, { ...coat, cap1: 0 })
-  if (solidW1 > 0.2) kit.wainscot(solidW1, passX1 + solidW1 / 2, winZ + inset, 0, free)
-  kit.wainscot(winW, (winX0 + winX1) / 2, winZ + inset, 0, free)
-  if (solidW2 > 0.2) kit.wainscot(solidW2, winX1 + solidW2 / 2, winZ + inset, 0, { ...coat, cap0: 0, cap1: WAINSCOT_T })
-  if (divideW > 0.2) kit.wainscot(divideW, divideX0 + divideW / 2, divideZ + inset, 0, { ...coat, cap0: WAINSCOT_T, cap1: 0 })
+  if (rightWin > 0.2) kit.wainscot(rightWin, doorX1 + rightWin / 2, doorZ - face, Math.PI, {
+    ...coat, cap1: 0, pos: { x: -0.038, y: 0, z: -0.021 }, scale: { x: 0.987, y: 1, z: 1 },
+  })
+  if (solidW1 > 0.2) kit.wainscot(solidW1, passX1 + solidW1 / 2, winZ + face, 0, {
+    ...free, pos: { x: -0.002, y: 0, z: -0.039 }, scale: { x: 1.002, y: 1, z: 1 },
+  })
+  kit.wainscot(winW, (winX0 + winX1) / 2, winZ + face, 0, {
+    ...free, pos: { x: 0, y: 0, z: -0.037 }, scale: { x: 1, y: 1, z: 1 },
+  })
+  if (solidW2 > 0.2) kit.wainscot(solidW2, winX1 + solidW2 / 2, winZ + face, 0, {
+    ...coat, cap0: 0, cap1: WAINSCOT_T, pos: { x: 0.026, y: 0, z: -0.039 }, scale: { x: 1.017, y: 1, z: 1 },
+  })
+  if (divideW > 0.2) {
+    kit.wainscot(divideW, divideX0 + divideW / 2, divideZ + face, 0, {
+      ...coat, cap0: WAINSCOT_T, cap1: 0, pos: { x: -0.016, y: 0, z: -0.019 }, scale: { x: 1.004, y: 1, z: 1 },
+    })
+    kit.wainscot(divideW, divideX0 + divideW / 2, divideZ - face, Math.PI, {
+      ...coat, cap0: 0, cap1: WAINSCOT_T, pos: { x: 0.028, y: 0, z: -0.02 }, scale: { x: 1.002, y: 1, z: 1 },
+    })
+  }
 
   const staffZ = (winZ + (cZ - cD / 2)) / 2
   const staffX0 = 0.05
@@ -483,9 +502,7 @@ export async function createFront({
     box(0.36, 0.02, 0.52, markMat, q.x, 0.05, q.z)
   }
 
-  putTag('BACK', (backDoorX0 + backDoorX1) / 2, 2.55, -hz + WALL_T + 0.08, { sx: 0.75, sy: 0.75 })
-
-  // Wall posters (dining + pass) share the kiosk atlas — one InstancedMesh.
+  // Wall posters (dining + kitchen) share the kiosk atlas — one InstancedMesh.
 
   function makeTable(spec) {
     const tw = spec.w
@@ -525,9 +542,12 @@ export async function createFront({
     makeTable({ tableId: 4, capacity: 4, x: 3.85, z: 1.0, w: 1.85, d: 1.15 }),
   ]
 
+  const kLayout = kitchen && kitchen.layout
   await mountWallPosters(object, [
-    { id: 'CoverYourBurger', x: 1.30, y: 1.80, z: -hz + WALL_T + 0.02, yaw: 0, w: 1.1, h: 1.1 },
-    { id: 'Poster2', x: hx - WALL_T - 0.02, y: 1.80, z: -7.2, yaw: -Math.PI / 2, w: 1.1, h: 1.1 },
+    { id: 'CoverYourBurger', x: divideX0 + divideW * 0.38, y: 1.85, z: divideZ - WALL_T / 2 - 0.02, yaw: Math.PI, w: 1.1, h: 1.1 },
+    kLayout
+      ? { id: 'Poster2', x: (kLayout.partX + kLayout.east) / 2, y: 1.80, z: kLayout.north + WALL_T + 0.02, yaw: 0, w: 1.1, h: 1.1 }
+      : { id: 'Poster2', x: hx - WALL_T - 0.02, y: 1.80, z: -7.2, yaw: -Math.PI / 2, w: 1.1, h: 1.1 },
     { id: 'jTZL8p0', x: -hx + WALL_T + 0.04, y: 2.0, z: 3.2, yaw: Math.PI / 2, w: 1.8, h: 1.35 },
     { id: 'n0kvMQ6', x: -hx + WALL_T + 0.04, y: 2.0, z: 1.05, yaw: Math.PI / 2, w: 1.8, h: 1.35 },
     { id: 'BLCkYpI', x: hx - WALL_T - 0.04, y: 2.0, z: 3.2, yaw: -Math.PI / 2, w: 1.8, h: 1.35 },
@@ -603,10 +623,8 @@ export async function createFront({
     return p
   }
 
-  addWorldCollider(-hx, backDoorX0, -hz, -hz + WALL_T + 0.04)
-  addWorldCollider(backDoorX1, hx, -hz, -hz + WALL_T + 0.04)
-  addWorldCollider(-hx, -hx + WALL_T, -hz, doorZ)
-  addWorldCollider(hx - WALL_T, hx, -hz, doorZ)
+  addWorldCollider(-hx, -hx + WALL_T, winZ, doorZ)
+  addWorldCollider(hx - WALL_T, hx, winZ, doorZ)
   addWorldCollider(-hx, doorX0, doorZ - 0.08, doorZ + 0.08)
   addWorldCollider(doorX1, hx, doorZ - 0.08, doorZ + 0.08)
   addWorldCollider(passX1, winX0, winZ - 0.08, winZ + 0.08)
@@ -627,8 +645,10 @@ export async function createFront({
   const posWpos = worldOf(posX, COUNTER_Y, cZ)
   const regWpos = worldOf(regX, COUNTER_Y, regZ)
   const staffWpos = worldOf((staffX0 + staffX1) / 2, 0, staffZ)
-  const passWpos = worldOf(1.35, 0, passZ)
-  const backWpos = worldOf((backDoorX0 + backDoorX1) / 2, 0, -hz + 1.2)
+  const passWpos = worldOf(1.35, 0, winZ + 1.6)
+  const backWpos = kitchen && kitchen.viewSpot
+    ? kitchen.viewSpot('Back').look
+    : worldOf((backDoorX0 + backDoorX1) / 2, 0, -hz + 1.2)
   const winLook = worldOf((winX0 + winX1) / 2, HALF_H, winZ)
 
   let numberStandPos = worldOf(0.95, COUNTER_Y, cZ)
@@ -933,7 +953,7 @@ export async function createFront({
       if (/^Pass$/i.test(key)) {
         return {
           stand: passWpos,
-          look: worldOf((winX0 + winX1) / 2, 1.35, winZ + 2.2),
+          look: worldOf((winX0 + winX1) / 2, 1.35, winZ),
           label: 'Pass',
         }
       }
@@ -941,6 +961,10 @@ export async function createFront({
       return { stand, look: winLook, label: 'Window' }
     }
     if (/^Back$/i.test(key)) {
+      if (kitchen && kitchen.viewSpot) {
+        const v = kitchen.viewSpot('Back')
+        if (v && v.label === 'Back') return v
+      }
       return {
         stand: worldOf((backDoorX0 + backDoorX1) / 2, 0, -hz - 1.5),
         look: worldOf((backDoorX0 + backDoorX1) / 2, 1.4, -hz + 1.2),

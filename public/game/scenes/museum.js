@@ -664,7 +664,6 @@ async function boot() {
     back: { x: 16, z: -31, yaw: 0, cols: 2, spacing: 4.5, rowZ: 4.6 },
   }
   const BOOTHS = {
-    kitchen: { x: 0, z: -13 },
     front: { x: 22, z: -13 },
     textures: { x: -19.8, z: -12 },
     audio: { x: -16, z: -40 },
@@ -888,15 +887,16 @@ async function boot() {
       getRats: () => rats,
       getFireWatch: () => fires,
       switchProto, labels, pickInst,
-      x: BOOTHS.kitchen.x, z: BOOTHS.kitchen.z, facingY: 0,
+      x: BOOTHS.front.x, z: BOOTHS.front.z, facingY: 0,
     })
+    const kL = kitchen.layout
     exhibits.push({
       slug: 'kitchen/Kitchen',
       label: 'Kitchen',
       caption: 'Kitchen',
       group: 'kitchen',
-      x: BOOTHS.kitchen.x,
-      z: BOOTHS.kitchen.z,
+      x: BOOTHS.front.x + (kL.west + kL.east) / 2,
+      z: BOOTHS.front.z + (kL.north + kL.south) / 2,
       size: { x: kitchen.width, y: kitchen.height, z: kitchen.depth },
     })
     const kitchenSpots = [
@@ -1532,9 +1532,9 @@ renderer.setAnimationLoop(() => {
   }
   if ($('help')) {
     $('help').textContent = scaler.tool === 'scale'
-      ? 'SCALE GUN  ·  aim at an exhibit (or a player badge)  ·  hold LMB, drag right = bigger / left = smaller  ·  0 empty hands'
+      ? `SCALE GUN  ·  axes ${['x', 'y', 'z'].filter(k => scaler.axes[k]).map(k => k.toUpperCase()).join(' ') || 'none'}  ·  tap X/Y/Z  ·  aim at center = from middle, edge/corner = extrude that side  ·  hold LMB drag  ·  0/1/2 cancel drag`
       : scaler.tool === 'transform'
-        ? `TRANSFORM GUN  ·  axes ${['x', 'y', 'z'].filter(k => scaler.axes[k]).map(k => k.toUpperCase()).join(' ') || 'none'}  ·  tap X/Y/Z to lock  ·  aim, hold LMB, drag  ·  0 empty`
+        ? `TRANSFORM GUN  ·  axes ${['x', 'y', 'z'].filter(k => scaler.axes[k]).map(k => k.toUpperCase()).join(' ') || 'none'}  ·  tap X/Y/Z to lock  ·  aim, hold LMB, drag  ·  0/1/2 cancel drag`
         : 'WASD move · Space jump · Q/E hands · 0 empty · 1 scale gun · 2 transform gun · click grab/drop · Shift run · Esc release mouse'
   }
 
