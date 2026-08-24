@@ -97,7 +97,7 @@ away under the studio).
   pose: { active, … },
   player: { pos, yaw, pitch, enabled, locked, leftHand, rightHand },
   holding: '',
-  food:  [{ type, pos, held, onFloor, stolen }],
+  food:  [{ type, pos, held, onFloor, stolen, dirty, plated, stacked, stack }],
   rats:  [{ pos, stolen, goingHome }],
   npcs:  [{ skin, want, notice, pos }],
   exhibits: ['heroes/Player', 'items/Cheese', …],
@@ -417,6 +417,37 @@ plated burger on that mat so the serve path is dbg-drivable.
 
 Wait without food: `dbg.step(60 * 90)` — anger hits 100, they `leave`.
 After a serve, chew is ~4 s (`dbg.step(240)`), then they walk out.
+
+The plate stays on the table and turns **dirty** when chewing finishes
+(`Plate.cs` stained on food-land via `_Blend`; we stain at end-of-eat so
+the empty plate is the leftover). Empty plates stack LIFO (original was
+physics-only; grab the **top** plate to pop one, grab the **bottom** to
+carry the pile). Drop a pile in the dish-pit basin: every plate comes
+clean and the stack breaks so you can pull them out one at a time.
+
+```js
+dbg.step(240)                 // chew done → want: 'leave', plate.dirty
+dbg.state().food.filter(f => f.type === 'plate' && f.dirty)
+// stack is plates ON the root (dry-rack spawn is a pile of 2 → stack: 1)
+
+// pop the top
+const pile = __museum.foodWorld.items.find(i => i.type === 'plate' && i.stack && i.stack.length)
+const top = pile.stack[pile.stack.length - 1]
+// grabStackWith(top) pops just that plate; the root stays
+
+dbg.teleport('Sink')
+const basin = __museum.kitchen.basinPlat
+const root = __museum.foodWorld.items.find(i => i.type === 'plate' && i.dirty && !i.stackedOn)
+if (root) {
+  root.object.position.set(
+    (basin.minx + basin.maxx) / 2,
+    basin.y + 0.08,
+    (basin.minz + basin.maxz) / 2,
+  )
+}
+dbg.step(20)                  // pile in the water → clean + unstack
+dbg.state().food.filter(f => f.type === 'plate').map(f => ({ dirty: f.dirty, stack: f.stack, stacked: f.stacked }))
+```
 
 ### 8. Screenshot a gameplay moment
 

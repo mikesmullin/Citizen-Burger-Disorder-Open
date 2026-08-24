@@ -5,8 +5,8 @@
 import * as THREE from 'three'
 import { hideTriggers, boundsOf } from '../common/unityScene.js'
 import { createInstancePool, visualMesh, hideVisuals } from '../common/instancePool.js'
-import { isTool, applyCookState } from './food.js'
-import { grabStackWith, layoutStack, layoutPlate } from './stacking.js'
+import { isTool, applyCookState, setPlateDirty } from './food.js'
+import { grabStackWith, layoutStack, layoutPlate, layoutDishStack, isStackedDish } from './stacking.js'
 import { createSpray } from './spray.js'
 
 const ARM_EXTRA = 1.2
@@ -231,8 +231,10 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
         : arm.object.getWorldQuaternion(_q))
     }
     if (item.vel) item.vel.set(0, 0, 0)
-    if (item.type === 'plate' && item.plated) layoutPlate(item)
-    else if (item.type === 'bun') layoutStack(item)
+    if (item.type === 'plate') {
+      if (item.plated) layoutPlate(item)
+      if (item.stack && item.stack.length) layoutDishStack(item)
+    } else if (item.type === 'bun') layoutStack(item)
     recordHistory(arm)
   }
 
@@ -279,8 +281,7 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
     })
     if (rec.cookState) applyCookState(item.object, rec)
     if (rec.slug === 'items/PlateDirty' || rec.cookState === 'dirty') {
-      item.dirty = true
-      item.instVariant = 'dirty'
+      setPlateDirty(item)
     } else if (rec.cookState && String(rec.cookState).startsWith('bacon')) {
       item.instVariant = rec.cookState
     }
@@ -453,7 +454,10 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
       if (item.spraying) extinguisherNozzle(arm, sprayNozzle[arm.side])
     }
     if (item.type === 'bun') layoutStack(item)
-    if (item.type === 'plate' && item.plated) layoutPlate(item)
+    if (item.type === 'plate') {
+      if (item.plated) layoutPlate(item)
+      if (item.stack && item.stack.length) layoutDishStack(item)
+    }
   }
 
   function pickTarget() {
@@ -475,6 +479,9 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
       const food = (inst && inst.food) || h.object.userData.food
       if (food && food.stolen && food.stolen.kind === 'rat' && !food.stolen.held) {
         return { kind: 'rat', item: food.stolen, dist: h.distance }
+      }
+      if (food && food.inFood && isStackedDish(food) && !food.held) {
+        return { kind: 'food', item: food, dist: h.distance }
       }
       if (food && food.inFood && (food.stackedOn || food.onPlate)) {
         const root = food.onPlate || food.stackedOn
@@ -502,7 +509,8 @@ export function createHands({ scene, player, armProto, armPool, foodWorld, exhib
     player.camera.getWorldDirection(_fwd)
     let best = null, bestD = GRAB_RANGE, bestKind = 'food'
     const consider = (item, kind, minD = 0.2) => {
-      if (!item || item.held || item.opened || item.inFood || item.planted) return
+      if (!item || item.held || item.opened || item.planted) return
+      if (item.inFood && !isStackedDish(item)) return
       if (item.type === 'fire') return
       if (kind !== 'rat' && item.stolen) return
       const dx = item.position.x - _pos.x

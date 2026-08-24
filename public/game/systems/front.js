@@ -769,12 +769,17 @@ export async function createFront({
     if (!foodWorld) return null
     const spot = seatSpots[seatName] || seatSpots.Seat1
     if (!spot) return null
+    // Seats sit beside the table; the plate has to land on the table top
+    // (Table.cs trigger) so it stays put and the diner can reach it.
+    const tableSpot = seatSpots[String(seatName).replace(/^Seat/i, 'Table')] || spot
     const bunP = foodProtos['items/BunBottom']
     const topP = foodProtos['items/BunTop']
     const plateP = foodProtos['items/Plate']
     if (!bunP || !topP || !plateP) return { error: 'missing food protos' }
     const y = TABLE_Y + 0.18
-    const bun = foodWorld.spawn({ proto: bunP, type: 'bun', slug: 'items/BunBottom', x: spot.x, z: spot.z, y })
+    const x = tableSpot.x
+    const z = tableSpot.z
+    const bun = foodWorld.spawn({ proto: bunP, type: 'bun', slug: 'items/BunBottom', x, z, y })
     const layers = {
       Citizen: [
         ['items/Patty', 'patty'],
@@ -797,7 +802,7 @@ export async function createFront({
     for (const [slug, type] of recipe) {
       const proto = foodProtos[slug]
       if (!proto) continue
-      const f = foodWorld.spawn({ proto, type, slug, x: spot.x, z: spot.z, y: y + 0.1 })
+      const f = foodWorld.spawn({ proto, type, slug, x, z, y: y + 0.1 })
       if (type === 'patty' || type === 'bacon') {
         f.cooked = 1
         applyCookLook(f.object, { cooked: 1, cookedRGB: COOK_RGB[type] || COOK_RGB.default })
@@ -806,12 +811,12 @@ export async function createFront({
     }
     const top = foodWorld.spawn({
       proto: topP, type: 'topBun', slug: 'items/BunTop',
-      x: spot.x, z: spot.z, y: y + 0.2,
+      x, z, y: y + 0.2,
     })
     addToBurger(bun, top)
     const plate = foodWorld.spawn({
       proto: plateP, type: 'plate', slug: 'items/Plate',
-      x: spot.x, z: spot.z, y,
+      x, z, y,
     })
     plateBurger(plate, bun)
     layoutStack(bun)

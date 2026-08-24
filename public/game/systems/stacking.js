@@ -1,5 +1,11 @@
 // BurgerStacking.cs + Plate.cs. Bottom bun collects food; top bun closes
 // the stack. A closed burger that lands on an empty plate parents to it.
+//
+// Dirty dishes: original has no PlateStacking.cs — plates were independent
+// rigidbodies, so a SphereCast hit the top of a physics pile (a pop) and
+// Sink.cs washed each collider in the water. We glue empty plates into a
+// LIFO pile so you can carry it; grab the top to pop, grab the root to
+// carry the pile; drop a pile in the basin to clean + unstack.
 
 const STACKABLE = new Set([
   'patty', 'cheese', 'lettuce', 'lettuceHead', 'lettucePart',
@@ -71,6 +77,7 @@ export function plateBurger(plate, bun) {
   if (plate.type !== 'plate' || bun.type !== 'bun') return false
   if (plate.plated || !bun.complete) return false
   if (plate.held || bun.held) return false
+  if (plate.stackedOn || (plate.stack && plate.stack.length)) return false
   plate.plated = bun
   bun.onPlate = plate
   bun.inFood = true
@@ -79,6 +86,111 @@ export function plateBurger(plate, bun) {
     f.inFood = true
     f.stackedOn = bun
   }
+  return true
+}
+
+// —— Dirty / empty dish LIFO (BurgerStacking shape, plates only) ——
+
+export function dishRoot(item) {
+  let p = item
+  while (p && p.stackedOn && p.stackedOn.type === 'plate') p = p.stackedOn
+  return p && p.type === 'plate' ? p : null
+}
+
+function dishStep(plate) {
+  return Math.max(0.026, (plate.height || 0.08) * 0.36)
+}
+
+export function ensureDishStack(plate) {
+  if (!plate.stack) plate.stack = []
+  return plate.stack
+}
+
+export function layoutDishStack(root) {
+  if (!root || root.type !== 'plate' || !root.stack || !root.stack.length) return
+  let y = root.position.y
+  for (const p of root.stack) {
+    if (!p || !p.object) continue
+    y += dishStep(p)
+    p.object.position.set(root.position.x, y, root.position.z)
+    p.object.quaternion.copy(root.object.quaternion)
+    if (p.vel) p.vel.set(0, 0, 0)
+    p.onFloor = false
+  }
+}
+
+export function detachFromDish(item) {
+  if (!item || item.type !== 'plate') return
+  const parent = item.stackedOn && item.stackedOn.type === 'plate' ? item.stackedOn : null
+  if (parent && parent.stack) {
+    parent.stack = parent.stack.filter(p => p !== item)
+  }
+  item.stackedOn = null
+  if (!item.plated) item.inFood = false
+}
+
+export function isStackedDish(item) {
+  return !!(item && item.type === 'plate' && item.stackedOn && item.stackedOn.type === 'plate')
+}
+
+// Lift `item` and everything above it off the parent pile (LIFO pop / split).
+export function popDish(item) {
+  if (!item || item.type !== 'plate') return item
+  const root = item.stackedOn && item.stackedOn.type === 'plate' ? item.stackedOn : null
+  if (!root || !root.stack) return item
+  const idx = root.stack.indexOf(item)
+  if (idx < 0) {
+    detachFromDish(item)
+    return item
+  }
+  const taken = root.stack.splice(idx)
+  item.stackedOn = null
+  item.inFood = false
+  const above = taken.slice(1)
+  item.stack = above
+  for (const p of above) {
+    p.stackedOn = item
+    p.inFood = true
+  }
+  return item
+}
+
+// Explode a pile into free plates. Root stays first in the returned list.
+export function unstackDish(root) {
+  if (!root || root.type !== 'plate') return root ? [root] : []
+  const members = (root.stack || []).slice()
+  root.stack = []
+  for (const p of members) {
+    p.stackedOn = null
+    p.inFood = !!p.plated
+    if (p.stack) p.stack = []
+  }
+  return [root, ...members]
+}
+
+export function addToDishStack(base, item) {
+  if (!base || !item || base === item) return false
+  if (base.type !== 'plate' || item.type !== 'plate') return false
+  if (base.plated || item.plated) return false
+  const root = dishRoot(base) || base
+  if (root === item || dishRoot(item) === root) return false
+  if (root.plated) return false
+  detachFromDish(item)
+  const stack = ensureDishStack(root)
+  stack.push(item)
+  item.inFood = true
+  item.stackedOn = root
+  if (item.stack && item.stack.length) {
+    const nested = item.stack.slice()
+    item.stack = []
+    for (const p of nested) {
+      if (!p || p === root || stack.includes(p)) continue
+      stack.push(p)
+      p.inFood = true
+      p.stackedOn = root
+    }
+  }
+  layoutDishStack(root)
   return true
 }
 
@@ -96,22 +208,42 @@ export function layoutPlate(plate) {
 }
 
 export function grabStackWith(item) {
-  const plate = item.type === 'plate' ? item : item.onPlate
-  const bun = plate ? plate.plated
-    : (item.type === 'bun' ? item : item.stackedOn)
   const held = []
-  if (plate) held.push(plate)
-  if (bun && bun !== plate) held.push(bun)
-  for (const f of bun?.stack || []) {
-    if (!held.includes(f)) held.push(f)
+  const add = x => { if (x && !held.includes(x)) held.push(x) }
+  if (isStackedDish(item)) {
+    popDish(item)
+    add(item)
+    for (const p of item.stack || []) add(p)
+    return held.length ? held : [item]
   }
+  const plate = item.type === 'plate'
+    ? dishRoot(item)
+    : (item.onPlate ? dishRoot(item.onPlate) : null)
+  if (plate) {
+    add(plate)
+    for (const p of plate.stack || []) add(p)
+    add(plate.plated)
+    for (const f of plate.plated?.stack || []) add(f)
+    for (const p of plate.stack || []) {
+      add(p.plated)
+      for (const f of p.plated?.stack || []) add(f)
+    }
+    return held.length ? held : [item]
+  }
+  const bun = item.type === 'bun' ? item
+    : (item.stackedOn && item.stackedOn.type === 'bun' ? item.stackedOn : item.stackedOn)
+  if (bun && bun !== item) add(bun)
+  else add(item)
+  for (const f of bun?.stack || []) add(f)
   if (!held.length) held.push(item)
   return held
 }
 
 export function tickStacks(items) {
   for (const plate of items) {
-    if (plate.type === 'plate' && plate.plated) layoutPlate(plate)
+    if (plate.type !== 'plate') continue
+    if (plate.plated) layoutPlate(plate)
+    if (plate.stack && plate.stack.length && !plate.stackedOn) layoutDishStack(plate)
   }
   for (const bun of items) {
     if (bun.type !== 'bun' || bun.onPlate) continue
@@ -124,8 +256,19 @@ export function tryLandStack(item, items) {
   if (item.type === 'bun' && item.complete) {
     for (const plate of items) {
       if (plate.type !== 'plate' || plate.held || plate.plated) continue
+      if (plate.stackedOn || (plate.stack && plate.stack.length)) continue
       if (xzDist(item, plate) < 0.48 && Math.abs(item.position.y - plate.position.y) < 0.7) {
         return plateBurger(plate, item)
+      }
+    }
+  }
+  if (item.type === 'plate' && !item.plated) {
+    if (item.restingMat === 'sink') return false
+    for (const other of items) {
+      if (other.type !== 'plate' || other === item || other.held || other.plated || other.inFood) continue
+      if (other.restingMat === 'sink') continue
+      if (xzDist(item, other) < 0.42 && item.position.y >= other.position.y - 0.12) {
+        return addToDishStack(other, item)
       }
     }
   }

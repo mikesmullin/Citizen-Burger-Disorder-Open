@@ -3,6 +3,7 @@ import { C } from '../common/ecs.js'
 import { spawnPrefab } from '../gamedata/prefabs.js'
 import { setGoal } from './locomotion.js'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
+import { setPlateDirty } from './food.js'
 
 const SKINS = ['Npc1', 'Npc2', 'Npc3', 'Npc4', 'Npc5', 'Npc6']
 const EASTER = ['Jorji', 'CookServe']
@@ -141,7 +142,17 @@ function despawn(world, eid, ctx) {
         if (slot.occupiedBy === eid) slot.occupiedBy = 0
       }
     }
-    if (cust.holdingFood && ctx.foodWorld) ctx.foodWorld.destroy(cust.holdingFood)
+    if (cust.holdingFood && ctx.foodWorld) {
+      const food = cust.holdingFood
+      ctx.foodWorld.destroy(food)
+      if (food.stack) {
+        for (const f of food.stack) ctx.foodWorld.destroy(f)
+      }
+    }
+    if (cust.servedPlate) {
+      setPlateDirty(cust.servedPlate)
+      cust.servedPlate = null
+    }
     let others = 0
     for (const [other, c] of world.query(C.Customer)) {
       if (other !== eid && c.groupId === cust.groupId) others++

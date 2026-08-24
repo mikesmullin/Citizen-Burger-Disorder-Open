@@ -5,7 +5,8 @@
 // Floor is DiningFloor. Grill.cs cook() runs on food that lands on the range.
 
 import * as THREE from 'three'
-import { applyCookLook, isFood, cookTick } from './food.js'
+import { isFood, cookTick, setPlateDirty, setPlateClean } from './food.js'
+import { addToDishStack, unstackDish } from './stacking.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
 import { createKit, addTiledFloor, WALL_T, WAINSCOT_T } from '../common/kit.js'
 import { loadBuffer, getListener, safePlay } from '../common/audio.js'
@@ -500,16 +501,17 @@ export async function createKitchen({
 
   const plateProto = foodProtos['items/Plate']
   if (plateProto) {
+    let dirtyRoot = null
+    const dryPos = worldOf(dryX, sinkY + 0.08, sinkZ)
     for (let i = 0; i < 2; i++) {
-      const w = worldOf(dryX + (i - 0.5) * 0.28, sinkY + 0.08, sinkZ)
       const item = foodWorld.spawn({
         proto: plateProto, type: 'plate', slug: 'items/Plate',
-        x: w.x, z: w.z, y: sinkY + 0.1, instanced: false,
+        x: dryPos.x, z: dryPos.z, y: sinkY + 0.1, instanced: false,
       })
-      item.dirty = true
-      item.instVariant = 'dirty'
-      applyCookLook(item.object, { mapUrl: './assets/textures/PlateDirty.png' })
+      setPlateDirty(item)
       foodWorld.watch(item)
+      if (dirtyRoot) addToDishStack(dirtyRoot, item)
+      else dirtyRoot = item
     }
     for (let i = 0; i < 3; i++) {
       const w = worldOf(basinX + (i - 1) * 0.55, basinFloorY + 0.22, sinkZ + (i % 2 ? 0.12 : -0.12))
@@ -624,22 +626,52 @@ export async function createKitchen({
     washAcc = 0
     for (const item of foodWorld.items) {
       if (item.held || item.stolen || item.type !== 'plate') continue
+      if (item.stackedOn) continue
       const p = item.object.position
-      if (inBasin(p)) {
-        item.soakTime = (item.soakTime || 0) + step
-        if (item.onFire) {
-          const fw = getFireWatch && getFireWatch()
-          if (fw) fw.putOutItem(item)
-        }
-        if (item.dirty && item.soakTime >= WASH_TIME) {
-          item.dirty = false
-          item.instVariant = ''
-          applyCookLook(item.object, { mapUrl: './assets/textures/Plate.png' })
-          if (item.watchVisual) item.watchVisual(item)
-        }
-      } else {
+      if (!inBasin(p)) {
         item.soakTime = 0
+        continue
       }
+      if (item.onFire) {
+        const fw = getFireWatch && getFireWatch()
+        if (fw) fw.putOutItem(item)
+      }
+      // Drop a glued pile in the water: wash every plate and break the
+      // stack so they can be pulled out one at a time (original physics
+      // pile in Sink.cs — each collider soaked on its own).
+      if (item.stack && item.stack.length) {
+        const all = unstackDish(item)
+        const n = all.length
+        const cx = (basinPlat.minx + basinPlat.maxx) / 2
+        const cz = (basinPlat.minz + basinPlat.maxz) / 2
+        const span = Math.min(
+          Math.max(0.28, basinPlat.maxx - basinPlat.minx - 0.24),
+          Math.max(0.28, (n - 1) * 0.3),
+        )
+        all.forEach((plate, i) => {
+          setPlateClean(plate)
+          plate.held = false
+          plate.onFloor = false
+          plate.dropped = true
+          plate.soakTime = 0
+          plate.restingMat = 'sink'
+          if (plate.onFire) {
+            const fw = getFireWatch && getFireWatch()
+            if (fw) fw.putOutItem(plate)
+          }
+          const t = n === 1 ? 0.5 : i / (n - 1)
+          const x = cx - span / 2 + t * span
+          plate.object.position.set(
+            Math.max(basinPlat.minx + 0.1, Math.min(basinPlat.maxx - 0.1, x)),
+            basinPlat.y + 0.1,
+            cz + (i % 2 ? 0.08 : -0.08),
+          )
+          if (plate.vel) plate.vel.set(0, 0, 0)
+        })
+        continue
+      }
+      item.soakTime = (item.soakTime || 0) + step
+      if (item.dirty && item.soakTime >= WASH_TIME) setPlateClean(item)
     }
   }
 
