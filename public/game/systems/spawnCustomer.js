@@ -124,7 +124,7 @@ function countInQueue(world) {
   let n = 0
   for (const [, cust, think] of world.query(C.Customer, C.Thinker)) {
     if (cust.queueSlot >= 0) n++
-    else if (think.want === 'enter' || think.want === 'queue' || think.want === 'order') n++
+    else if (think.want === 'enter' || think.want === 'queue' || think.want === 'order' || think.want === 'getStand') n++
   }
   return n
 }
@@ -160,10 +160,13 @@ function despawn(world, eid, ctx) {
     }
     if (cust.holdingFood && ctx.foodWorld) {
       const food = cust.holdingFood
+      const wasStand = food.type === 'numberStand'
       ctx.foodWorld.destroy(food)
       if (food.stack) {
         for (const f of food.stack) ctx.foodWorld.destroy(f)
       }
+      cust.holdingFood = null
+      if (wasStand && ctx.fillStands) ctx.fillStands()
     }
     if (cust.servedPlate) {
       setPlateDirty(cust.servedPlate)

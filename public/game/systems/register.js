@@ -8,8 +8,9 @@ export function update(world, ctx) {
     for (const item of foodWorld.items.slice()) {
       if (item.type !== 'tip') continue
       const p = foodWorldPos(item)
-      if (Math.hypot(p.x - rtf.x, p.z - rtf.z) > 0.85) continue
-      if (p.y > rtf.y + 1.5) continue
+      // Till is the order-computer base. 1.05 m covers the drawer + monitor.
+      if (Math.hypot(p.x - rtf.x, p.z - rtf.z) > 1.05) continue
+      if (p.y > rtf.y + 1.7) continue
       // Held or not, the till takes it on contact: no need to drop it.
       if (item.held) {
         const hands = ctx.hands

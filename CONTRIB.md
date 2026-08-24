@@ -323,10 +323,13 @@ Do not introduce a bundler or a Unity WebGL build to get there.
 - **Pages:** `public/` is the site root. Keep asset URLs relative
   (`./assets/…`, `./game/…`). `public/.nojekyll` must stay.
 - **Front booth:** `public/game/systems/front.js` is the walk-in
-  street / door / queue / POS / dining exhibit. New diners go through
-  `spawnPrefab` into `common/ecs.js`; hall `createCrowd` stays. Confirm
-  an order with `__museum.front.confirm(['Citizen'])`. Do not grow
-  `npc.js` into the restaurant loop.
+  street / door / queue / order computer / dining exhibit. New diners go
+  through `spawnPrefab` into `common/ecs.js`; hall `createCrowd` stays.
+  Confirm an order with `__museum.front.confirm(['Citizen'])` (dbg skip
+  of the number-stand throw). Humans click the order computer; throw a
+  stand or call `__museum.front.giveStand()`. The till is the computer
+  base — a held Tip touching it counts. Do not grow `npc.js` into the
+  restaurant loop.
 - **Scope:** grab/throw feel, cooking, fire, and netcode are the
   remaining hard systems. Village flocking, VR/Oculus, drawing/notepad,
   day/night are optional and not load-bearing.

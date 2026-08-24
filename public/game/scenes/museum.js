@@ -50,7 +50,7 @@ const SKIP_EXHIBITS = new Set([
   'items/Pencil',
   'items/PointLight',
   'items/LettucePart',   // nested inside LettuceHead
-  'items/Monitor',       // unused Computer leftover — nComputer is the POS overlay
+  'items/Monitor',       // unused Computer leftover — nComputer is the order computer
   'items/MonitorPickup', // unused Computer leftover
   'items/NumberStand',   // live on the front checkout, next to the order computer
   'items/BoxOpen',       // live on the delivery truck when a crate unpacks
@@ -989,6 +989,7 @@ async function boot() {
       ['front/Door', 'Door'],
       ['front/Queue', 'Queue'],
       ['front/POS', 'Checkout'],
+      ['front/OrderComputer', 'Order computer'],
       ['front/Register', 'Register'],
       ['front/StaffMenu', 'StaffMenu'],
       ['front/NumberStand', 'NumberStand'],
@@ -1321,11 +1322,11 @@ function teleport(slug) {
       return foodKiosk.current().caption
     }
   }
-  if (posKiosk && /^(POS|Pos|Order computer|ui\/POS)$/i.test(slug)) {
+  if (posKiosk && /^(POS|Pos|Order computer|OrderComputer|Checkout|ui\/POS)$/i.test(slug)) {
     const v = posKiosk.viewSpot()
     player.spawn(v.stand.x, 0, v.stand.z, 0)
     player.lookAt(v.look.x, v.look.y, v.look.z)
-    return 'POS'
+    return 'Order computer'
   }
   if (kitchen && /^(Kitchen|Range|Grill|Cooktop|Sink|Dish|Counter|Prep|Orders|Board|KitchenLights|DishLights|kitchen\/)/i.test(slug)) {
     const name = String(slug).split('/').pop()
@@ -1334,7 +1335,7 @@ function teleport(slug) {
     player.lookAt(v.look.x, v.look.y, v.look.z)
     return v.label
   }
-  if (front && /^(Front|Street|Door|Queue|Register|Checkout|Staff|Window|Pass|Back|NumberStand|Lights|Switch|Seat\d|Table\d|front\/)/i.test(slug)) {
+  if (front && /^(Front|Street|Door|Queue|Register|Checkout|OrderComputer|Staff|Window|Pass|Back|NumberStand|Lights|Switch|Seat\d|Table\d|front\/)/i.test(slug)) {
     const name = String(slug).split('/').pop()
     const v = front.viewSpot(name)
     player.spawn(v.stand.x, 0, v.stand.z, 0)

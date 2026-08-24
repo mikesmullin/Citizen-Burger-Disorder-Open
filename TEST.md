@@ -222,7 +222,7 @@ Set at the end of boot.
 | `__museum.teleport('Spatula')` | stand in front of that pedestal and look at it |
 | `__museum.teleport('Truck')` | stand on the aisle in front of the delivery ramp |
 | `__museum.teleport('Kitchen')` | stand in the galley entrance. Also `'Range'`, `'Sink'`, `'Counter'`, `'Orders'` |
-| `__museum.teleport('Front')` | stand on the road looking at the double door. Also `'Street'`, `'Door'`, `'Queue'`, `'Checkout'`, `'Staff'`, `'Register'`, `'Window'`, `'Pass'`, `'Back'`, `'Seat1'`…`'Seat4'` |
+| `__museum.teleport('Front')` | stand on the road looking at the double door. Also `'Street'`, `'Door'`, `'Queue'`, `'Checkout'` / `'POS'` / `'Order computer'`, `'Staff'`, `'Register'`, `'Window'`, `'Pass'`, `'Back'`, `'Seat1'`…`'Seat4'` |
 | `__museum.enter()` | enable player, request pointer lock (click on the canvas does this too) |
 | `__museum.pause()` | release pointer lock only — sim keeps running |
 
@@ -388,8 +388,14 @@ print a mount line `{ id, x, y, z, yaw, w, h }`.
 The booth is ECS. Hall NPCs in `dbg.state().npcs` are the wander crowd;
 diners are `dbg.state().front`.
 
+The kitchen order TV starts **empty**. A hanging ticket appears only after
+the order computer confirms (or `__museum.front.confirm`, which is the same
+write path).
+
 ```js
 dbg.freeze()
+dbg.teleport('Orders')
+// kitchen TV columns should be empty at boot
 dbg.teleport('Front')
 dbg.state().front
 // { npcs: [{ eid, want, anger, desiredFood, groupId, pos }],
@@ -400,26 +406,45 @@ if (!dbg.state().front.npcs.length) __museum.front.spawnNow(2)
 dbg.step(180)                 // leader should approach door / queue
 
 dbg.teleport('Queue')
-__museum.front.confirm(['Citizen', 'Citizen'])
+__museum.front.confirm(['Citizen', 'Citizen'])   // dbg skip: seats without a throw
 dbg.step(120)
 dbg.state().front.npcs        // want: 'waitFood', seats assigned
 dbg.state().front.orders      // hanging Citizen ticket
+
+dbg.teleport('Orders')        // kitchen TV column now shows those burgers
 
 dbg.teleport('Seat1')
 __museum.front.dropPlated('Seat1', 'Citizen')
 dbg.step(2)
 dbg.state().front.npcs        // want: 'eat'
 dbg.state().front.tips        // > 0
-dbg.teleport('Register')
+dbg.teleport('Register')      // till is the order-computer base
 // grab a tip: the till takes it on contact — no need to drop it out of the hand
 // (wait a moment so the held dollar is inside the till zone)
 dbg.step(30)
 dbg.state().front.register.money
 ```
 
-`__museum.front.confirm(items)` is the POS shortcut (skips the number-stand
-throw). `__museum.front.dropPlated('Seat1', 'Citizen')` builds a complete
-plated burger on that mat so the serve path is dbg-drivable.
+`__museum.front.confirm(items)` confirms on the order computer **and** seats
+the group (skips the number-stand throw). Humans in the booth confirm on the
+kiosk overlay and must throw a stand (or call `__museum.front.giveStand()`)
+before the group walks. `__museum.front.dropPlated('Seat1', 'Citizen')`
+builds a complete plated burger on that mat so the serve path is dbg-drivable.
+
+Human / kiosk path (no dbg seat skip):
+
+```js
+dbg.freeze()
+dbg.teleport('Queue')
+if (!dbg.state().front.npcs.length) __museum.front.spawnNow(2)
+dbg.step(180)
+const r = __museum.front.confirm(['Citizen', 'Citizen'], { seatNow: false })
+dbg.state().front.npcs        // leader want: 'getStand', still at slot 1
+dbg.state().front.orders      // hanging ticket — kitchen TV has a column
+__museum.front.giveStand()    // StandThrown without physics
+dbg.step(120)
+dbg.state().front.npcs        // want: 'waitFood'
+```
 
 Wait without food: `dbg.step(60 * 90)` — anger hits 100, they `leave`.
 After a serve, chew is ~4 s (`dbg.step(240)`), then they walk out.

@@ -76,6 +76,7 @@ export function Order(o = {}) {
     tableId: o.tableId ?? 0,
     items: o.items ?? [],
     status: o.status ?? 'drafting',
+    leaderEid: o.leaderEid ?? 0,
   }
 }
 

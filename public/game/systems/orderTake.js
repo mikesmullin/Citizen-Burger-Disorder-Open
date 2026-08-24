@@ -8,6 +8,13 @@ export function npcInQueue(world) {
   return 0
 }
 
+export function waitingForStand(world) {
+  for (const [eid, cust, think] of world.query(C.Customer, C.Thinker)) {
+    if (think.want === 'getStand' && cust.leader === eid) return eid
+  }
+  return 0
+}
+
 export function generateWants(world, leaderEid) {
   const leader = world.field(leaderEid, C.Customer)
   if (!leader) return
@@ -53,7 +60,7 @@ function groupFoods(world, leader) {
 
 export function confirm(world, items) {
   const leaderEid = npcInQueue(world)
-  if (!leaderEid) return null
+  if (!leaderEid) return { error: 'noQueue' }
   const leader = world.field(leaderEid, C.Customer)
   const think = world.field(leaderEid, C.Thinker)
   const speech = world.field(leaderEid, C.Speech)
@@ -71,10 +78,13 @@ export function confirm(world, items) {
     }
   }
   const tableId = pickFreeTable(world, groupSizeOf(world, leader))
-  if (!tableId) return null
+  if (!tableId) return { error: 'noTable' }
   const ticket = filled.length ? filled : groupFoods(world, leader)
+  for (const [, cust] of world.query(C.Customer)) {
+    if (cust.groupId === leader.groupId) cust.tableId = tableId
+  }
   const comps = new Map()
-  comps.set(C.Order, { tableId, items: ticket, status: 'hanging' })
+  comps.set(C.Order, { tableId, items: ticket, status: 'hanging', leaderEid })
   const orderEid = world.spawn(C.Order, comps, 'front/Order')
   think.prevWant = think.want
   think.want = 'getStand'

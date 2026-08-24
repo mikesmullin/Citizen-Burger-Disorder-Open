@@ -35,12 +35,8 @@ const RANGE_Y = 0.94
 const MENU = ['Citizen', 'Family', 'Worker', 'President', 'Mayor', 'Boss']
 
 // Table columns from ElementViewOrderOverview: 1–3 hold 2, table 4 holds 4.
-const SAMPLE_TICKETS = [
-  ['Mayor', 'Citizen'],
-  ['President'],
-  ['Worker', 'Boss'],
-  ['Family', 'Citizen'],
-]
+// Start empty — tickets only appear when the order computer confirms.
+const EMPTY_TICKETS = [[], [], [], []]
 
 function loadMap(url, { repeatX = 1, repeatY = 1, flipY = true } = {}) {
   const t = new THREE.TextureLoader().load(url)
@@ -177,7 +173,7 @@ async function makeOrderScreen() {
     map.needsUpdate = true
   }
 
-  paint(SAMPLE_TICKETS)
+  paint(EMPTY_TICKETS)
   return { map, paint }
 }
 

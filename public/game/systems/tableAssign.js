@@ -1,5 +1,6 @@
 import { C } from '../common/ecs.js'
 import { setGoal } from './locomotion.js'
+import { attachStand } from './standGive.js'
 
 export function assignGroup(world, leaderEid, tableId) {
   const leader = world.field(leaderEid, C.Customer)
@@ -29,8 +30,22 @@ export function assignGroup(world, leaderEid, tableId) {
   world.emit('SeatAssigned', { groupId: leader.groupId, tableId, leaderEid })
 }
 
-export function update(world) {
-  for (const { payload } of world.drain('OrderConfirmed')) {
+function seatFromThrow(world, payload, ctx) {
+  const leaderEid = payload.leaderEid
+  const leader = world.field(leaderEid, C.Customer)
+  const think = world.field(leaderEid, C.Thinker)
+  if (!leader || !think || think.want !== 'getStand') return
+  const tableId = payload.tableId || leader.tableId
+  if (!tableId) return
+  assignGroup(world, leaderEid, tableId)
+  if (payload.standItem) attachStand(world, leaderEid, payload.standItem, ctx)
+}
+
+export function update(world, ctx) {
+  for (const { payload } of world.drain('StandThrown')) {
+    seatFromThrow(world, payload, ctx)
+  }
+  for (const { payload } of world.drain('SeatNow')) {
     assignGroup(world, payload.leaderEid, payload.tableId)
   }
 }

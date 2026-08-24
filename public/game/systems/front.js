@@ -1,11 +1,10 @@
-// Walk-in front-of-house exhibit: street, door, queue, POS, register, dining.
+// Walk-in front-of-house exhibit: street, door, queue, order computer, dining.
 // Sibling of kitchen.js. Customers are ECS; hall crowd stays as-is.
 
 import * as THREE from 'three'
 import { C } from '../common/ecs.js'
 import { spawnPrefab } from '../gamedata/prefabs.js'
-import { ITEM_NAMES } from '../gamedata/menu.js'
-import { addToBurger, plateBurger, layoutStack, layoutPlate, grabStackWith } from './stacking.js'
+import { addToBurger, plateBurger, layoutStack, layoutPlate } from './stacking.js'
 import { applyCookLook, COOK_RGB } from './food.js'
 import * as SpawnCustomer from './spawnCustomer.js'
 import * as Locomotion from './locomotion.js'
@@ -20,10 +19,11 @@ import * as Think from './think.js'
 import * as Serve from './serve.js'
 import * as Tip from './tip.js'
 import * as Register from './register.js'
+import * as StandGive from './standGive.js'
 import * as Speech from './speech.js'
 import * as View from './view.js'
 import { createPosKiosk } from './posKiosk.js'
-import { setPosOpen, posClicksBlocked } from './touch.js'
+import { posClicksBlocked } from './touch.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
 import { createKit, addTiledFloor, WALL_T, WAINSCOT, RAIL, WAINSCOT_T, COUNTER_Y } from '../common/kit.js'
 import { mountWallPosters } from './posters.js'
@@ -159,67 +159,6 @@ function makeLabel(text) {
   return m
 }
 
-function ensureLiveOverlay() {
-  if (document.getElementById('pos-live')) return
-  const css = document.createElement('style')
-  css.textContent = `
-    #pos-live {
-      display:none; position:fixed; inset:0; z-index:9;
-      background:#0c0a08cc; align-items:center; justify-content:center;
-      pointer-events:none;
-    }
-    #pos-live.open { display:flex; pointer-events:auto; }
-    #pos-live .bezel {
-      width:min(640px, 92vw); background:#1c1814; border:2px solid #6b5a45;
-      border-radius:12px; padding:16px; color:#f0e6d4;
-      font:14px/1.4 ui-sans-serif, system-ui, sans-serif;
-    }
-    #pos-live .title {
-      letter-spacing:.14em; font-weight:700; font-size:12px;
-      color:#c4a574; margin-bottom:10px; text-transform:uppercase;
-    }
-    #pos-live .draft {
-      min-height:48px; background:#14110e; border:1px solid #3a322c;
-      border-radius:6px; padding:10px 12px; margin-bottom:12px;
-    }
-    #pos-live .burgers { display:flex; flex-wrap:wrap; gap:8px; }
-    #pos-live .burgers button, #pos-live .row button {
-      background:#2a241f; color:#f0e6d4; border:1px solid #4a4038;
-      border-radius:8px; padding:8px 12px; cursor:pointer;
-      font:13px ui-sans-serif, system-ui, sans-serif;
-    }
-    #pos-live .burgers button:hover, #pos-live .row button:hover { background:#3a322c; }
-    #pos-live .row { display:flex; gap:8px; margin-top:14px; align-items:center; }
-    #pos-live .row .close { margin-left:auto; }
-    #pos-live .hint { color:#9a8f80; font-size:12px; margin-top:8px; }
-  `
-  document.head.appendChild(css)
-  const wrap = document.createElement('div')
-  wrap.id = 'pos-live'
-  wrap.innerHTML = `
-    <div class="bezel">
-      <div class="title">Front of house · new order</div>
-      <div class="draft" id="pos-live-draft">empty ticket</div>
-      <div class="burgers" id="pos-live-burgers"></div>
-      <div class="row">
-        <button type="button" id="pos-live-confirm">Confirm</button>
-        <button type="button" id="pos-live-reset">Reset</button>
-        <button type="button" class="close" id="pos-live-close">close</button>
-      </div>
-      <div class="hint" id="pos-live-hint"></div>
-    </div>
-  `
-  document.body.appendChild(wrap)
-  const burgers = wrap.querySelector('#pos-live-burgers')
-  for (const name of ITEM_NAMES) {
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.textContent = name
-    btn.dataset.item = name
-    burgers.appendChild(btn)
-  }
-}
-
 export async function createFront({
   scene, player, foodWorld, foodProtos,
   npcProto, world, kitchen, onPosOpen, switchProto, getHands,
@@ -237,12 +176,10 @@ export async function createFront({
   const floorTex = loadMap('./assets/textures/enviro/DiningFloor.png')
   const topTex = loadMap('./assets/textures/enviro/TableMain.png')
   const greyTex = loadMap('./assets/textures/Grey.png')
-  const darkTex = loadMap('./assets/textures/GreyDark.png')
 
   const upperMat = mat(0xffffff, { map: wallUpper, roughness: 0.9 })
   const lowerMat = mat(0xffffff, { map: wallLower, roughness: 0.88 })
   const greyMat = mat(0xffffff, { map: greyTex, roughness: 0.7 })
-  const darkMat = mat(0xffffff, { map: darkTex, roughness: 0.62, metalness: 0.08 })
   const topMat = mat(0xffffff, { map: topTex, roughness: 0.55 })
   const railMat = mat(0xd4a24c, { roughness: 0.5 })
   const orangeMat = mat(0xc45a28, { roughness: 0.55 })
@@ -404,55 +341,8 @@ export async function createFront({
   const staffX0 = 0.05
   const staffX1 = 1.85
 
-  // Till (west) · order computer · burger POS (east). All face staff.
-  const posX = 1.75
-  const posG = new THREE.Group()
-  posG.position.set(posX, 0, cZ - cD / 2)
-  posG.rotation.y = Math.PI
-  box(0.72, 0.48, 0.08, darkMat, posX, COUNTER_Y + 0.42, cZ - cD / 2 - 0.04, Math.PI)
-  const posScreen = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.64, 0.40),
-    new THREE.MeshBasicMaterial({
-      map: loadMap('./assets/textures/pos/set-burgers.png'),
-      toneMapped: false,
-    }),
-  )
-  posScreen.position.set(0, COUNTER_Y + 0.42, 0.09)
-  posScreen.userData.posLive = true
-  posG.add(posScreen)
-  putTag('POS', 0, COUNTER_Y + 0.78, 0.08, { sx: 0.7, sy: 0.7, parent: posG })
-  object.add(posG)
-
-  const regX = cX0 + 0.55
-  const regZ = cZ
-  box(0.62, 0.42, 0.48, darkMat, regX, COUNTER_Y + 0.24, regZ)
-  const regCanvas = document.createElement('canvas')
-  regCanvas.width = 256
-  regCanvas.height = 96
-  const regCtx = regCanvas.getContext('2d')
-  const regMap = new THREE.CanvasTexture(regCanvas)
-  regMap.colorSpace = THREE.SRGBColorSpace
-  function paintRegister(money) {
-    const g = regCtx
-    g.fillStyle = '#0b1a12'
-    g.fillRect(0, 0, 256, 96)
-    g.fillStyle = '#3dff9a'
-    g.font = '700 48px ui-monospace, monospace'
-    g.textAlign = 'center'
-    g.textBaseline = 'middle'
-    g.fillText('$' + Math.round(money), 128, 50)
-    regMap.needsUpdate = true
-  }
-  paintRegister(100)
-  const regDisp = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.55, 0.2),
-    new THREE.MeshBasicMaterial({ map: regMap, toneMapped: false }),
-  )
-  regDisp.position.set(regX, COUNTER_Y + 0.52, cZ - cD / 2 - 0.02)
-  regDisp.rotation.y = Math.PI
-  object.add(regDisp)
-  putTag('TILL', regX, COUNTER_Y + 0.78, cZ - cD / 2 - 0.02, { sx: 0.65, sy: 0.65, yaw: Math.PI })
-
+  // Order computer (till drawer + monitor) aligned with the queue.
+  // Number stands sit east of it. No second POS bezel.
   const compX = 0.15
 
   // Staff menu on the dining face of the pass wall, east of the order
@@ -462,6 +352,16 @@ export async function createFront({
   const menuX = 4.382
   const menuY = 2.288
   const menuZ = -5.36
+  function confirmOrder(items, { seatNow = true } = {}) {
+    if (!world) return { error: 'noWorld' }
+    const r = OrderTake.confirm(world, items)
+    if (r && r.tableId && seatNow) {
+      world.emit('SeatNow', { leaderEid: r.leaderEid, tableId: r.tableId })
+      TableAssign.update(world, ctx(0, 0))
+    }
+    return r
+  }
+
   const posKiosk = createPosKiosk({
     scene, player,
     parent: object,
@@ -471,6 +371,13 @@ export async function createFront({
     yaw: Math.PI,
     onOpen: onPosOpen,
     onClose: () => {},
+    onConfirm: items => confirmOrder(items, { seatNow: false }),
+    getHint: () => {
+      if (!world) return 'no one at slot 1 — queue a customer first'
+      if (OrderTake.npcInQueue(world)) return 'leader is waiting to order'
+      if (OrderTake.waitingForStand(world)) return 'throw a number stand at the leader'
+      return 'no one at slot 1 — queue a customer first'
+    },
   })
 
   // Single-file queue, perpendicular to the counter. Slot 1 is closest
@@ -665,8 +572,11 @@ export async function createFront({
 
   const doorWpos = worldOf(doorX, 0, doorZ)
   const streetWpos = worldOf(doorX, 0, hz - 1.4)
-  const posWpos = worldOf(posX, COUNTER_Y, cZ)
-  const regWpos = worldOf(regX, COUNTER_Y, regZ)
+  object.updateMatrixWorld(true)
+  const kioskWorld = new THREE.Vector3()
+  posKiosk.object.getWorldPosition(kioskWorld)
+  const posWpos = kioskWorld.clone()
+  const regWpos = kioskWorld.clone()
   const staffWpos = worldOf((staffX0 + staffX1) / 2, 0, staffZ)
   const passWpos = worldOf(1.35, 0, winZ + 1.6)
   const backWpos = kitchen && kitchen.viewSpot
@@ -674,12 +584,14 @@ export async function createFront({
     : worldOf((backDoorX0 + backDoorX1) / 2, 0, -hz + 1.2)
   const winLook = worldOf((winX0 + winX1) / 2, HALF_H, winZ)
 
-  let numberStandPos = worldOf(0.95, COUNTER_Y, cZ)
+  let numberStandPos = worldOf(1.05, COUNTER_Y, cZ)
+  const standPiles = []
   const nsProto = foodProtos && foodProtos['items/NumberStand']
   if (nsProto && foodWorld) {
     for (let i = 0; i < 3; i++) {
-      const w = worldOf(0.88 + i * 0.24, COUNTER_Y + 0.12, cZ - 0.06)
+      const w = worldOf(1.02 + i * 0.24, COUNTER_Y + 0.12, cZ - 0.06)
       if (i === 0) numberStandPos = w
+      standPiles.push({ x: w.x, y: COUNTER_Y + 0.14, z: w.z })
       foodWorld.spawn({
         proto: nsProto, type: 'numberStand', slug: 'items/NumberStand',
         x: w.x, z: w.z, y: COUNTER_Y + 0.14, maxSize: 0.28,
@@ -706,7 +618,7 @@ export async function createFront({
         })
       }
     }
-    spawnPrefab(world, 'front/Register', { x: regWpos.x, y: COUNTER_Y, z: regWpos.z })
+    spawnPrefab(world, 'front/Register', { x: regWpos.x, y: regWpos.y, z: regWpos.z })
   }
 
   const indoorNodes = [
@@ -725,87 +637,26 @@ export async function createFront({
     seatSpots['Table' + t.tableId] = worldOf(t.x, TABLE_Y, t.z)
   })
 
-  ensureLiveOverlay()
-  const overlay = document.getElementById('pos-live')
-  const draftEl = document.getElementById('pos-live-draft')
-  const hintEl = document.getElementById('pos-live-hint')
-  let overlayOpen = false
-  let draft = []
-
-  function paintDraft() {
-    draftEl.textContent = draft.length ? draft.join(', ') : 'empty ticket (max 4)'
-    const waiting = world ? OrderTake.npcInQueue(world) : 0
-    hintEl.textContent = waiting
-      ? 'leader is waiting to order'
-      : 'no one at slot 1 — queue a customer first'
+  function tryPress() {
+    if (posKiosk && posKiosk.isOpen) return false
+    if (posClicksBlocked()) return false
+    if (!player.locked) return false
+    return switches.tryPress()
   }
 
   function closeOverlay() {
-    overlayOpen = false
-    overlay.classList.remove('open')
-    setPosOpen(false)
+    if (posKiosk) posKiosk.close()
   }
 
-  function openOverlay() {
-    overlayOpen = true
-    overlay.classList.add('open')
-    paintDraft()
-    if (!player.touchLock) player.unlock()
-    setPosOpen(true)
-  }
-
-  overlay.querySelector('#pos-live-burgers').onclick = e => {
-    const name = e.target && e.target.dataset && e.target.dataset.item
-    if (!name) return
-    if (draft.length >= 4) return
-    draft.push(name)
-    paintDraft()
-  }
-  overlay.querySelector('#pos-live-reset').onclick = () => {
-    draft = []
-    paintDraft()
-  }
-  overlay.querySelector('#pos-live-confirm').onclick = () => {
-    const r = confirmOrder(draft.slice())
-    draft = []
-    paintDraft()
-    if (r) closeOverlay()
-  }
-  overlay.querySelector('#pos-live-close').onclick = closeOverlay
-  overlay.addEventListener('pointerdown', e => {
-    if (e.target !== overlay) return
-    e.preventDefault()
-    e.stopPropagation()
-    closeOverlay()
-  })
-  addEventListener('keydown', e => {
-    if (e.code === 'Escape' && overlayOpen) closeOverlay()
-  })
-
-  const raycaster = new THREE.Raycaster()
-  const ndc = new THREE.Vector2(0, 0)
-
-  function tryPress() {
-    if (overlayOpen) return false
-    if (posClicksBlocked()) return false
-    if (!player.locked) return false
-    if (switches.tryPress()) return true
-    raycaster.setFromCamera(ndc, player.camera)
-    const hits = raycaster.intersectObject(object, true)
-    for (const h of hits) {
-      if (h.distance > 5.8) continue
-      if (h.object.userData.posLive || h.object === posBezel) {
-        openOverlay()
-        return true
-      }
-    }
-    return false
-  }
-
-  function confirmOrder(items) {
-    if (!world) return null
-    const r = OrderTake.confirm(world, items)
-    return r
+  function giveStand() {
+    if (!world) return { error: 'noWorld' }
+    const leaderEid = OrderTake.waitingForStand(world)
+    if (!leaderEid) return { error: 'noLeader' }
+    const leader = world.field(leaderEid, C.Customer)
+    const tableId = leader && leader.tableId
+    world.emit('StandThrown', { leaderEid, standItem: null, tableId })
+    TableAssign.update(world, ctx(0, 0))
+    return { leaderEid, tableId }
   }
 
   function spawnNow(size = 2) {
@@ -875,17 +726,15 @@ export async function createFront({
     return { plate: plate.type, complete: !!bun.complete, at: seatName, food: foodName }
   }
 
-  let ticketsLive = false
   function syncTickets() {
     if (!kitchen || !kitchen.setTickets || !world) return
     const cols = [[], [], [], []]
     for (const [, order] of world.query(C.Order)) {
       if (order.status !== 'hanging') continue
-      ticketsLive = true
       const i = Math.max(0, Math.min(3, (order.tableId || 1) - 1))
       cols[i] = (order.items || []).slice(0, i === 3 ? 4 : 2)
     }
-    if (ticketsLive) kitchen.setTickets(cols)
+    kitchen.setTickets(cols)
   }
 
   function dump() {
@@ -947,14 +796,14 @@ export async function createFront({
       const look = worldOf(q1.x, 1.35, q1.z)
       return { stand, look, label: 'Queue' }
     }
-    if (/^(POS|Checkout)$/i.test(key) || key === 'front/POS') {
+    if (/^(POS|Checkout|OrderComputer|Order computer)$/i.test(key) || key === 'front/POS') {
       if (posKiosk && posKiosk.viewSpot) {
         const v = posKiosk.viewSpot()
-        return { stand: v.stand, look: v.look, label: 'POS' }
+        return { stand: v.stand, look: v.look, label: 'Order computer' }
       }
       const stand = worldOf(staffX0, 0, staffZ)
-      const look = worldOf(posX, COUNTER_Y + 0.4, cZ - cD / 2)
-      return { stand, look, label: 'POS' }
+      const look = worldOf(compX, COUNTER_Y + 0.5, cZ - cD / 2)
+      return { stand, look, label: 'Order computer' }
     }
     if (/^Staff$/i.test(key)) {
       return {
@@ -983,8 +832,14 @@ export async function createFront({
       return { stand, look, label: 'StaffMenu' }
     }
     if (/^Register$/i.test(key)) {
-      const stand = worldOf(regX, 0, staffZ)
-      const look = worldOf(regX, COUNTER_Y + 0.35, cZ - cD / 2)
+      if (posKiosk && posKiosk.viewSpot) {
+        const v = posKiosk.viewSpot()
+        const look = v.look.clone()
+        look.y = COUNTER_Y + 0.22
+        return { stand: v.stand, look, label: 'Register' }
+      }
+      const stand = worldOf(compX, 0, staffZ)
+      const look = worldOf(compX, COUNTER_Y + 0.22, cZ - cD / 2)
       return { stand, look, label: 'Register' }
     }
     if (/^(Window|Pass)$/i.test(key)) {
@@ -1047,14 +902,8 @@ export async function createFront({
   }
 
   function lookLabel() {
-    if (overlayOpen) return 'POS · live terminal'
     const sw = switches.lookLabel()
     if (sw) return sw
-    raycaster.setFromCamera(ndc, player.camera)
-    const hits = raycaster.intersectObject(object, true)
-    if (hits.length && hits[0].distance < 5.8 && hits[0].object.userData.posLive) {
-      return 'POS · take an order'
-    }
     return ''
   }
 
@@ -1072,6 +921,11 @@ export async function createFront({
       bodies,
       tipProto: foodProtos && foodProtos['items/Tip'],
       hands: getHands ? getHands() : null,
+      standProto: nsProto,
+      standPiles,
+      fillStands: () => StandGive.fillPiles({
+        foodWorld, standProto: nsProto, standPiles,
+      }),
       indoorNodes,
       groundY: (gx, gz) => player.groundY(gx, gz),
       resolveXZ: (gx, gz, r, skip) => player.resolveXZ(gx, gz, r, skip),
@@ -1089,7 +943,8 @@ export async function createFront({
     Rigidbody.update(world, dt)
     Queue.update(world)
     OrderTake.update(world)
-    TableAssign.update(world)
+    StandGive.update(world, c)
+    TableAssign.update(world, c)
     SeatArrive.update(world)
     WaitLook.update(world, dt, c)
     Patience.update(world, dt, c)
@@ -1098,7 +953,7 @@ export async function createFront({
     Tip.update(world, c)
     Register.update(world, c)
     for (const { payload } of world.drain('TipCollected')) {
-      paintRegister(payload.money)
+      if (posKiosk && posKiosk.paintRegister) posKiosk.paintRegister(payload.money)
     }
     Speech.update(world, c)
     View.update(world)
@@ -1108,8 +963,8 @@ export async function createFront({
 
   return {
     object, update, viewSpot, lookLabel, tryPress,
-    confirm: confirmOrder, spawnNow, dropPlated, dump,
-    get overlayOpen() { return overlayOpen },
+    confirm: confirmOrder, giveStand, spawnNow, dropPlated, dump,
+    get overlayOpen() { return !!(posKiosk && posKiosk.isOpen) },
     close: closeOverlay,
     posKiosk, wallPosters,
     width: BOOTH_W, depth: BOOTH_D, height: BOOTH_H,
