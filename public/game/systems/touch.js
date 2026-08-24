@@ -73,6 +73,8 @@ export function createTouchControls({
   let active = false
   const pointers = new Map()
   const handOn = { l: false, r: false }
+  const noPassive = { passive: false }
+  const noPassiveCap = { passive: false, capture: true }
 
   function playing() {
     return !!(getPlaying && getPlaying())
@@ -231,7 +233,7 @@ export function createTouchControls({
       pointers.set(e.pointerId, { role })
       el.classList.add('on')
       down()
-    })
+    }, noPassive)
     const end = e => {
       const p = pointers.get(e.pointerId)
       if (!p || p.role !== role) return
@@ -239,8 +241,8 @@ export function createTouchControls({
       el.classList.remove('on')
       up()
     }
-    el.addEventListener('pointerup', end)
-    el.addEventListener('pointercancel', end)
+    el.addEventListener('pointerup', end, noPassive)
+    el.addEventListener('pointercancel', end, noPassive)
   }
 
   function key(code, on) {
@@ -280,7 +282,7 @@ export function createTouchControls({
       if (posing()) return
       ensurePlay()
       setHand(side, !handOn[side])
-    })
+    }, noPassive)
   }
   bindToggle(btnL, 'l')
   bindToggle(btnR, 'r')
@@ -324,10 +326,10 @@ export function createTouchControls({
   }
 
   if (moveZone) {
-    moveZone.addEventListener('pointerdown', stickDown)
-    moveZone.addEventListener('pointermove', stickMove)
-    moveZone.addEventListener('pointerup', stickUp)
-    moveZone.addEventListener('pointercancel', stickUp)
+    moveZone.addEventListener('pointerdown', stickDown, noPassive)
+    moveZone.addEventListener('pointermove', stickMove, noPassive)
+    moveZone.addEventListener('pointerup', stickUp, noPassive)
+    moveZone.addEventListener('pointercancel', stickUp, noPassive)
   }
 
   function lookDown(e) {
@@ -368,10 +370,10 @@ export function createTouchControls({
   }
 
   if (lookZone) {
-    lookZone.addEventListener('pointerdown', lookDown)
-    lookZone.addEventListener('pointermove', lookMove)
-    lookZone.addEventListener('pointerup', lookUp)
-    lookZone.addEventListener('pointercancel', lookUp)
+    lookZone.addEventListener('pointerdown', lookDown, noPassive)
+    lookZone.addEventListener('pointermove', lookMove, noPassive)
+    lookZone.addEventListener('pointerup', lookUp, noPassive)
+    lookZone.addEventListener('pointercancel', lookUp, noPassive)
   }
 
   function releasePlayPointers() {
@@ -392,7 +394,13 @@ export function createTouchControls({
   document.addEventListener('visibilitychange', () => { if (document.hidden) onLost() })
 
   function blockGesture(e) {
+    const multi = !!(e.touches && e.touches.length > 1)
+    if (multi) {
+      e.preventDefault()
+      return
+    }
     if (!active) return
+    if (document.body.classList.contains('pos-open')) return
     e.preventDefault()
   }
 
@@ -419,11 +427,13 @@ export function createTouchControls({
     if (player && player.injectMouse) player.injectMouse(dx * LOOK_MUL, dy * LOOK_MUL)
   }
 
+  document.addEventListener('touchstart', blockGesture, noPassiveCap)
   document.addEventListener('touchmove', e => {
     blockGesture(e)
     continueLookFromTouches(e)
-  }, { passive: false, capture: true })
+  }, noPassiveCap)
   document.addEventListener('touchend', e => {
+    blockGesture(e)
     if (!active) return
     let lookId = null, look = null
     for (const [id, p] of pointers) {
@@ -439,14 +449,15 @@ export function createTouchControls({
       break
     }
     if (!still) pointers.delete(lookId)
-  }, { capture: true })
-  document.addEventListener('gesturestart', blockGesture, { passive: false, capture: true })
-  document.addEventListener('gesturechange', blockGesture, { passive: false, capture: true })
-  document.addEventListener('gestureend', blockGesture, { passive: false, capture: true })
+  }, noPassiveCap)
+  document.addEventListener('touchcancel', blockGesture, noPassiveCap)
+  document.addEventListener('gesturestart', blockGesture, noPassiveCap)
+  document.addEventListener('gesturechange', blockGesture, noPassiveCap)
+  document.addEventListener('gestureend', blockGesture, noPassiveCap)
   document.addEventListener('wheel', e => {
     if (!active) return
     if (e.ctrlKey) e.preventDefault()
-  }, { passive: false, capture: true })
+  }, noPassiveCap)
 
   function apply(show) {
     active = !!show
@@ -462,7 +473,17 @@ export function createTouchControls({
     } else if (playing() && player && player.setTouchLock) {
       player.setTouchLock(true)
     }
-    if (active) resetStickHome()
+    if (active) {
+      resetStickHome()
+      const rootEl = document.documentElement
+      rootEl.style.overscrollBehavior = 'none'
+      document.body.style.overscrollBehavior = 'none'
+      const el = canvas || document.querySelector('body > canvas')
+      if (el) {
+        el.style.touchAction = 'none'
+        el.style.overscrollBehavior = 'none'
+      }
+    }
   }
 
   addEventListener('resize', () => {
