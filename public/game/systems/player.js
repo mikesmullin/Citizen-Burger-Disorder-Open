@@ -84,7 +84,10 @@ export function createFirstPersonPlayer({
   let grounded = false
   let jumpHeld = false
   let locked = false
+  let touchLock = false
   let enabled = true
+  const analog = { x: 0, z: 0 }
+  const tap = { 0: false, 1: false, 2: false }
   // When true, pointer-lock mousemove is not applied to yaw/pitch. The scale
   // gun (and anything else that wants a drag gesture) reads pullDragDelta().
   let lookFrozen = false
@@ -200,19 +203,21 @@ export function createFirstPersonPlayer({
     }
     dt = Math.min(dt, 0.1)
 
-    fire1 = !!mouse[0]; fire1Down = fire1 && !wasMouse[0]; fire1Up = !fire1 && wasMouse[0]
-    fire2 = !!mouse[2]; fire2Down = fire2 && !wasMouse[2]; fire2Up = !fire2 && wasMouse[2]
+    fire1 = !!(mouse[0] || tap[0]); fire1Down = fire1 && !wasMouse[0]; fire1Up = !fire1 && wasMouse[0]
+    fire2 = !!(mouse[2] || tap[2]); fire2Down = fire2 && !wasMouse[2]; fire2Up = !fire2 && wasMouse[2]
     wasMouse[0] = fire1
     wasMouse[2] = fire2
+    tap[0] = tap[1] = tap[2] = false
     wheelDir = wheelAcc > 0 ? 1 : wheelAcc < 0 ? -1 : 0
     wheelAcc = 0
 
     yawObject.rotation.y = THREE.MathUtils.degToRad(yaw)
     pitchObject.rotation.x = THREE.MathUtils.degToRad(pitch)
 
-    const xMov = axis(KEYS.right, KEYS.left)
-    const zMov = axis(KEYS.fwd, KEYS.back)
-    const running = [...KEYS.run].some(c => keys.has(c))
+    const analogMag = Math.hypot(analog.x, analog.z)
+    const xMov = Math.max(-1, Math.min(1, axis(KEYS.right, KEYS.left) + analog.x))
+    const zMov = Math.max(-1, Math.min(1, axis(KEYS.fwd, KEYS.back) + analog.z))
+    const running = [...KEYS.run].some(c => keys.has(c)) || analogMag >= 0.78
     const walking = [...KEYS.walk].some(c => keys.has(c))
 
     camera.getWorldDirection(fwd)
@@ -427,7 +432,21 @@ export function createFirstPersonPlayer({
     update, spawn, lookAt,
     requestLock, unlock,
     addCollider, setRoomBounds,
-    get locked() { return locked },
+    get locked() { return locked || touchLock },
+    get pointerLocked() { return locked },
+    get touchLock() { return touchLock },
+    setTouchLock(v) { touchLock = !!v },
+    setAnalog(x = 0, z = 0) {
+      let ax = +x || 0, az = +z || 0
+      const mag = Math.hypot(ax, az)
+      if (mag > 1) { ax /= mag; az /= mag }
+      analog.x = ax
+      analog.z = az
+    },
+    get analog() { return analog },
+    pulseFire(button = 0) {
+      tap[button] = true
+    },
     get grounded() { return grounded },
     get jumping() { return !grounded && vy > 0 },
     get yaw() { return yaw },

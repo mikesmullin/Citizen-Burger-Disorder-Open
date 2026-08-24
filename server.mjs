@@ -33,6 +33,7 @@ const MIME = {
   '.glb': 'model/gltf-binary',
   '.wasm': 'application/wasm',
   '.txt': 'text/plain; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
 }
 
 function noCacheHeaders() {

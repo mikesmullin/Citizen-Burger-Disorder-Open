@@ -33,6 +33,11 @@ const HELP = `dbg — time travel
   dbg.draws()             next frame: meshes grouped by name, highest count first
   dbg.help()
 
+touch (phones, or ?touch on the URL)
+  __museum.touch.dump()
+  __museum.touch.setStick(0, 1)     // analog: x strafe, z forward
+  __museum.touch.press('l'|'r'|'jump', true)
+
 pose — model studio (white bg, nothing else)
   await pose.enter('items/Cheese')
   pose.view('front'|'back'|'left'|'right'|'top'|'bottom'|'iso')
@@ -160,6 +165,8 @@ export function installHarness({
         locked: player.locked,
         leftHand: player.leftHand,
         rightHand: player.rightHand,
+        analog: player.analog ? { x: r(player.analog.x), z: r(player.analog.z) } : null,
+        touchLock: !!player.touchLock,
       } : null,
       ...extra,
     }

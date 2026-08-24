@@ -2,6 +2,7 @@
 // with a clickable kiosk using the NavigationGraphics PNGs.
 
 import * as THREE from 'three'
+import { setPosOpen, posClicksBlocked } from './touch.js'
 
 const PRESS_RANGE = 5.8
 const SCREEN_W = 1.28
@@ -48,10 +49,11 @@ function ensureOverlay() {
   const css = document.createElement('style')
   css.textContent = `
     #pos-terminal {
-      display:none; position:fixed; inset:0; z-index:8;
+      display:none; position:fixed; inset:0; z-index:9;
       background:#0c0a08cc; align-items:center; justify-content:center;
+      pointer-events:none;
     }
-    #pos-terminal.open { display:flex; }
+    #pos-terminal.open { display:flex; pointer-events:auto; }
     #pos-terminal .bezel {
       width:min(720px, 92vw); background:#1c1814; border:2px solid #6b5a45;
       border-radius:12px; padding:16px 16px 12px; box-shadow:0 18px 50px #0008;
@@ -267,8 +269,11 @@ export function createPosKiosk({
     close()
   })
   overlayKeys.appendChild(closeBtn)
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) close()
+  overlay.addEventListener('pointerdown', e => {
+    if (e.target !== overlay) return
+    e.preventDefault()
+    e.stopPropagation()
+    close()
   })
 
   function paintOverlay() {
@@ -290,6 +295,7 @@ export function createPosKiosk({
     overlay.classList.add('open')
     paintOverlay()
     if (onOpen) onOpen()
+    setPosOpen(true)
   }
 
   function close() {
@@ -297,10 +303,12 @@ export function createPosKiosk({
     open = false
     overlay.classList.remove('open')
     if (onClose) onClose()
+    setPosOpen(false)
   }
 
   function tryPress() {
     if (open) return false
+    if (posClicksBlocked()) return false
     if (!player.locked) return false
     raycaster.setFromCamera(ndc, player.camera)
     const hits = raycaster.intersectObject(object, true)
