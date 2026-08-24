@@ -59,6 +59,14 @@ export function isFood(type) {
     && type !== 'fire' && type !== 'numberStand' && !isTool(type)
 }
 
+const _worldPos = new THREE.Vector3()
+export function foodWorldPos(item, out = _worldPos) {
+  if (!item) return out.set(0, 0, 0)
+  if (item.object) return item.object.getWorldPosition(out)
+  if (item.position) return out.copy(item.position)
+  return out.set(0, 0, 0)
+}
+
 // Pedestal copies you can grab. Plate / tip / box are items, not edible food.
 export function inferPickup(slug = '', label = '') {
   const s = (slug + ' ' + label).toLowerCase()
@@ -80,6 +88,7 @@ export function inferPickup(slug = '', label = '') {
 
 export function ratWillSteal(type) {
   return type === 'cheese' || type === 'patty' || type === 'bacon' || type === 'tomato'
+    || type === 'lettuceHead' || type === 'lettuce' || type === 'lettucePart'
     || type === 'tip'
 }
 
@@ -277,15 +286,20 @@ export function applyCookLook(root, {
   })
 }
 
-// Food.cs cook(): 10s to cooked, 10s hold, 10s to burned.
+// Food.cs cook(): 10s to cooked, 10s hold, 10s to burned. Burn/char and the
+// on-fire stretch are 3× that (30s through overcooked 0–1).
+const COOK_SECS = 10
+const COOK_HOLD_SECS = 10
+const OVERCOOK_SECS = 30
+
 export function cookTick(item, dt) {
   if (!item) return
   item.cooked = item.cooked || 0
   item.cookedDelay = item.cookedDelay || 0
   item.overcooked = item.overcooked || 0
-  if (item.cooked < 1) item.cooked = Math.min(1, item.cooked + dt / 10)
-  else if (item.cookedDelay < 1) item.cookedDelay = Math.min(1, item.cookedDelay + dt / 10)
-  else item.overcooked = Math.min(1, item.overcooked + dt / 10)
+  if (item.cooked < 1) item.cooked = Math.min(1, item.cooked + dt / COOK_SECS)
+  else if (item.cookedDelay < 1) item.cookedDelay = Math.min(1, item.cookedDelay + dt / COOK_HOLD_SECS)
+  else item.overcooked = Math.min(1, item.overcooked + dt / OVERCOOK_SECS)
   // ~1.5 s on the grill (cookTimeIdeal 10 → cooked 0.15) before a rat dies.
   if (item.type === 'rat' && item.cooked >= 0.15) {
     item.dead = true
@@ -299,33 +313,37 @@ export function cookTick(item, dt) {
     : (item.dirty ? './assets/textures/PlateDirty.png' : null)
   const root = item.object
   const variant = mapUrl || ''
+  const cooked = Math.min(1, item.cooked)
+  const overcooked = Math.min(1, item.overcooked)
   if (root && item.watchVisual && item.instVariant !== variant) {
-    applyCookLook(root, {
-      cooked: Math.min(1, item.cooked),
-      overcooked: Math.min(1, item.overcooked),
-      cookedRGB: rgb,
-      mapUrl,
-    })
+    applyCookLook(root, { cooked, overcooked, cookedRGB: rgb, mapUrl })
     item.instVariant = variant
     item.watchVisual(item)
     return
   }
-  if (root && root.userData && root.userData.instSlots) {
-    const tgt = new THREE.Color(rgb.r, rgb.g, rgb.b)
-    const burn = new THREE.Color(BURN_RGB.r, BURN_RGB.g, BURN_RGB.b)
+  const tgt = new THREE.Color(rgb.r, rgb.g, rgb.b)
+  const burn = new THREE.Color(BURN_RGB.r, BURN_RGB.g, BURN_RGB.b)
+  function instColor() {
     const c = (item.cookOrig || new THREE.Color(1, 1, 1)).clone()
-    if (item.cooked > 0) c.lerp(tgt, Math.min(1, item.cooked))
-    if (item.overcooked > 0) c.lerp(burn, Math.min(1, item.overcooked))
+    if (cooked > 0) c.lerp(tgt, cooked)
+    if (overcooked > 0) c.lerp(burn, overcooked)
+    return c
+  }
+  if (root && root.userData && root.userData.instSlots) {
     const slots = root.userData.instSlots
+    const c = instColor()
     for (const s of slots.slots) s.pool.setColor(s.i, c)
     return
   }
-  if (root) applyCookLook(root, {
-    cooked: Math.min(1, item.cooked),
-    overcooked: Math.min(1, item.overcooked),
-    cookedRGB: rgb,
-    mapUrl,
-  })
+  // Rats (and any other pooled pickup) draw from an InstancedMesh; the
+  // hidden proto mesh would tint while the visible instance stayed raw.
+  if (item.pool && item.slot != null && item.slot >= 0) {
+    if (!item.cookOrig && item.visual && item.visual.material && item.visual.material.color) {
+      item.cookOrig = item.visual.material.color.clone()
+    }
+    item.pool.setColor(item.slot, instColor())
+  }
+  if (root) applyCookLook(root, { cooked, overcooked, cookedRGB: rgb, mapUrl })
 }
 
 export function layoutFood(root, { maxSize, sit = false, type, slug } = {}) {
@@ -445,7 +463,21 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
   }
 
   function foodOnFloor() {
-    return items.filter(i => i.foodBeenOnFloor && !i.held && !i.stolen && ratWillSteal(i.type))
+    return items.filter(i => {
+      if (!i.onFloor || i.held || i.stolen || i.inFood || i.planted) return false
+      if (!ratWillSteal(i.type)) return false
+      const feet = i.restingY != null ? i.restingY : (i.position.y - (i.height || 0.1) * 0.5)
+      return feet <= 0.12
+    })
+  }
+
+  const _flatE = new THREE.Euler()
+  const _flatQ = new THREE.Quaternion()
+  function sitFlat(item) {
+    if (!item || !item.object || item.planted) return
+    const obj = item.object
+    _flatE.setFromQuaternion(obj.quaternion, 'YXZ')
+    obj.quaternion.setFromEuler(_flatE.set(0, _flatE.y, 0, 'YXZ'))
   }
 
   function update(dt, time) {
@@ -461,7 +493,7 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
 
     const landed = []
     for (const item of items) {
-      if (item.held || item.stolen || item.inFood || item.planted) continue
+      if (item.held || item.kinematic || item.stolen || item.inFood || item.planted) continue
       const half = item.height * 0.5
       const px = item.object.position.x
       const py = item.object.position.y
@@ -489,7 +521,6 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
         item.object.position.y = surf.y + half
         const rest = surf.mat === 'floor' ? 0.12 : 0.07
         item.vel.y = impact > 0.5 ? impact * rest : 0
-        if (impact > 0.5) sfx.impact(item, impact, time)
         const wasAir = !item.onFloor
         item.onFloor = true
         item.restingOn = surf.plat
@@ -497,9 +528,15 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
         item.restingMat = surf.mat
         // Only the museum floor counts as "the floor" for rats. Food on a
         // counter, grill, or trailer bed is resting, not dropped.
-        if (surf.y <= 0.08) item.foodBeenOnFloor = true
-        if (wasAir && item.dropped) landed.push(item)
-        if (wasAir && item.dropped) tryLandStack(item, items)
+        item.foodBeenOnFloor = surf.y <= 0.08
+        let stacked = false
+        if (wasAir && item.dropped) sitFlat(item)
+        if (wasAir && item.dropped) {
+          landed.push(item)
+          stacked = !!tryLandStack(item, items)
+        }
+        if (stacked && item.type === 'plate') sfx.plateStack(item)
+        else if (impact > 0.5) sfx.impact(item, impact, time)
       } else {
         // Airborne: free projectile (no drag — it should fly).
         item.object.position.x = nx
@@ -544,7 +581,9 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
       }
     }
     for (const item of landed) {
-      tryLandStack(item, items)
+      if (tryLandStack(item, items) && item.type === 'plate' && item.stackedOn) {
+        sfx.plateStack(item)
+      }
       if (item.onLand) item.onLand(item)
     }
     for (const item of items) {

@@ -157,6 +157,18 @@
    "label": "Wet Dropping 02",
    "src": "audio/sfx/WetDropping02.mp3",
    "source": "Assets/Sounds/Food/Collisions/wet-dropping02.mp3"
+  },
+  {
+   "id": "KaChing1",
+   "label": "Ka-Ching 1",
+   "src": "audio/sfx/KaChing1.mp3",
+   "source": "ka-ching1.mp3"
+  },
+  {
+   "id": "KaChing2",
+   "label": "Ka-Ching 2",
+   "src": "audio/sfx/KaChing2.mp3",
+   "source": "ka-ching2.mp3"
   }
  ]
 }

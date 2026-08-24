@@ -1,6 +1,68 @@
 // BurgerStacking.cs + Plate.cs. Bottom bun collects food; top bun closes
 // the stack. A closed burger that lands on an empty plate parents to it.
-//
+
+import * as THREE from 'three'
+
+const _lp = new THREE.Vector3()
+const _lq = new THREE.Quaternion()
+const _fe = new THREE.Euler()
+const _hs = new THREE.Vector3()
+
+function flattenYaw(q) {
+  _fe.setFromQuaternion(q, 'YXZ')
+  q.setFromEuler(_fe.set(0, _fe.y, 0, 'YXZ'))
+  return q
+}
+
+function ensureCarry(item) {
+  if (!item || !item.object) return null
+  if (item.carry && item.carry.parent === item.object) return item.carry
+  const carry = new THREE.Group()
+  carry.name = 'StackCarry'
+  item.object.add(carry)
+  item.carry = carry
+  return carry
+}
+
+function syncCarryScale(item) {
+  const carry = ensureCarry(item)
+  if (!carry) return null
+  item.object.updateWorldMatrix(true, false)
+  item.object.getWorldScale(_hs)
+  carry.scale.set(
+    Math.abs(_hs.x) > 1e-6 ? 1 / _hs.x : 1,
+    Math.abs(_hs.y) > 1e-6 ? 1 / _hs.y : 1,
+    Math.abs(_hs.z) > 1e-6 ? 1 / _hs.z : 1,
+  )
+  return carry
+}
+
+function attachChild(parent, child, x, y, z) {
+  if (!parent || !child || !child.object) return
+  const carry = syncCarryScale(parent)
+  if (!carry) return
+  if (child.object.parent !== carry) {
+    carry.attach(child.object)
+    child.kinematic = true
+  }
+  child.object.position.set(x, y, z)
+  child.object.quaternion.identity()
+}
+
+function detachChild(child) {
+  const obj = child && child.object
+  if (!obj || !obj.parent || obj.parent.name !== 'StackCarry') return
+  obj.updateWorldMatrix(true, true)
+  let root = obj
+  while (root.parent) root = root.parent
+  if (root.isScene) root.attach(obj)
+  child.kinematic = false
+}
+
+function stackHeld(item) {
+  return !!(item && (item.held || (item.onPlate && item.onPlate.held)))
+}
+
 // Dirty dishes: original has no PlateStacking.cs — plates were independent
 // rigidbodies, so a SphereCast hit the top of a physics pile (a pop) and
 // Sink.cs washed each collider in the water. We glue empty plates into a
@@ -22,6 +84,31 @@ function stackHeight(item) {
   return Math.max(0.04, (item.height || 0.12) * 0.48)
 }
 
+function stackTopY(bun) {
+  if (!bun || !bun.object) return bun && bun.position ? bun.position.y : 0
+  bun.object.updateWorldMatrix(true, false)
+  bun.object.getWorldPosition(_lp)
+  let y = _lp.y + (bun.height || 0.12) * 0.5
+  for (const f of bun.stack || []) y += stackHeight(f)
+  return y
+}
+
+// Toppings have no food-food collision, so they snap to the counter/plate
+// platform *under* a plated bun. Thin cheese sits ~plate-height below the
+// bun center; the old `item.y >= bun.y - 0.15` then misses.
+function overBurger(item, bun) {
+  if (!item || !bun) return false
+  const reach = 0.5 + (bun.height || 0.1) * 0.2
+  const overBun = xzDist(item, bun) < reach
+  const overPlate = !!(bun.onPlate && xzDist(item, bun.onPlate) < reach + 0.06)
+  if (!overBun && !overPlate) return false
+  const bunY = bun.position.y
+  const plateY = bun.onPlate ? bun.onPlate.position.y : bunY
+  const low = Math.min(plateY, bunY) - 0.4
+  const high = stackTopY(bun) + 0.5
+  return item.position.y >= low && item.position.y <= high
+}
+
 export function isStackable(type) {
   return STACKABLE.has(type)
 }
@@ -34,12 +121,30 @@ export function ensureStack(bun) {
 
 export function layoutStack(bun) {
   if (!bun || !bun.stack || !bun.stack.length) return
-  let y = bun.position.y + (bun.height || 0.12) * 0.45
+  if (stackHeld(bun)) {
+    let y = (bun.height || 0.12) * 0.45
+    for (const f of bun.stack) {
+      if (!f || !f.object) continue
+      const h = stackHeight(f)
+      attachChild(bun, f, 0, y + h * 0.5, 0)
+      if (f.vel) f.vel.set(0, 0, 0)
+      f.onFloor = false
+      y += h
+    }
+    return
+  }
+  for (const f of bun.stack) detachChild(f)
+  bun.object.updateWorldMatrix(true, false)
+  bun.object.getWorldPosition(_lp)
+  bun.object.getWorldQuaternion(_lq)
+  flattenYaw(_lq)
+  bun.object.quaternion.copy(_lq)
+  let y = _lp.y + (bun.height || 0.12) * 0.45
   for (const f of bun.stack) {
     if (!f || !f.object) continue
     const h = stackHeight(f)
-    f.object.position.set(bun.position.x, y + h * 0.5, bun.position.z)
-    f.object.quaternion.copy(bun.object.quaternion)
+    f.object.position.set(_lp.x, y + h * 0.5, _lp.z)
+    f.object.quaternion.copy(_lq)
     if (f.vel) f.vel.set(0, 0, 0)
     f.onFloor = false
     y += h
@@ -75,7 +180,7 @@ export function addToBurger(bun, item) {
 export function plateBurger(plate, bun) {
   if (!plate || !bun) return false
   if (plate.type !== 'plate' || bun.type !== 'bun') return false
-  if (plate.plated || !bun.complete) return false
+  if (plate.plated) return false
   if (plate.held || bun.held) return false
   if (plate.stackedOn || (plate.stack && plate.stack.length)) return false
   plate.plated = bun
@@ -86,6 +191,7 @@ export function plateBurger(plate, bun) {
     f.inFood = true
     f.stackedOn = bun
   }
+  layoutPlate(plate)
   return true
 }
 
@@ -108,12 +214,29 @@ export function ensureDishStack(plate) {
 
 export function layoutDishStack(root) {
   if (!root || root.type !== 'plate' || !root.stack || !root.stack.length) return
-  let y = root.position.y
+  if (root.held) {
+    let y = 0
+    for (const p of root.stack) {
+      if (!p || !p.object) continue
+      y += dishStep(p)
+      attachChild(root, p, 0, y, 0)
+      if (p.vel) p.vel.set(0, 0, 0)
+      p.onFloor = false
+    }
+    return
+  }
+  for (const p of root.stack) detachChild(p)
+  root.object.updateWorldMatrix(true, false)
+  root.object.getWorldPosition(_lp)
+  root.object.getWorldQuaternion(_lq)
+  flattenYaw(_lq)
+  root.object.quaternion.copy(_lq)
+  let y = _lp.y
   for (const p of root.stack) {
     if (!p || !p.object) continue
     y += dishStep(p)
-    p.object.position.set(root.position.x, y, root.position.z)
-    p.object.quaternion.copy(root.object.quaternion)
+    p.object.position.set(_lp.x, y, _lp.z)
+    p.object.quaternion.copy(_lq)
     if (p.vel) p.vel.set(0, 0, 0)
     p.onFloor = false
   }
@@ -133,6 +256,29 @@ export function isStackedDish(item) {
   return !!(item && item.type === 'plate' && item.stackedOn && item.stackedOn.type === 'plate')
 }
 
+// Pop one plate only from the top plate's inner top face. Side, rim, or any
+// lower plate in the pile grabs the whole stack (the root).
+const POP_UP = 0.5
+const POP_INNER = 0.55
+
+export function plateGrabTarget(food, hitPoint, upY) {
+  if (!food || food.type !== 'plate') return food
+  const root = dishRoot(food) || food
+  const stack = root.stack
+  if (!stack || !stack.length) return root
+  const top = stack[stack.length - 1]
+  if (!top || food !== top) return root
+  if (!hitPoint || upY == null || upY < POP_UP) return root
+  if (!top.object) return root
+  top.object.getWorldPosition(_lp)
+  const radial = Math.hypot(hitPoint.x - _lp.x, hitPoint.z - _lp.z)
+  const radius = Math.max(0.2, top.radius || 0.3)
+  if (radial > radius * POP_INNER) return root
+  const topY = _lp.y + (top.height || 0.08) * 0.35
+  if (hitPoint.y < topY - 0.03) return root
+  return top
+}
+
 // Lift `item` and everything above it off the parent pile (LIFO pop / split).
 export function popDish(item) {
   if (!item || item.type !== 'plate') return item
@@ -146,6 +292,7 @@ export function popDish(item) {
   const taken = root.stack.splice(idx)
   item.stackedOn = null
   item.inFood = false
+  detachChild(item)
   const above = taken.slice(1)
   item.stack = above
   for (const p of above) {
@@ -161,6 +308,7 @@ export function unstackDish(root) {
   const members = (root.stack || []).slice()
   root.stack = []
   for (const p of members) {
+    detachChild(p)
     p.stackedOn = null
     p.inFood = !!p.plated
     if (p.stack) p.stack = []
@@ -197,12 +345,21 @@ export function addToDishStack(base, item) {
 export function layoutPlate(plate) {
   const bun = plate.plated
   if (!bun) return
-  bun.object.position.set(
-    plate.position.x,
-    plate.position.y + (plate.height || 0.08) * 0.5 + (bun.height || 0.12) * 0.5,
-    plate.position.z,
-  )
-  bun.object.quaternion.copy(plate.object.quaternion)
+  const sitY = (plate.height || 0.08) * 0.16 + (bun.height || 0.12) * 0.4
+  if (plate.held) {
+    attachChild(plate, bun, 0, sitY, 0)
+    if (bun.vel) bun.vel.set(0, 0, 0)
+    layoutStack(bun)
+    return
+  }
+  detachChild(bun)
+  plate.object.updateWorldMatrix(true, false)
+  plate.object.getWorldPosition(_lp)
+  plate.object.getWorldQuaternion(_lq)
+  flattenYaw(_lq)
+  plate.object.quaternion.copy(_lq)
+  bun.object.position.set(_lp.x, _lp.y + sitY, _lp.z)
+  bun.object.quaternion.copy(_lq)
   if (bun.vel) bun.vel.set(0, 0, 0)
   layoutStack(bun)
 }
@@ -253,7 +410,7 @@ export function tickStacks(items) {
 
 export function tryLandStack(item, items) {
   if (!item || item.held || item.inFood) return false
-  if (item.type === 'bun' && item.complete) {
+  if (item.type === 'bun') {
     for (const plate of items) {
       if (plate.type !== 'plate' || plate.held || plate.plated) continue
       if (plate.stackedOn || (plate.stack && plate.stack.length)) continue
@@ -275,10 +432,7 @@ export function tryLandStack(item, items) {
   if (!isStackable(item.type)) return false
   for (const bun of items) {
     if (bun.type !== 'bun' || bun === item || bun.held || bun.complete) continue
-    const reach = 0.42 + (bun.height || 0.1) * 0.3
-    if (xzDist(item, bun) < reach && item.position.y >= bun.position.y - 0.15) {
-      return addToBurger(bun, item)
-    }
+    if (overBurger(item, bun)) return addToBurger(bun, item)
   }
   return false
 }

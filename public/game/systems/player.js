@@ -117,6 +117,8 @@ export function createFirstPersonPlayer({
     yaw   -= e.movementX * lookSensitivity
     pitch -= e.movementY * lookSensitivity
     pitch = Math.max(pitchMin, Math.min(pitchMax, pitch))
+    yawObject.rotation.y = THREE.MathUtils.degToRad(yaw)
+    pitchObject.rotation.x = THREE.MathUtils.degToRad(pitch)
   }
   function onLockChange() {
     locked = document.pointerLockElement != null

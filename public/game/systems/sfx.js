@@ -5,20 +5,23 @@
 // Clip lists match the Player.prefab AudioLibrary inspector (wet + plate)
 // and !Knife.prefab choppingSFX. SFXdryCollisions was empty in the dump;
 // we still play the unused dry-drop clips so lettuce/buns are not silent.
+// Plate02 is reserved for adding a plate to a dish stack.
 
 import * as THREE from 'three'
 import { whenAudio, safePlay } from '../common/audio.js'
 
 const SETS = {
-  plate: ['Plate03.mp3', 'Plate02.mp3', 'Plate01.mp3'],
+  plate: ['Plate03.mp3', 'Plate01.mp3'],
   wet: ['MeatSlap.mp3', 'MeatDropping.mp3', 'SoftMeat.mp3'],
   dry: [
     'DryDropping01.mp3',
     'FoodDroppingPlate01.mp3', 'FoodDroppingPlate02.mp3',
   ],
   chop: ['Chopping.mp3', 'Chopping02.mp3'],
+  till: ['KaChing1.mp3', 'KaChing2.mp3'],
 }
 const BASE = './assets/audio/sfx/'
+const PLATE_STACK = BASE + 'Plate02.mp3'
 
 // Which set a food type drops into.
 export function impactSet(type) {
@@ -45,6 +48,7 @@ export function createImpactSfx({ player, scene } = {}) {
       if (!urls.includes(url)) urls.push(url)
     }
   }
+  if (!urls.includes(PLATE_STACK)) urls.push(PLATE_STACK)
   whenAudio(lis => {
     listener = lis
     const loader = new THREE.AudioLoader()
@@ -103,6 +107,20 @@ export function createImpactSfx({ player, scene } = {}) {
     playAt(pick('chop'), p, 0.9)
   }
 
+  function kaching(pos) {
+    const p = pos || (player && player.position)
+    if (!p) return
+    playAt(pick('till'), p, 0.9)
+  }
+
+  function plateStack(itemOrPos) {
+    const p = itemOrPos && itemOrPos.object
+      ? itemOrPos.object.position
+      : (itemOrPos && itemOrPos.position) || itemOrPos
+    if (!p) return
+    playAt(PLATE_STACK, p, 0.85)
+  }
+
   function dump() {
     return {
       loaded: buffers.size,
@@ -110,5 +128,5 @@ export function createImpactSfx({ player, scene } = {}) {
     }
   }
 
-  return { impact, chop, impactSet, dump }
+  return { impact, chop, kaching, plateStack, impactSet, dump }
 }

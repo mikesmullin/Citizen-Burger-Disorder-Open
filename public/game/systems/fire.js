@@ -5,14 +5,16 @@
 
 import * as THREE from 'three'
 import { hideTriggers } from '../common/unityScene.js'
-import { isFood, isTool, cookTick } from './food.js'
+import { isFood, isTool, cookTick, foodWorldPos } from './food.js'
 import { detachFromDish, dishRoot } from './stacking.js'
 import { getListener, loadBuffer, safePlay } from '../common/audio.js'
+import { createSmoke } from './spray.js'
 
 export const BURN_HEALTH = 8
 const IGNITE_OVERCOOK = 0.85
 const FIRE_COOK = 2
 const ASH_DELAY = 1
+const CONSUME_DELAY = 3
 const SPREAD_R = 1.7
 const SPREAD_R_LARGE = 2.6
 const CONTACT_R = 0.8
@@ -65,6 +67,7 @@ export function createFireWatch({
   scene, player, foodWorld, getRats, getHands, fireProto, instancer,
 } = {}) {
   const fires = []
+  const smoke = createSmoke({ scene, camera: player && player.camera })
   let proto = fireProto || null
   let bigAcc = 0
   let playerBurn = PLAYER_CATCH
@@ -233,7 +236,7 @@ export function createFireWatch({
 
   function placeOnItem(f) {
     if (!f || !f.item || !f.item.object) return
-    const p = f.item.object.position
+    const p = foodWorldPos(f.item)
     const h = Math.max(0.08, f.item.height || 0.12)
     f.root.position.set(p.x, p.y + h * 0.35, p.z)
   }
@@ -341,6 +344,32 @@ export function createFireWatch({
     }
   }
 
+  function isSmoking(item) {
+    if (!item || item.consumed || item.planted) return false
+    if (item.onFire) return true
+    return !!(item.onGrill && (item.overcooked || 0) > 0.02)
+  }
+
+  function emitSmoke(item, dt) {
+    if (!smoke || !isSmoking(item)) {
+      if (item) item.smokeAcc = 0
+      return
+    }
+    const p = foodWorldPos(item)
+    const rate = item.onFire ? 16 : 11
+    item.smokeAcc = (item.smokeAcc || 0) + dt
+    const interval = 1 / rate
+    const origin = {
+      x: p.x,
+      y: p.y + Math.max(0.05, (item.height || 0.12) * 0.5),
+      z: p.z,
+    }
+    while (item.smokeAcc >= interval && smoke.count < smoke.max) {
+      item.smokeAcc -= interval
+      smoke.emit(origin, !!item.onFire)
+    }
+  }
+
   function tickBurn(item, dt) {
     if (!item || item.type === 'fire' || item.planted) return
     if (item.fireCooldown > 0) item.fireCooldown = Math.max(0, item.fireCooldown - dt)
@@ -351,7 +380,7 @@ export function createFireWatch({
       cookTick(item, dt * FIRE_COOK)
       if ((item.overcooked || 0) >= 1) {
         item.ashTime = (item.ashTime || 0) + dt
-        if (item.ashTime >= ASH_DELAY) consume(item)
+        if (item.ashTime >= CONSUME_DELAY) consume(item)
       }
     }
   }
@@ -379,7 +408,7 @@ export function createFireWatch({
     for (const item of flamables()) {
       if (item.onFire) continue
       if (item.fireCooldown > 0) continue
-      const p = item.object ? item.object.position : item.position
+      const p = foodWorldPos(item)
       if (!p) continue
       const dx = p.x - _pos.x, dy = (p.y || 0) - _pos.y, dz = p.z - _pos.z
       const d = Math.hypot(dx, dy, dz)
@@ -455,12 +484,17 @@ export function createFireWatch({
     dt = Math.min(dt, 0.1)
     player.camera.getWorldPosition(_cam)
 
-    for (const item of [...(foodWorld ? foodWorld.items : [])]) tickBurn(item, dt)
+    for (const item of [...(foodWorld ? foodWorld.items : [])]) {
+      tickBurn(item, dt)
+      emitSmoke(item, dt)
+    }
     const den = getRats && getRats()
     for (const rat of [...(den ? den.rats : [])]) {
       if (foodWorld && foodWorld.items.includes(rat)) continue
       tickBurn(rat, dt)
+      emitSmoke(rat, dt)
     }
+    if (smoke) smoke.update(dt)
 
     for (const f of [...fires]) {
       if (f.out) continue
@@ -505,6 +539,7 @@ export function createFireWatch({
         attached: f.item ? (f.item.type || f.item.kind || null) : null,
         orphanTime: +(f.orphanTime || 0).toFixed(2),
         pos: { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2) },
+        smoke: smoke ? smoke.count : 0,
       }
     })
   }

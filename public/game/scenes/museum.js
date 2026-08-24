@@ -1357,18 +1357,22 @@ function dumpExtras() {
     spray: hands?.dumpSpray?.() || null,
     fires: fires?.dump?.() || [],
     playerOnFire: !!fires?.playerOnFire,
-    food: (foodWorld?.items || []).map(i => ({
-      type: i.type, kind: i.kind || 'food', contents: i.contents || null, opened: !!i.opened,
-      pos: { x: +i.position.x.toFixed(2), y: +i.position.y.toFixed(2), z: +i.position.z.toFixed(2) },
-      held: !!i.held, onFloor: !!i.onFloor, stolen: !!i.stolen,
-      onFire: !!i.onFire, planted: !!i.planted,
-      dirty: !!i.dirty,
-      plated: !!i.plated,
-      stacked: !!(i.stackedOn && i.stackedOn.type === 'plate'),
-      stack: (i.type === 'plate' && i.stack && !i.stackedOn) ? i.stack.length : 0,
-      overcooked: +(i.overcooked || 0).toFixed(2),
-      ashTime: +(i.ashTime || 0).toFixed(2),
-    })),
+    dropAim: hands?.dumpDrop?.() || null,
+    food: (foodWorld?.items || []).map(i => {
+      const p = i.object ? i.object.getWorldPosition(new THREE.Vector3()) : i.position
+      return {
+        type: i.type, kind: i.kind || 'food', contents: i.contents || null, opened: !!i.opened,
+        pos: { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2) },
+        held: !!i.held, onFloor: !!i.onFloor, stolen: !!i.stolen,
+        onFire: !!i.onFire, planted: !!i.planted,
+        dirty: !!i.dirty,
+        plated: !!i.plated,
+        stacked: !!(i.stackedOn && i.stackedOn.type === 'plate'),
+        stack: (i.type === 'plate' && i.stack && !i.stackedOn) ? i.stack.length : 0,
+        overcooked: +(i.overcooked || 0).toFixed(2),
+        ashTime: +(i.ashTime || 0).toFixed(2),
+      }
+    }),
     rats: (rats?.rats || []).map(r => ({
       pos: { x: +r.position.x.toFixed(2), y: +r.position.y.toFixed(2), z: +r.position.z.toFixed(2) },
       stolen: r.stolen?.type || null, goingHome: !!r.goingHome,

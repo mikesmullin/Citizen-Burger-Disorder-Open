@@ -7,7 +7,7 @@
 // Floor is DiningFloor. Grill.cs cook() runs on food that lands on the range.
 
 import * as THREE from 'three'
-import { isFood, cookTick, setPlateDirty, setPlateClean } from './food.js'
+import { isFood, cookTick, setPlateDirty, setPlateClean, foodWorldPos } from './food.js'
 import { addToDishStack, unstackDish } from './stacking.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
 import { createKit, addTiledFloor, WALL_T, WAINSCOT_T } from '../common/kit.js'
@@ -628,7 +628,7 @@ export async function createKitchen({
   // only while its collider overlaps this volume (Grill.cs OnTriggerStay).
   function onCooktop(item) {
     if (!item || !item.object) return false
-    const p = item.object.position
+    const p = foodWorldPos(item)
     const half = Math.max(0.04, (item.height || 0.12) * 0.5)
     const pad = 0.08
     if (p.x < grillPlat.minx - pad || p.x > grillPlat.maxx + pad) return false
@@ -638,14 +638,34 @@ export async function createKitchen({
     return bottom < grillPlat.y + 0.2 && top > grillPlat.y - 0.06
   }
 
+  function isRat(item) {
+    return !!(item && (item.type === 'rat' || item.kind === 'rat'))
+  }
+
   function cookable(item) {
-    return item && !item.stolen && (isFood(item.type) || item.type === 'rat')
+    if (!item) return false
+    if (isRat(item)) return true
+    if (item.stolen) return false
+    return isFood(item.type)
+  }
+
+  function plateProtected(item) {
+    if (!item) return false
+    if (item.type === 'plate') return true
+    if (item.onPlate) return true
+    let p = item.stackedOn
+    while (p) {
+      if (p.type === 'plate' || p.onPlate) return true
+      p = p.stackedOn
+    }
+    return false
   }
 
   function cookTree(item, dt) {
     if (!item.onFire) cookTick(item, dt)
     for (const f of item.stack || []) if (!f.onFire) cookTick(f, dt)
     if (item.plated) cookTree(item.plated, dt)
+    if (isRat(item) && item.stolen && !item.stolen.onFire) cookTick(item.stolen, dt)
   }
 
   let listener = null
@@ -655,31 +675,48 @@ export async function createKitchen({
     listener = lis
   })
 
+  function stopGrillSound(item) {
+    if (!item) return
+    if (item.cookAudioTimer) {
+      clearTimeout(item.cookAudioTimer)
+      item.cookAudioTimer = 0
+    }
+    const a = item.cookAudio
+    if (a) {
+      try { if (a.isPlaying) a.stop() } catch (_) { /* ignore */ }
+      if (a.parent) a.parent.remove(a)
+    }
+    item.cookAudio = null
+    item.onGrill = false
+  }
+
   function setGrillSound(item, on) {
     if (!item || !item.object) return
-    // Grill.cs OnTriggerEnter: one-shot sfxMeatCooking (patty.mp3), not a loop.
+    // Grill sizzle (patty.mp3). Loops while this item stays on the cooktop;
+    // stop when it leaves so the sound does not follow a pickup.
     if (on) {
-      if (!item.onGrill) {
-        item.onGrill = true
-        listener = listener || getListener()
-        if (pattyBuf && listener) {
-          const a = new THREE.PositionalAudio(listener)
-          a.setBuffer(pattyBuf)
-          a.setLoop(false)
-          a.setRefDistance(2.2)
-          a.setMaxDistance(18)
-          a.setRolloffFactor(1)
-          a.setVolume(0.75)
-          item.object.add(a)
-          item.cookAudio = a
-          safePlay(a)
-          const drop = () => { if (a.parent) a.parent.remove(a) }
-          a.addEventListener('ended', drop)
-          if (pattyBuf.duration) setTimeout(drop, pattyBuf.duration * 1000 + 200)
-        }
+      item.onGrill = true
+      const playing = !!(item.cookAudio && item.cookAudio.isPlaying)
+      if (playing) return
+      listener = listener || getListener()
+      if (!pattyBuf || !listener) return
+      if (item.cookAudio) {
+        try { if (item.cookAudio.isPlaying) item.cookAudio.stop() } catch (_) { /* ignore */ }
+        if (item.cookAudio.parent) item.cookAudio.parent.remove(item.cookAudio)
+        item.cookAudio = null
       }
-    } else if (item.onGrill) {
-      item.onGrill = false
+      const a = new THREE.PositionalAudio(listener)
+      a.setBuffer(pattyBuf)
+      a.setLoop(true)
+      a.setRefDistance(2.2)
+      a.setMaxDistance(18)
+      a.setRolloffFactor(1)
+      a.setVolume(0.75)
+      item.object.add(a)
+      item.cookAudio = a
+      safePlay(a)
+    } else if (item.onGrill || item.cookAudio) {
+      stopGrillSound(item)
     }
   }
 
@@ -695,11 +732,16 @@ export async function createKitchen({
       if (!item || seen.has(item) || !cookable(item)) return
       if (item.inFood && item.stackedOn && item.stackedOn.type === 'bun') return
       seen.add(item)
+      if (plateProtected(item)) {
+        setGrillSound(item, false)
+        return
+      }
       const hot = onCooktop(item)
         || (item.stack || []).some(f => onCooktop(f))
-        || (item.plated && onCooktop(item.plated))
+        || (isRat(item) && item.stolen && onCooktop(item.stolen))
       if (hot) cookTree(item, dt)
       setGrillSound(item, hot && !item.onFire)
+      if (isRat(item) && item.stolen) item.stolen.onGrill = !!(hot && !item.stolen.onFire)
     }
     for (const item of foodWorld.items) consider(item)
     for (const rat of den ? den.rats : []) consider(rat)
