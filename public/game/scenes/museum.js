@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { createUnityLoader, fitOnFloor, fitLongest, fitOnFloorNative, fitLongestNative, restorePattyDisc, hideTriggers, boundsOf } from '../common/unityScene.js'
 
 import { createFirstPersonPlayer } from '../systems/player.js'
+import { createTouchControls, posClicksBlocked } from '../systems/touch.js'
 import { createCrowd } from '../systems/npc.js'
 import { createFoodWorld, inferFoodType, inferPickup, isFood, FOOD_SIZE, FOOD_SIZE_BY_SLUG } from '../systems/food.js'
 import { createFoodKiosk, FOOD_HALL_SKIP } from '../systems/foodKiosk.js'
@@ -926,7 +927,7 @@ async function boot() {
       scene, player, foodWorld, foodProtos,
       npcProto, world, kitchen, switchProto, labels, bubbles, pickInst, bodies,
       getHands: () => hands,
-      onPosOpen: () => { player.unlock() },
+      onPosOpen: () => { if (!player.touchLock) player.unlock() },
       x: BOOTHS.front.x, z: BOOTHS.front.z, facingY: 0,
     })
     posKiosk = front.posKiosk || null
@@ -1170,7 +1171,7 @@ async function boot() {
     scene, camera: player.camera, renderer, player, exhibits, crowd, skybox,
     foodWorld, hands, rats, demoPlayers, soundboard, delivery, scaler, swatches,
     posters, foodKiosk, posKiosk, kitchen, front, world, fires, fpsOverlay,
-    teleport, enter, pause, flags,
+    teleport, enter, pause, flags, touch,
     dbg: harness.dbg,
     pose: harness.pose,
   }
@@ -1296,6 +1297,7 @@ function dumpExtras() {
     badges: demoPlayers?.badgeDump?.() || [],
     armScale: hands?.armScale ?? 1,
     front: front?.dump() || null,
+    touch: touch ? touch.dump() : null,
     sky: skybox ? {
       ...skybox.dump(),
       hemi: hallLit ? +hallLit.hemi.intensity.toFixed(3) : 0,
@@ -1311,8 +1313,16 @@ const harness = installHarness({
   teleport,
   dumpExtras,
   extraDbg: { scaler, requestDrawCensus, get lastDrawCensus() { return lastDrawCensus } },
-  hudSelectors: ['#hud', '#fpsHud', '#look', '#cross', '#help', '#loader', '#dbgPanel', '#dbgToggle'],
+  hudSelectors: ['#hud', '#fpsHud', '#look', '#cross', '#help', '#loader', '#dbgPanel', '#dbgToggle', '#touch-ui'],
 })
+
+const touch = createTouchControls({
+  player,
+  onEnter: () => enter(),
+  getPlaying: () => playing,
+  getPosing: () => !!(harness.poser && harness.poser.active),
+})
+if (/\bdebug\b/.test(location.search)) document.body.classList.add('debug')
 
 function pageKiosks(dir) {
   if (posters) posters.tryTurn(dir)
@@ -1323,27 +1333,22 @@ function pageKiosks(dir) {
 function tick(dt) {
   player.update(dt)
   const handsUp = player.leftHand || player.rightHand
+  const uiOpen = !!(posKiosk?.isOpen || front?.overlayOpen)
   if (scaler.tool === 'hand' && !handsUp) {
     const dir = player.fire2Down ? -1 : player.fire1Down ? 1 : (player.wheelDir || 0)
     if (dir) pageKiosks(dir)
   }
-  if (soundboard) {
-    soundboard.update(dt)
-    if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
-      soundboard.tryPress()
-      if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
-      if (front && !front.overlayOpen) front.tryPress()
-      if (kitchen) kitchen.tryPress()
-      if (exhibitSwitches) exhibitSwitches.tryPress()
-    }
-  } else if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down)) {
+  if (soundboard) soundboard.update(dt)
+  if (scaler.tool === 'hand' && (player.fire1Down || player.fire2Down) && !handsUp
+    && !posClicksBlocked()) {
+    if (soundboard) soundboard.tryPress()
     if (posKiosk && !posKiosk.isOpen) posKiosk.tryPress()
     if (front && !front.overlayOpen) front.tryPress()
     if (kitchen) kitchen.tryPress()
     if (exhibitSwitches) exhibitSwitches.tryPress()
   }
-  if (hands && !posKiosk?.isOpen && !front?.overlayOpen) {
-    hands.update(dt, { grab: scaler.tool === 'hand', right: scaler.tool === 'hand' })
+  if (hands) {
+    hands.update(dt, { grab: scaler.tool === 'hand' && !uiOpen, right: scaler.tool === 'hand' && !uiOpen })
   }
   if (foodWorld) foodWorld.update(dt, harness.time.T)
   if (rats) rats.update(dt, harness.time.T)
@@ -1361,11 +1366,25 @@ function tick(dt) {
 }
 
 function applySize() {
-  const w = innerWidth, h = innerHeight
+  const vv = window.visualViewport
+  const w = Math.max(1, Math.round((vv && vv.width) || innerWidth))
+  const h = Math.max(1, Math.round((vv && vv.height) || innerHeight))
   if (w < 2 || h < 2) return false
   player.camera.aspect = w / h
   player.camera.updateProjectionMatrix()
   renderer.setSize(w, h)
+  const left = Math.round((vv && vv.offsetLeft) || 0)
+  const top = Math.round((vv && vv.offsetTop) || 0)
+  const canvas = renderer.domElement
+  canvas.style.left = left + 'px'
+  canvas.style.top = top + 'px'
+  canvas.style.right = 'auto'
+  canvas.style.bottom = 'auto'
+  const root = document.documentElement
+  root.style.setProperty('--vv-left', left + 'px')
+  root.style.setProperty('--vv-top', top + 'px')
+  root.style.setProperty('--vv-width', w + 'px')
+  root.style.setProperty('--vv-height', h + 'px')
   harness.poser.resize()
   return true
 }
@@ -1522,7 +1541,8 @@ renderer.setAnimationLoop(() => {
   const p = player.position
   $('s-pos').textContent = `${p.x.toFixed(1)}  ${p.y.toFixed(1)}  ${p.z.toFixed(1)}`
   const k = player.keys
-  $('s-speed').textContent = (k.has('ShiftLeft') || k.has('ShiftRight'))
+  const analogMag = Math.hypot(player.analog.x, player.analog.z)
+  $('s-speed').textContent = (k.has('ShiftLeft') || k.has('ShiftRight') || analogMag >= 0.78)
     ? 'run' : ((k.has('ControlLeft') || k.has('ControlRight')) ? 'walk' : 'move')
   if ($('s-hold')) $('s-hold').textContent = hands?.holdingLabel() || '—'
   if ($('s-tool')) {
@@ -1568,11 +1588,14 @@ function enter() {
   playing = true
   player.enabled = true
   if ($('loader').dataset.ready === '1') $('loader').style.display = 'none'
-  $('hud').style.display = 'block'
-  $('fpsHud').style.display = 'flex'
+  if (!touch.active) {
+    $('hud').style.display = 'block'
+    $('fpsHud').style.display = 'flex'
+  }
   $('cross').style.display = 'block'
   $('look').style.display = 'block'
-  player.requestLock(renderer.domElement)
+  if (touch.active) player.setTouchLock(true)
+  else player.requestLock(renderer.domElement)
   soundboard?.resume()
 }
 
@@ -1584,7 +1607,7 @@ function pause() {
 
 renderer.domElement.addEventListener('click', () => {
   if (!playing) enter()
-  else if (!player.locked) player.requestLock(renderer.domElement)
+  else if (!touch.active && !player.locked) player.requestLock(renderer.domElement)
 })
 addEventListener('keydown', e => {
   if (e.target && e.target.closest('input, textarea, [contenteditable]')) return
@@ -1593,6 +1616,13 @@ addEventListener('keydown', e => {
   }
 })
 addEventListener('resize', applySize)
+addEventListener('orientationchange', applySize)
+if (window.visualViewport) {
+  visualViewport.addEventListener('resize', applySize)
+  visualViewport.addEventListener('scroll', applySize)
+}
+document.addEventListener('fullscreenchange', applySize)
+document.addEventListener('webkitfullscreenchange', applySize)
 applySize()
 
 boot().catch(err => {

@@ -50,6 +50,14 @@ Click to capture the mouse.
 | Space | jump |
 | Esc | release mouse (click to recapture; game does not pause) |
 
+On a phone (or `?touch` on the URL) a left stick + jump + **L** / **R** overlay
+appears instead of pointer lock. Stick output is halved vs. a full analog
+deflection; the rim is still run. Drag the empty right side to look; tap it
+to press a switch or kiosk. Tap **L** / **R** to raise that hand and grab;
+tap again to drop and lower the arm. The pause button is a controls card —
+the sim keeps running. Drive it from an agent with
+`__museum.touch.setStick(x, z)` and `__museum.touch.press('l'|'r'|'jump', true)`.
+
 **Scale and transform guns** are for humans to measure a pose, then paste
 the numbers to the coding agent so it can encode them. They are not
 gameplay. `0` puts the gun away (empty hands). `1` equips the **scale
@@ -141,7 +149,7 @@ public/
   vendor/                  three.js r185
   game/                    JavaScript — roles, not Unity folders
     scenes/museum.js       the hall
-    systems/               player, hands, food, npc, rats
+    systems/               player, hands, food, npc, rats, touch
     common/unityScene.js   JSON → Object3D
     common/timeTravel.js   freeze / step clock
     common/poser.js        white-studio model views

@@ -22,6 +22,7 @@ import * as Register from './register.js'
 import * as Speech from './speech.js'
 import * as View from './view.js'
 import { createPosKiosk } from './posKiosk.js'
+import { setPosOpen, posClicksBlocked } from './touch.js'
 import { boundsOf } from '../common/unityScene.js'
 import { createSwitchSet, SWITCH_Y, muteBoothShadows } from './lightSwitch.js'
 import { createKit, addTiledFloor, WALL_T, WAINSCOT, RAIL, WAINSCOT_T, COUNTER_Y } from '../common/kit.js'
@@ -158,10 +159,11 @@ function ensureLiveOverlay() {
   const css = document.createElement('style')
   css.textContent = `
     #pos-live {
-      display:none; position:fixed; inset:0; z-index:8;
+      display:none; position:fixed; inset:0; z-index:9;
       background:#0c0a08cc; align-items:center; justify-content:center;
+      pointer-events:none;
     }
-    #pos-live.open { display:flex; }
+    #pos-live.open { display:flex; pointer-events:auto; }
     #pos-live .bezel {
       width:min(640px, 92vw); background:#1c1814; border:2px solid #6b5a45;
       border-radius:12px; padding:16px; color:#f0e6d4;
@@ -700,13 +702,15 @@ export async function createFront({
   function closeOverlay() {
     overlayOpen = false
     overlay.classList.remove('open')
+    setPosOpen(false)
   }
 
   function openOverlay() {
     overlayOpen = true
     overlay.classList.add('open')
     paintDraft()
-    player.unlock()
+    if (!player.touchLock) player.unlock()
+    setPosOpen(true)
   }
 
   overlay.querySelector('#pos-live-burgers').onclick = e => {
@@ -727,7 +731,12 @@ export async function createFront({
     if (r) closeOverlay()
   }
   overlay.querySelector('#pos-live-close').onclick = closeOverlay
-  overlay.addEventListener('click', e => { if (e.target === overlay) closeOverlay() })
+  overlay.addEventListener('pointerdown', e => {
+    if (e.target !== overlay) return
+    e.preventDefault()
+    e.stopPropagation()
+    closeOverlay()
+  })
   addEventListener('keydown', e => {
     if (e.code === 'Escape' && overlayOpen) closeOverlay()
   })
@@ -737,6 +746,7 @@ export async function createFront({
 
   function tryPress() {
     if (overlayOpen) return false
+    if (posClicksBlocked()) return false
     if (!player.locked) return false
     if (switches.tryPress()) return true
     raycaster.setFromCamera(ndc, player.camera)

@@ -2,13 +2,23 @@
 <meta charset="utf-8">
 <title>CBD — Asset museum</title>
 <link rel="icon" href="./favicon.ico">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1714">
+<link rel="manifest" href="./manifest.webmanifest">
 <meta http-equiv="Cache-Control" content="no-store">
 <style>
   :root { color-scheme: dark; }
   * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { height:100%; overflow:hidden; background:#1a1714; }
+  html, body { height:100%; height:100dvh; overflow:hidden; background:#1a1714; }
   body { font:13px/1.5 ui-sans-serif, system-ui, sans-serif; color:#e8dcc8; }
-  body > canvas { display:block; position:fixed; inset:0; z-index:0; }
+  body > canvas { display:block; position:fixed; left:0; top:0; width:100%; height:100%; z-index:0; }
+  html.touch-ui, body.touch-ui, body.touch-ui canvas, body.touch-ui #touch-ui {
+    touch-action:none; user-select:none; -webkit-user-select:none;
+    -webkit-touch-callout:none; overscroll-behavior:none;
+  }
   #hud {
     display:none; position:fixed; z-index:2; top:14px; left:14px;
     background:#14110ee6; border:1px solid #3a322c; border-radius:8px;
@@ -46,10 +56,145 @@
   #help a { color:#c4a574; pointer-events:auto; }
   #loader {
     position:fixed; left:50%; top:14px; transform:translateX(-50%);
-    z-index:5; pointer-events:none; background:none; text-align:center;
+    z-index:9; pointer-events:none; background:none; text-align:center;
   }
   #load-msg { color:#c4a574; min-height:1.4em; font-variant-numeric:tabular-nums;
               letter-spacing:.04em; text-shadow:0 1px 8px #000a; }
+
+  /* Mobile overlay — shown only with body.touch-ui (phones, or ?touch). */
+  #touch-ui {
+    display:none; position:fixed; z-index:10; pointer-events:none;
+    top: var(--vv-top, 0px); left: var(--vv-left, 0px);
+    width: var(--vv-width, 100%); height: var(--vv-height, 100%);
+    font-family:ui-rounded, ui-sans-serif, system-ui, sans-serif;
+  }
+  body.touch-ui {
+    --stick: clamp(108px, 30vw, 148px);
+    --knob: clamp(48px, 13vw, 64px);
+    --jump: clamp(64px, 16vw, 78px);
+    --hand: clamp(72px, 19vw, 92px);
+    --pad: max(18px, env(safe-area-inset-bottom, 0px));
+    --pad-x: max(18px, env(safe-area-inset-right, 0px));
+    --pad-l: max(18px, env(safe-area-inset-left, 0px));
+    --pad-t: max(12px, env(safe-area-inset-top, 0px));
+  }
+  body.touch-ui #touch-ui { display:block; }
+  body.touch-ui.pos-open #touch-ui { display:none !important; }
+  body.touch-ui #help { display:none; }
+  body.touch-ui:not(.debug) #hud,
+  body.touch-ui:not(.debug) #fpsHud { display:none !important; }
+  body.touch-ui #look {
+    top: calc(var(--pad-t) + 56px); bottom:auto; left:50%;
+    transform:translateX(-50%); max-width:80vw; text-align:center;
+  }
+  body.touch-ui #dbgToggle {
+    left:auto; right:12px; bottom:auto; top: var(--pad-t);
+  }
+  body.touch-ui #dbgPanel {
+    left:auto; right:12px; bottom:auto; top: calc(var(--pad-t) + 40px);
+  }
+  #touch-look, #touch-move { position:absolute; pointer-events:auto; touch-action:none; }
+  #touch-look { inset:0; z-index:1; }
+  #touch-move {
+    left: var(--pad-l); bottom: var(--pad); z-index:2;
+    width: calc(var(--stick) * 2); height: calc(var(--stick) * 2);
+  }
+  #touch-stick {
+    position:absolute; z-index:3; pointer-events:none;
+    left: 50%; top: 50%;
+    width: var(--stick); height: var(--stick);
+    margin: calc(var(--stick) / -2) 0 0 calc(var(--stick) / -2);
+    border-radius:50%;
+    background: rgba(255,255,255,.14);
+    border: 3px solid rgba(255,255,255,.55);
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,.12), 0 8px 22px #0004;
+  }
+  #touch-stick.on { background: rgba(255,255,255,.22); }
+  #touch-knob {
+    position:absolute; left:50%; top:50%;
+    width: var(--knob); height: var(--knob);
+    margin: calc(var(--knob) / -2) 0 0 calc(var(--knob) / -2);
+    border-radius:50%;
+    background: radial-gradient(circle at 35% 30%, #fff6e8, #e8c99a 62%, #c9a36c);
+    box-shadow: 0 4px 10px #0005, inset 0 2px 3px #fff8;
+    transform: translate(0, 0);
+    will-change: transform;
+  }
+  #touch-actions {
+    position:absolute; z-index:4; right: var(--pad-x); bottom: var(--pad);
+    display:flex; flex-direction:column; align-items:flex-end; gap: 14px;
+    pointer-events:none;
+  }
+  #touch-actions .touch-row {
+    display:flex; align-items:flex-end; gap: 14px; pointer-events:none;
+  }
+  .touch-btn {
+    pointer-events:auto; touch-action:none; -webkit-user-select:none; user-select:none;
+    border:0; cursor:pointer; color:#fff; font:700 22px/1 ui-rounded, ui-sans-serif, system-ui, sans-serif;
+    letter-spacing:.04em; text-shadow: 0 1px 0 #0002;
+    display:grid; place-items:center; border-radius:50%;
+    box-shadow: 0 6px 0 rgba(0,0,0,.18), 0 10px 18px #0003, inset 0 3px 0 #fff6;
+    transition: transform .06s, box-shadow .06s, filter .06s;
+  }
+  .touch-btn:active, .touch-btn.on {
+    transform: translateY(4px) scale(.94);
+    box-shadow: 0 2px 0 rgba(0,0,0,.18), 0 4px 10px #0003, inset 0 3px 0 #fff4;
+    filter: brightness(.92);
+  }
+  #touch-jump {
+    width: var(--jump); height: var(--jump); font-size: 0;
+    background: linear-gradient(#bfe9f6, #7ec8e3); margin-right: calc(var(--hand) * .55);
+  }
+  #touch-jump svg { width: 42%; height: 42%; display:block; }
+  #touch-l {
+    width: var(--hand); height: var(--hand);
+    background: linear-gradient(#ffe58a, #f0c94a); color:#5a3d10; text-shadow:none;
+    font-size: clamp(22px, 5.5vw, 28px);
+  }
+  #touch-r {
+    width: calc(var(--hand) + 8px); height: calc(var(--hand) + 8px);
+    background: linear-gradient(#ffb3bc, #f07a8a);
+    font-size: clamp(22px, 5.5vw, 28px);
+  }
+  #touch-pause {
+    position:absolute; z-index:5; pointer-events:auto; touch-action:none;
+    top: var(--pad-t); left: var(--pad-l);
+    width: 44px; height: 44px; border:0; border-radius: 12px; cursor:pointer;
+    background: #fff; color:#5c6570;
+    box-shadow: 0 4px 0 #d5dbe3, 0 8px 16px #0003;
+    display:grid; place-items:center;
+  }
+  #touch-pause.on { transform: translateY(2px); box-shadow: 0 2px 0 #d5dbe3, 0 4px 10px #0003; }
+  #touch-pause svg { width: 18px; height: 18px; display:block; }
+  #touch-help {
+    position:absolute; inset:0; z-index:6; pointer-events:auto;
+    background: #14110ecc; display:grid; place-items:center; padding: 24px;
+  }
+  #touch-help[hidden] { display:none !important; }
+  #touch-help .card {
+    background:#fff; color:#2a2420; border-radius:18px; padding:22px 22px 18px;
+    width:min(360px, 92vw); box-shadow: 0 18px 40px #0005;
+    font: 15px/1.45 ui-sans-serif, system-ui, sans-serif;
+  }
+  #touch-help h2 { font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:#8a7d70; margin-bottom:10px; }
+  #touch-help ul { list-style:none; }
+  #touch-help li { padding: 7px 0; border-top: 1px solid #efe6dc; }
+  #touch-help li:first-child { border-top:0; }
+  #touch-help b { color:#1a1714; }
+  #touch-help-close {
+    margin-top:16px; width:100%; border:0; border-radius:12px; padding:12px;
+    background:#2a241f; color:#f0e6d4; font:700 15px ui-sans-serif, system-ui, sans-serif;
+    cursor:pointer;
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    body.touch-ui {
+      --stick: clamp(88px, 28vh, 120px);
+      --knob: clamp(40px, 12vh, 52px);
+      --jump: clamp(56px, 18vh, 68px);
+      --hand: clamp(64px, 20vh, 80px);
+      --pad: max(12px, env(safe-area-inset-bottom, 0px));
+    }
+  }
 </style>
 
 <div id="loader">
@@ -72,6 +217,47 @@
 <div id="look"></div>
 <div id="cross"></div>
 <div id="help">WASD move · Space jump · Q/E hands · 0 empty · 1 scale gun · 2 transform gun · click grab/drop · Shift run · Esc release mouse</div>
+<div id="touch-ui" hidden aria-hidden="true">
+  <div id="touch-look"></div>
+  <div id="touch-move">
+    <div id="touch-stick" aria-hidden="true">
+      <div id="touch-knob"></div>
+    </div>
+  </div>
+  <div id="touch-actions">
+    <div class="touch-row">
+      <button type="button" id="touch-jump" class="touch-btn" aria-label="Jump">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 19 V7"/>
+          <path d="M6 12 l6-6 6 6"/>
+        </svg>
+      </button>
+    </div>
+    <div class="touch-row">
+      <button type="button" id="touch-l" class="touch-btn" aria-label="Left hand">L</button>
+      <button type="button" id="touch-r" class="touch-btn" aria-label="Right hand">R</button>
+    </div>
+  </div>
+  <button type="button" id="touch-pause" aria-label="Controls">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="4" width="4.2" height="16" rx="1.2"/>
+      <rect x="13.8" y="4" width="4.2" height="16" rx="1.2"/>
+    </svg>
+  </button>
+  <div id="touch-help" hidden>
+    <div class="card">
+      <h2>Controls</h2>
+      <ul>
+        <li><b>Stick</b> — drag in the left pad to move. The base follows your thumb; push the knob to the rim to run.</li>
+        <li><b>Drag</b> the empty right side to look. Tap it to use a switch or kiosk.</li>
+        <li><b>L / R</b> — tap to raise that hand and grab. Tap again to drop.</li>
+        <li><b>Jump</b> — the blue arrow.</li>
+        <li><b>Fullscreen</b> — first tap hides the browser bar. Or Firefox menu → Add to Home screen.</li>
+      </ul>
+      <button type="button" id="touch-help-close">Got it</button>
+    </div>
+  </div>
+</div>
 
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }

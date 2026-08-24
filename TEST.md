@@ -431,7 +431,42 @@ dbg.unfreeze()
 Eval returns JSON immediately; the screenshot tool is a second round
 trip. Freeze covers that gap.
 
-### 9. After a code change
+### 9. Mobile overlay
+
+Shown on coarse-pointer devices, or force it with `museum.html?touch`.
+Desktop `?desktop` hides it. Overlay is `#touch-ui`; state is `dbg.state().touch`
+and `__museum.touch.dump()`. The left stick is a follow-base pad (`#touch-move`
+is 2× the visual circle): the knob stays relative to the current base, and the
+base slides inside that pad when the finger would leave the rim.
+
+```js
+dbg.freeze()
+__museum.enter()                    // sets touchLock; no pointer lock
+__museum.touch.setStick(0, 1)       // walk forward (analog is ×0.5)
+dbg.step(60)
+dbg.state().player.pos              // z should have decreased (facing 0)
+dbg.state().player.analog           // { x: 0, z: 0.5 }
+__museum.touch.setStick(0, 0)
+__museum.touch.setStick(0, 1)       // unscaled rim (≥0.78) is still run
+__museum.touch.press('jump', true)
+dbg.step(1)
+dbg.state().player                  // analog, leftHand / jump via keys
+__museum.touch.press('jump', false)
+
+dbg.teleport('Cheese')
+__museum.touch.press('l', true)     // latch left up + LMB
+dbg.step(1)
+dbg.state().holding                 // 'cheese' — stays held after the tap
+__museum.touch.press('l', false)    // second tap: drop + lower
+dbg.step(1)
+dbg.state().holding                 // ''
+```
+
+Look-drag is `player.injectMouse(dx, dy)` (the overlay multiplies by ~4). A
+short tap on the empty right side is `player.pulseFire(0)` — one frame of
+LMB for switches / kiosks, without dropping a held item.
+
+### 10. After a code change
 
 Reload the tab (`museum.html`), wait for `__museum`, emulate viewport,
 then re-run the same `state()` / `pose.view()` pair. Do not keep a
@@ -462,6 +497,7 @@ stale `pose` session across reloads.
 | `public/game/common/poser.js` | white studio, views × projections |
 | `public/game/common/harness.js` | `window.dbg` + `window.pose` + panel |
 | `public/game/scenes/museum.js` | wires `tick` / `render` / `dumpExtras` |
+| `public/game/systems/touch.js` | phone overlay (stick / L / R / jump) |
 
 The museum is still the test scene. New systems should be exercisable
 here (`teleport`, `state`, `step`) before they get their own HTML entry.

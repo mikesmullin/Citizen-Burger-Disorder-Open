@@ -15,6 +15,10 @@ python3 -m http.server 8765 --directory public
 Click to capture the mouse. WASD to walk, Shift to run, Ctrl to walk, Q/E for
 each hand, click to grab or drop food, Esc to pause.
 
+On a phone the museum shows a left stick, a jump button, and L / R grab
+buttons (tap to grab, tap again to drop); drag the empty right side to look.
+Add `?touch` to the URL to force that overlay on a desktop.
+
 ---
 
 ## Kritz
