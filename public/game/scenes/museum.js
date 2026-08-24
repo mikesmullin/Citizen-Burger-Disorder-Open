@@ -52,7 +52,7 @@ const SKIP_EXHIBITS = new Set([
   'items/MonitorPickup', // unused Computer leftover
   'items/NumberStand',   // live on the front checkout, next to the order computer
   'items/BoxOpen',       // live on the delivery truck when a crate unpacks
-  'ui/StaffMenu',        // glued to the front counter wall, below the POS
+  'ui/StaffMenu',        // on the Front pass wall, east of the order window
   'ui/BunBottom',
   'ui/BunTop',
   'ui/Cheese',

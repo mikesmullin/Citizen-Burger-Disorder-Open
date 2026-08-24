@@ -366,19 +366,25 @@ export async function createFront({
 
   const compX = 0.15
 
-  // Staff menu glued to the counter's staff face, below the order
-  // computer: look down past the POS screen and it is right there —
-  // a quick reference while checking out. (Used to sit on a pedestal.)
+  // Staff menu on the dining face of the pass wall, east of the order
+  // window. Staff at the till face +Z (guests); their left is +X, so
+  // this board is a left turn. Guests at checkout see it to the right
+  // of the pass.
+  const menuLongest = Math.min(1.70, (hx - WALL_T - winX1) - 0.16)
+  const menuX = winX1 + 0.12 + menuLongest / 2
+  const menuY = 2.05
+  const menuZ = winZ + WALL_T / 2 + 0.03
   if (foodProtos && foodProtos['ui/StaffMenu']) {
     const menu = foodProtos['ui/StaffMenu'].clone(true)
+    menu.name = 'StaffMenu'
     menu.updateMatrixWorld(true)
     const mb = boundsOf(menu)
     if (!mb.isEmpty()) {
       const ms = mb.getSize(new THREE.Vector3())
-      menu.scale.multiplyScalar(0.95 / Math.max(ms.x, ms.y, ms.z, 1e-4))
+      menu.scale.multiplyScalar(menuLongest / Math.max(ms.x, ms.y, ms.z, 1e-4))
     }
-    menu.position.set(compX, 0.53, cZ - cD / 2 - 0.185)
-    menu.rotation.set(0.42, Math.PI, 0)  // face staff, tilt up toward the standing employee
+    menu.position.set(menuX, menuY, menuZ)
+    menu.rotation.set(0, 0, 0)  // local +Z toward dining / guests
     object.add(menu)
   }
   const posKiosk = createPosKiosk({
@@ -833,8 +839,8 @@ export async function createFront({
       }
     }
     if (/^StaffMenu$/i.test(key)) {
-      const stand = worldOf((staffX0 + staffX1) / 2, 0, staffZ - 0.55)
-      const look = worldOf(compX, 0.55, cZ - cD / 2 - 0.185)
+      const stand = worldOf(menuX, 0, cZ + cD / 2 + 1.8)
+      const look = worldOf(menuX, menuY, menuZ)
       return { stand, look, label: 'StaffMenu' }
     }
     if (/^Register$/i.test(key)) {
@@ -956,7 +962,7 @@ export async function createFront({
     spots: {
       door: doorWpos, street: streetWpos, pos: posWpos, register: regWpos,
       staff: staffWpos, pass: passWpos, back: backWpos, window: winLook,
-      numberStand: numberStandPos,
+      numberStand: numberStandPos, staffMenu: worldOf(menuX, menuY, menuZ),
     },
   }
 }
