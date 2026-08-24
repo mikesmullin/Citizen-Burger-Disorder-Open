@@ -1,5 +1,6 @@
 import { C } from '../common/ecs.js'
 import { setGoal, clearGoal } from '../systems/locomotion.js'
+import { setPlateDirty } from '../systems/food.js'
 
 export function Npc__think(world, eid, ctx) {
   const think = world.field(eid, C.Thinker)
@@ -55,13 +56,17 @@ export function Npc__think(world, eid, ctx) {
       food.object.scale.setScalar(food._eatScale * pulse)
     }
     if (!think.waitUntil) think.waitUntil = T + 4
-    if (T > think.waitUntil) {
+    if (T >= think.waitUntil) {
       if (food && ctx.foodWorld) ctx.foodWorld.destroy(food)
       if (food && food.stack && ctx.foodWorld) {
         for (const f of food.stack) ctx.foodWorld.destroy(f)
       }
       cust.holdingFood = null
       cust.holding = 0
+      if (cust.servedPlate) {
+        setPlateDirty(cust.servedPlate)
+        cust.servedPlate = null
+      }
       think.prevWant = think.want
       think.want = 'leave'
       const seat = world.field(cust.seat, C.Seat)

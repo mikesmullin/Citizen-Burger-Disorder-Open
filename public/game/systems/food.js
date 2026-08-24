@@ -3,7 +3,7 @@
 
 import * as THREE from 'three'
 import { boundsOf, hideTriggers } from '../common/unityScene.js'
-import { tryLandStack, tickStacks, layoutStack, layoutPlate } from './stacking.js'
+import { tryLandStack, tickStacks, layoutStack, layoutPlate, layoutDishStack, detachFromDish } from './stacking.js'
 import { createImpactSfx } from './sfx.js'
 import { createVisualInstancer } from '../common/instancePool.js'
 
@@ -188,6 +188,25 @@ export const COOK_FOLLOW = {
     { slug: 'items/BunBottomCooked', caption: 'Bun Bottom · cooked', state: 'cooked' },
     { slug: 'items/BunBottomBurned', caption: 'Bun Bottom · burned', state: 'burned' },
   ],
+}
+
+export function setPlateDirty(item) {
+  if (!item || item.type !== 'plate') return item
+  item.dirty = true
+  item.instVariant = 'dirty'
+  if (item.object) applyCookLook(item.object, { mapUrl: './assets/textures/PlateDirty.png' })
+  if (item.watchVisual) item.watchVisual(item)
+  return item
+}
+
+export function setPlateClean(item) {
+  if (!item || item.type !== 'plate') return item
+  item.dirty = false
+  item.soakTime = 0
+  item.instVariant = ''
+  if (item.object) applyCookLook(item.object, { mapUrl: './assets/textures/Plate.png' })
+  if (item.watchVisual) item.watchVisual(item)
+  return item
 }
 
 export function applyCookState(root, item) {
@@ -392,6 +411,7 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
       overcooked: 0,
       inFood: false,
       soakTime: 0,
+      dirty: false,
       restingOn: null,   // surface mat the item is parked on (set on land)
     }
     object.userData.food = item
@@ -404,6 +424,15 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
 
   function destroy(item) {
     if (!item) return
+    if (item.type === 'plate') {
+      const nested = item.stack && !item.stackedOn ? item.stack.slice() : []
+      detachFromDish(item)
+      for (const p of nested) {
+        p.stackedOn = null
+        p.inFood = false
+      }
+      item.stack = []
+    }
     forget(item)
     if (item.object && item.object.parent) item.object.parent.remove(item.object)
     scene.remove(item.object)
@@ -520,7 +549,10 @@ export function createFoodWorld({ scene, player, instancer: given } = {}) {
     }
     for (const item of items) {
       if (item.held && item.type === 'bun') layoutStack(item)
-      if (item.held && item.type === 'plate' && item.plated) layoutPlate(item)
+      if (item.held && item.type === 'plate') {
+        if (item.plated) layoutPlate(item)
+        if (item.stack && item.stack.length) layoutDishStack(item)
+      }
     }
     tickStacks(items)
     instancer.syncAll()

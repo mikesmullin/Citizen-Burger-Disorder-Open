@@ -46,6 +46,7 @@ export function Customer(o = {}) {
     anger: 0,
     holding: 0,
     holdingFood: null,
+    servedPlate: null,
     queueSlot: -1,
     seat: 0,
     tableId: 0,

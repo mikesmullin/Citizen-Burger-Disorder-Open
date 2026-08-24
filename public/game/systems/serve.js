@@ -34,6 +34,7 @@ export function update(world, ctx) {
       if (bun.vel) bun.vel.set(0, 0, 0)
       cust.holding = 1
       cust.holdingFood = bun
+      cust.servedPlate = plate
       const speech = world.field(custEid, C.Speech)
       if (speech) speech.icon = ''
       world.emit('FoodServed', {

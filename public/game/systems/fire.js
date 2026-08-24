@@ -6,6 +6,7 @@
 import * as THREE from 'three'
 import { hideTriggers } from '../common/unityScene.js'
 import { isFood, isTool, cookTick } from './food.js'
+import { detachFromDish, dishRoot } from './stacking.js'
 import { getListener, loadBuffer, safePlay } from '../common/audio.js'
 
 export const BURN_HEALTH = 8
@@ -282,6 +283,20 @@ export function createFireWatch({
     if (item.cookAudio) {
       try { if (item.cookAudio.isPlaying) item.cookAudio.stop() } catch (_) { /* ignore */ }
       item.cookAudio = null
+    }
+    if (item.type === 'plate') {
+      const root = dishRoot(item)
+      if (root && root !== item && root.stack) {
+        detachFromDish(item)
+      } else if (item.stack && item.stack.length) {
+        for (const p of item.stack) {
+          if (!p) continue
+          p.inFood = false
+          p.stackedOn = null
+          p.held = false
+        }
+        item.stack = []
+      }
     }
     if (item.stack) {
       for (const f of item.stack) {
