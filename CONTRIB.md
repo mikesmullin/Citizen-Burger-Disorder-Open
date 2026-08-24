@@ -138,7 +138,7 @@ both the game and the static site root.
 ```
 public/
   museum.html              entry (index.html redirects here)
-  vendor/                  three.js r180
+  vendor/                  three.js r185
   game/                    JavaScript — roles, not Unity folders
     scenes/museum.js       the hall
     systems/               player, hands, food, npc, rats
