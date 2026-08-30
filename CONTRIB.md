@@ -31,7 +31,7 @@ it can be checked in one place.
 **Play locally**
 
 ```bash
-python3 -m http.server 8765 --directory public
+bun server.mjs
 # http://127.0.0.1:8765/museum.html
 ```
 
