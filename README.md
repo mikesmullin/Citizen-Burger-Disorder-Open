@@ -8,7 +8,8 @@ in three.js with the help of AI — no Unity runtime.
 **Play the museum:** from the [Github Static Pages hosted version](https://mikesmullin.github.io/Citizen-Burger-Disorder-Open/museum.html),  
 or run it locally:
 ```bash
-bun server.mjs
+bun server.mjs &
+# long-running — background it so the shell returns
 # http://127.0.0.1:8765/museum.html
 ```
 

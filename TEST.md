@@ -10,7 +10,8 @@ Play locally, then open `museum.html` (add `?debug` for the on-screen
 panel):
 
 ```bash
-bun server.mjs
+bun server.mjs &
+# long-running — background it so the shell returns
 # http://127.0.0.1:8765/museum.html
 ```
 
